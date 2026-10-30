@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="600" viewBox="0 0 1300 600" font-family="Liberation Sans, Arial, sans-serif">
+<defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+<rect width="1300" height="600" fill="#fff"/>
+<text x="650" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Data rules: how link and job states change</text>
+<text x="30" y="72" font-size="15" font-weight="bold" fill="#111">link.state</text>
+<text x="700" y="72" font-size="15" font-weight="bold" fill="#111">job.state</text>
+<circle cx="60" cy="190" r="9" fill="#333"/>
+<rect x="250" y="100" width="160" height="48" rx="8" fill="#e6f4e6" stroke="#333" stroke-width="1.5"/><text x="330.0" y="129.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">reconciled</text>
+<rect x="250" y="250" width="160" height="48" rx="8" fill="#fdf1d9" stroke="#333" stroke-width="1.5"/><text x="330.0" y="279.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">suggested</text>
+<rect x="520" y="250" width="130" height="48" rx="8" fill="#fbe3e1" stroke="#333" stroke-width="1.5"/><text x="585.0" y="279.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">rejected</text>
+<rect x="250" y="400" width="160" height="48" rx="8" fill="#eeeeee" stroke="#333" stroke-width="1.5"/><text x="330.0" y="429.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">closed</text>
+<path d="M68,184 L250,128" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="150" y="138" font-size="12" fill="#222" text-anchor="middle">deterministic rule (system)</text>
+<path d="M68,196 L250,266" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="140" y="250" font-size="12" fill="#222" text-anchor="middle">heuristic criteria (system)</text>
+<path d="M360,250 L360,148" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="372" y="205" font-size="12" fill="#222" text-anchor="start">user confirms</text>
+<path d="M300,148 L300,250" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="292" y="205" font-size="12" fill="#222" text-anchor="end">SAT says cancelled</text>
+<path d="M410,274 L520,274" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="465" y="266" font-size="12" fill="#222" text-anchor="middle">user rejects</text>
+<path d="M330,298 L330,400" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="342" y="352" font-size="12" fill="#222" text-anchor="start">user changes CFDI or amount</text>
+<text x="530" y="326" font-size="12" fill="#444">rejected links are kept and</text>
+<text x="530" y="342" font-size="12" fill="#444">never proposed again</text>
+<text x="440" y="424" font-size="12" fill="#444">a new reconciled link is created by the user</text>
+<rect x="690" y="100" width="130" height="48" rx="8" fill="#fdf1d9" stroke="#333" stroke-width="1.5"/><text x="755.0" y="129.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">queued</text>
+<rect x="900" y="100" width="130" height="48" rx="8" fill="#e4eefb" stroke="#333" stroke-width="1.5"/><text x="965.0" y="129.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">running</text>
+<rect x="1110" y="100" width="130" height="48" rx="8" fill="#e6f4e6" stroke="#333" stroke-width="1.5"/><text x="1175.0" y="129.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">succeeded</text>
+<rect x="880" y="270" width="170" height="48" rx="8" fill="#fbe3e1" stroke="#333" stroke-width="1.5"/><text x="965.0" y="299.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">failed (retained)</text>
+<path d="M820,124 L900,124" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="860" y="116" font-size="12" fill="#222" text-anchor="middle">worker claims</text>
+<path d="M1030,124 L1110,124" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="1070" y="116" font-size="12" fill="#222" text-anchor="middle">done</text>
+<path d="M965,100 C965,62 755,62 755,100" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="860" y="90" font-size="12" fill="#222" text-anchor="middle">transient error: retry with backoff</text>
+<path d="M965,148 L965,270" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="975" y="214" font-size="12" fill="#222" text-anchor="start">permanent error or attempts exhausted</text>
+<path d="M880,294 C760,294 755,230 755,148" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)"/><text x="870" y="336" font-size="12" fill="#222" text-anchor="end">administrator re-runs</text>
+<text x="1066" y="290" font-size="12" fill="#444">worker dies: its lock (locked_until)</text>
+<text x="1066" y="306" font-size="12" fill="#444">expires and the job returns to queued</text>
+<g font-size="12.5" fill="#222">
+<text x="30" y="490" font-weight="bold">Rules that hold across tables</text>
+<text x="30" y="507">• Only deterministic rules create reconciled links automatically; everything else starts as suggested.</text>
+<text x="30" y="524">• Every state change and every decision writes an audit_entry in the same transaction.</text>
+<text x="30" y="541">• Re-running reconciliation is safe: existing links and rejections are kept.</text>
+<text x="30" y="558">• A job runs once: handlers are idempotent, so a redelivery changes nothing.</text>
+<text x="30" y="575">• A payment complement is due on the 5th of the month after the payment; overdue is derived, not stored.</text>
+<text x="30" y="592">• A cancellation in process changes nothing; only a cancelled CFDI sends its links back to review.</text>
+</g></svg>

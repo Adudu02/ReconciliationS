@@ -1,0 +1,48 @@
+using FluentMigrator.Runner;
+using Microsoft.Extensions.DependencyInjection;
+
+string[] commands = ["up", "down"];
+if (args.Length != 1 || !commands.Contains(args[0]))
+{
+    Console.Error.WriteLine("Usage: Reconciliation.Migrator up|down   (down reverts one migration)");
+    return 2;
+}
+
+var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    Console.Error.WriteLine("Set the environment variable ConnectionStrings__Default.");
+    return 2;
+}
+
+try
+{
+    using var provider = new ServiceCollection()
+        .AddFluentMigratorCore()
+        .ConfigureRunner(runner => runner
+            .AddPostgres()
+            .WithGlobalConnectionString(connectionString)
+            .ScanIn(typeof(Program).Assembly).For.Migrations())
+        .AddLogging(logging => logging.AddFluentMigratorConsole())
+        .BuildServiceProvider(validateScopes: false);
+
+    using var scope = provider.CreateScope();
+    var migrations = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+    if (args[0] == "up")
+    {
+        migrations.MigrateUp();
+    }
+    else
+    {
+        migrations.Rollback(1);
+    }
+
+    return 0;
+}
+#pragma warning disable CA1031 // Program boundary: any failure must become a clear message and a non-zero exit code.
+catch (Exception exception)
+#pragma warning restore CA1031
+{
+    Console.Error.WriteLine($"Migration failed: {exception.Message}");
+    return 1;
+}

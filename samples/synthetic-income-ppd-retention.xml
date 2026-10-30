@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC SAMPLE: fake RFCs, fake UUID, no seals. Shape modelled on a real RESICO income CFDI. Not valid against the SAT. -->
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.sat.gob.mx/cfd/4 http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd"
+  Version="4.0" Serie="FC" Folio="488" Fecha="2026-09-11T17:33:14" FormaPago="99" MetodoPago="PPD"
+  SubTotal="1690.00" Moneda="MXN" Total="1939.27" TipoDeComprobante="I" Exportacion="01" LugarExpedicion="44298"
+  NoCertificado="00000000000000000001" Sello="SYNTHETIC" Certificado="SYNTHETIC">
+  <cfdi:Emisor Rfc="AAA010101AAA" Nombre="EMISOR DE PRUEBA SA" RegimenFiscal="626"/>
+  <cfdi:Receptor Rfc="BBB020202BBB" Nombre="CLIENTE DE PRUEBA SA" DomicilioFiscalReceptor="97119" RegimenFiscalReceptor="601" UsoCFDI="G03"/>
+  <cfdi:Conceptos>
+    <cfdi:Concepto ClaveProdServ="43231500" NoIdentificacion="000000001" Cantidad="1" ClaveUnidad="H87" Unidad="Pieza"
+      Descripcion="Licencia anual de software (sintetico)" ValorUnitario="1690.00" Importe="1690.00" ObjetoImp="02">
+      <cfdi:Impuestos>
+        <cfdi:Traslados>
+          <cfdi:Traslado Base="1690.00" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="270.40"/>
+        </cfdi:Traslados>
+        <cfdi:Retenciones>
+          <cfdi:Retencion Base="1690.00" Impuesto="001" TipoFactor="Tasa" TasaOCuota="0.012500" Importe="21.13"/>
+        </cfdi:Retenciones>
+      </cfdi:Impuestos>
+    </cfdi:Concepto>
+  </cfdi:Conceptos>
+  <cfdi:Impuestos TotalImpuestosRetenidos="21.13" TotalImpuestosTrasladados="270.40">
+    <cfdi:Retenciones>
+      <cfdi:Retencion Impuesto="001" Importe="21.13"/>
+    </cfdi:Retenciones>
+    <cfdi:Traslados>
+      <cfdi:Traslado Base="1690.00" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="270.40"/>
+    </cfdi:Traslados>
+  </cfdi:Impuestos>
+  <cfdi:Complemento>
+    <tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" Version="1.1"
+      UUID="00000000-0000-4000-8000-000000000002" FechaTimbrado="2026-09-11T17:33:19"
+      RfcProvCertif="AAA010101AAA" SelloCFD="SYNTHETIC" NoCertificadoSAT="00000000000000000002" SelloSAT="SYNTHETIC"/>
+  </cfdi:Complemento>
+</cfdi:Comprobante>

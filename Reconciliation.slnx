@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Reconciliation.Core/Reconciliation.Core.csproj" />
+    <Project Path="src/Reconciliation.Api/Reconciliation.Api.csproj" />
+    <Project Path="src/Reconciliation.Worker/Reconciliation.Worker.csproj" />
+    <Project Path="src/Reconciliation.Migrator/Reconciliation.Migrator.csproj" />
+    <Project Path="src/Reconciliation.SatStub/Reconciliation.SatStub.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Reconciliation.Tests/Reconciliation.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,15 @@
+**/bin
+**/obj
+.git
+graphify-out
+Dream Team
+docs
+openspec
+samples
+raw
+.local
+.env
+.claude
+.agents
+.opencode
+tests

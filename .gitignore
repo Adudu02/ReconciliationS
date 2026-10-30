@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+.vs/
+.env
+*.log
+TestResults/
+
+# Real CFDI and local mapping must never be committed (see test-data-tooling spec)
+raw/
+.local/
+
+# Generated artefacts
+graphify-out/
+.codebase-memory/

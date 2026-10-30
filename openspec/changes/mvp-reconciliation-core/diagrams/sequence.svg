@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" font-family="Liberation Sans, Arial, sans-serif" font-size="13">
+<defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+<rect width="1000" height="700" fill="#fff"/>
+<text x="500" y="26" text-anchor="middle" font-size="18" font-weight="bold" fill="#111">Sequence: from upload to reconciled result</text>
+<g stroke="#333" stroke-width="1.5">
+<rect x="40" y="45" width="140" height="36" rx="6" fill="#f3f3f3"/><rect x="240" y="45" width="140" height="36" rx="6" fill="#e4eefb"/>
+<rect x="440" y="45" width="140" height="36" rx="6" fill="#e6f4e6"/><rect x="640" y="45" width="140" height="36" rx="6" fill="#e4eefb"/>
+<rect x="830" y="45" width="140" height="36" rx="6" fill="#fdf1d9"/></g>
+<g fill="#111" text-anchor="middle" font-weight="bold">
+<text x="110" y="68">Accountant</text><text x="310" y="68">API</text><text x="510" y="68">PostgreSQL</text><text x="710" y="68">Worker</text><text x="900" y="68">SAT client</text></g>
+<g stroke="#999" stroke-width="1" stroke-dasharray="4 4">
+<path d="M110,81 V680"/><path d="M310,81 V680"/><path d="M510,81 V680"/><path d="M710,81 V680"/><path d="M900,81 V680"/></g>
+<g stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#a)">
+<path d="M110,120 H310"/><path d="M310,190 H510"/><path d="M310,230 H110" stroke-dasharray="6 4"/>
+<path d="M710,265 H510"/><path d="M710,315 H510"/><path d="M710,365 H900"/><path d="M900,410 H710" stroke-dasharray="6 4"/>
+<path d="M710,460 H510"/><path d="M110,525 H310"/><path d="M310,570 H510"/><path d="M510,615 H310" stroke-dasharray="6 4"/><path d="M310,650 H110" stroke-dasharray="6 4"/></g>
+<g fill="#111">
+<text x="116" y="112">1 upload CFDI files (token + company)</text>
+<text x="316" y="140">2 check size and count limits;</text><text x="316" y="155">BEGIN, set company context, store file,</text>
+<text x="316" y="170">enqueue job, audit entry, COMMIT</text>
+<text x="116" y="222">3 202 Accepted + job id</text>
+<text x="516" y="257">4 claim job (SKIP LOCKED)</text>
+<text x="516" y="307">5 safe XML parse; insert by UUID (idempotent)</text>
+<text x="716" y="357">6 status of each CFDI</text>
+<text x="716" y="402">7 valid, cancelled or unknown (cached)</text>
+<text x="516" y="452">8 links, states, audit entry; job succeeded</text>
+<text x="116" y="517">9 open review queue</text>
+<text x="316" y="562">10 query (company context set)</text>
+<text x="516" y="607">11 only that company's rows</text>
+<text x="116" y="642">12 suggestions with reasons</text>
+</g>
+
+</svg>

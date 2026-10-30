@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: cfdi
+          POSTGRES_PASSWORD: cfdi
+          POSTGRES_DB: cfdi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cfdi -d cfdi"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      ConnectionStrings__Default: Host=localhost;Port=5432;Username=cfdi;Password=cfdi;Database=cfdi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore
+      - run: dotnet format --verify-no-changes --no-restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+      - name: Migrations apply, revert and apply again
+        run: |
+          dotnet run --no-build -c Release --project src/Reconciliation.Migrator -- up
+          dotnet run --no-build -c Release --project src/Reconciliation.Migrator -- down
+          dotnet run --no-build -c Release --project src/Reconciliation.Migrator -- up
+
+  images:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the whole stack, then wait for health checks
+        run: docker compose up --build --wait
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
