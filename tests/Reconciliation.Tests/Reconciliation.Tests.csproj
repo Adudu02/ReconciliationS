@@ -7,6 +7,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Reconciliation.Migrator\Reconciliation.Migrator.csproj" />
     <ProjectReference Include="..\..\src\Reconciliation.Core\Reconciliation.Core.csproj" />
     <ProjectReference Include="..\..\src\Reconciliation.Api\Reconciliation.Api.csproj" />
   </ItemGroup>
