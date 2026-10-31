@@ -6,6 +6,7 @@ tamper-evident audit log. Results have **no fiscal or legal validity**; use anon
 
 Stack: C# on .NET 10, ASP.NET Core, PostgreSQL 17 (see `docs/adr/ADR-002-stack-choice.md`).
 Planning documents: `docs/` (BRS, SRS, diagrams, ADRs) and `openspec/changes/mvp-reconciliation-core/` (source of truth).
+Progress and what each piece is for: [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md) (English) and [`docs/BUILD-LOG-ES.md`](docs/BUILD-LOG-ES.md) (Español); status map: `docs/progress/status-map.png`.
 
 ## Layout
 

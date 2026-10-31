@@ -2,7 +2,7 @@
 
 - [x] 1.1 Create the repository structure (API, worker, shared modules, tools, docs) and verify `README` lists how to build and run it
 - [x] 1.2 Add Docker Compose with PostgreSQL, API, worker and SAT stub placeholders and verify one command starts them and health checks pass
-- [ ] 1.3 Add CI that builds, lints and runs tests and produces container images, and verify a pushed commit goes green
+- [x] 1.3 Add CI that builds, lints and runs tests and produces container images, and verify a pushed commit goes green
 - [x] 1.4 Write ADR-001 (modular monolith with separate worker) and ADR-002 (stack choice) and verify both list the rejected alternatives
 - [x] 1.5 Add database migrations tooling and the first migration (company, user, membership) and verify migrate up and down succeed on an empty database
 
