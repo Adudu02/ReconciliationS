@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <ProjectReference Include="..\Reconciliation.Core\Reconciliation.Core.csproj" />
   </ItemGroup>
 </Project>

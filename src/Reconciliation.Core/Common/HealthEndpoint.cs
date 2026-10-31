@@ -14,7 +14,7 @@ public static class HealthEndpoint
         routes.MapGet("/health", async (IDatabaseHealth database, CancellationToken cancellationToken) =>
             await database.IsReachableAsync(cancellationToken)
                 ? Results.Ok(new HealthResponse("ok", "up"))
-                : Results.Json(new HealthResponse("unavailable", "down"), statusCode: StatusCodes.Status503ServiceUnavailable));
+                : Results.Json(new HealthResponse("unavailable", "down"), statusCode: StatusCodes.Status503ServiceUnavailable)).AllowAnonymous();
         return routes;
     }
 }

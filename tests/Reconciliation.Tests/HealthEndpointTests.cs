@@ -17,6 +17,7 @@ public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory) 
         factory
             .WithWebHostBuilder(builder =>
             {
+                builder.UseSetting("Jwt:SigningKey", "synthetic-test-signing-key-at-least-32-bytes");
                 builder.UseSetting("ConnectionStrings:Default", "Host=localhost;Username=test;Password=test;Database=test");
                 builder.ConfigureServices(services =>
                 {
