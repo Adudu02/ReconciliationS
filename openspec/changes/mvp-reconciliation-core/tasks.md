@@ -8,8 +8,8 @@
 
 ## 2. Tenancy and access (days 1–2)
 
-- [ ] 2.1 Implement the transaction wrapper that sets the company context for API requests and jobs, and verify a query without context returns no rows
-- [ ] 2.2 Enable row-level security with policies on every tenant table, using an application role without bypass, and verify a query without a company filter returns only the context company's rows
+- [x] 2.1 Implement the transaction wrapper that sets the company context for API requests and jobs, and verify a query without context returns no rows
+- [x] 2.2 Enable row-level security with policies on every tenant table, using an application role without bypass, and verify a query without a company filter returns only the context company's rows
 - [ ] 2.3 Implement authentication (slow salted password hashing, token issuance) and verify an anonymous request to a data endpoint is refused
 - [ ] 2.4 Implement roles (administrator, accountant, viewer) and per-company memberships, and verify the role scenarios of the tenancy spec pass
 - [ ] 2.5 Write ADR-003 (tenant isolation with row-level security) and verify it compares schema-per-company and database-per-company

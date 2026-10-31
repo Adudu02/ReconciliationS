@@ -1,5 +1,6 @@
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 string[] commands = ["up", "down"];
 if (args.Length != 1 || !commands.Contains(args[0]))
@@ -31,6 +32,17 @@ try
     if (args[0] == "up")
     {
         migrations.MigrateUp();
+        var appPassword = Environment.GetEnvironmentVariable("APP_DB_PASSWORD");
+        if (!string.IsNullOrEmpty(appPassword))
+        {
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var format = new NpgsqlCommand("SELECT format('ALTER ROLE cfdi_app LOGIN PASSWORD %L', @password)", connection);
+            format.Parameters.AddWithValue("password", appPassword);
+            var sql = (string)(await format.ExecuteScalarAsync())!;
+            await using var command = new NpgsqlCommand(sql, connection);
+            await command.ExecuteNonQueryAsync();
+        }
     }
     else
     {

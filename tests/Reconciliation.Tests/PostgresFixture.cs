@@ -31,7 +31,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         scope.ServiceProvider.GetRequiredService<IMigrationRunner>().MigrateUp();
         await using var connection = new NpgsqlConnection(OwnerConnectionString);
         await connection.ExecuteAsync(new CommandDefinition("""
-            CREATE ROLE cfdi_app LOGIN PASSWORD 'synthetic-test-password' NOSUPERUSER NOBYPASSRLS;
+            ALTER ROLE cfdi_app LOGIN PASSWORD 'synthetic-test-password' NOSUPERUSER NOBYPASSRLS;
             GRANT USAGE ON SCHEMA public TO cfdi_app;
             GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO cfdi_app;
             """, cancellationToken: TestContext.Current.CancellationToken));

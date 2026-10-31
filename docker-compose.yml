@@ -22,7 +22,9 @@ services:
   migrate:
     build: { context: ., target: migrator }
     command: ['up']
-    environment: *database
+    environment:
+      <<: *database
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-synthetic-local-app-password}
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,7 +32,8 @@ services:
 
   api:
     build: { context: ., target: api }
-    environment: *database
+    environment:
+      ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
     ports:
       - '127.0.0.1:8080:3000'
     depends_on:
@@ -44,7 +47,8 @@ services:
 
   worker:
     build: { context: ., target: worker }
-    environment: *database
+    environment:
+      ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
     depends_on:
       migrate:
         condition: service_completed_successfully
