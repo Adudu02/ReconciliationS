@@ -14,12 +14,10 @@
 - [ ] 2.4 Implement roles (administrator, accountant, viewer) and per-company memberships, and verify the role scenarios of the tenancy spec pass
   pending: Viewer cannot decide; Different roles (real link decisions) -> group 8.
 - [x] 2.5 Write ADR-003 (tenant isolation with row-level security) and verify it compares schema-per-company and database-per-company
-- [ ] 2.6 Add the cross-company isolation test suite over every data endpoint and verify it fails when a policy is deliberately removed
-  pending: Cross-company attempt in the test suite (real invoice read and future data endpoints) -> groups 3 and 8.
+- [x] 2.6 Add the cross-company isolation test suite over every data endpoint and verify it fails when a policy is deliberately removed
 - [x] 2.7 Implement company creation by a platform operator with a validated, immutable RFC, and verify the operator and non-operator scenarios
 - [x] 2.8 Implement company settings changes by administrators with audit of old and new values, and verify an accountant is refused
-- [ ] 2.9 Block deletion of imported data and archive companies instead, and verify a delete attempt is unavailable
-  pending: Delete attempt (retain a real imported CFDI unchanged) -> group 3.
+- [x] 2.9 Block deletion of imported data and archive companies instead, and verify a delete attempt is unavailable
 
 ## 3. Domain model and ingestion (days 2–4)
 
@@ -31,9 +29,9 @@
 - [x] 3.4c Reject a CFDI that does not involve the company RFC, record issued or received direction, and verify both scenarios
 - [x] 3.4d Store payments and related invoice lines of complement 2.0, flag inconsistent balances and reject other versions, and verify the three complement scenarios pass
 - [x] 3.4e Store relation codes (01, 03, 04, 07), the global-invoice flag and dates as declared, and verify the substitution, global and midnight scenarios pass
-- [ ] 3.4f Keep original files with their hash and no delete path, and verify the original is returned byte for byte
+- [x] 3.4f Keep original files with their hash and no delete path, and verify the original is returned byte for byte
 - [x] 3.5 Implement idempotent CFDI import by UUID per company and verify uploading the same file twice creates one record
-- [ ] 3.6 Implement the bank parser interface, the reference-format parser and reference extraction, and verify valid, malformed, unknown-bank and tracking-key scenarios pass
+- [x] 3.6 Implement the bank parser interface, the reference-format parser and reference extraction, and verify valid, malformed, unknown-bank and tracking-key scenarios pass
 - [x] 3.7 Implement idempotent movement import with overlapping statements and verify the overlap and identical-lines scenarios pass
 - [x] 3.8 Verify money handling is exact by adding a test summing 0.10 and 0.20 to 0.30 in storage and code
 

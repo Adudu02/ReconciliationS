@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Infrastructure;
@@ -7,12 +9,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Reconciliation.Core.Ingestion;
 using Reconciliation.Migrator;
 
 namespace Reconciliation.Tests;
 
 internal static class TenantIsolationChecks
 {
+    private sealed record Resources(Guid InvoiceId, Guid UploadId, Guid FileId);
     public static async Task<IEnumerable<string>> TenantTablesAsync(NpgsqlConnection owner) =>
         await owner.QueryAsync<string>(new CommandDefinition("""
             SELECT DISTINCT table_name FROM information_schema.columns
@@ -45,6 +49,9 @@ internal static class TenantIsolationChecks
         await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, operatorEmail, ApiFixture.Password, TestContext.Current.CancellationToken);
         using var platform = await fixture.LoginAsync(operatorEmail);
         await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        var importer = fixture.App.Services.GetRequiredService<CfdiImporter>();
+        var resourceA = await SeedResourcesAsync(importer, a, user.Id);
+        var resourceB = await SeedResourcesAsync(importer, b, other.Id);
         var before = await SnapshotAsync(owner, b);
         var source = fixture.App.Services.GetRequiredService<EndpointDataSource>();
         var policies = fixture.App.Services.GetRequiredService<IAuthorizationPolicyProvider>();
@@ -65,10 +72,10 @@ internal static class TenantIsolationChecks
             foreach (var method in methods)
             {
                 var key = $"{method} {route}";
-                using var baseline = Request(method, route, a, other.Id);
+                using var baseline = Request(method, route, a, other.Id, resourceA);
                 using var success = await (route == "/companies" ? platform : client).SendAsync(baseline, TestContext.Current.CancellationToken);
                 Assert.True(success.IsSuccessStatusCode, $"Baseline must exercise real endpoint: {key}, {success.StatusCode}");
-                using var noCredentials = Request(method, route, b, other.Id);
+                using var noCredentials = Request(method, route, b, other.Id, resourceB);
                 using var unauthorized = await anonymous.SendAsync(noCredentials, TestContext.Current.CancellationToken);
                 Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
                 foreach (var selected in new[] { a, b })
@@ -77,12 +84,18 @@ internal static class TenantIsolationChecks
                     client.DefaultRequestHeaders.Add("X-Company-Id", selected.ToString());
                     // A test-only route has no resource id; choose B to exercise membership refusal.
                     if (route == "/test/decisions" && selected == a) continue;
-                    using var attempt = Request(method, route, b, other.Id);
+                    using var attempt = Request(method, route, b, other.Id, resourceB);
                     using var response = await client.SendAsync(attempt, TestContext.Current.CancellationToken);
                     Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound, $"Cross-company access: {key}, {response.StatusCode}");
                 }
                 client.DefaultRequestHeaders.Remove("X-Company-Id");
                 client.DefaultRequestHeaders.Add("X-Company-Id", a.ToString());
+                if (route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal))
+                {
+                    using var foreignResource = Request(method, route, a, other.Id, resourceB);
+                    using var hidden = await client.SendAsync(foreignResource, TestContext.Current.CancellationToken);
+                    Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+                }
                 exercised.Add(key);
             }
         }
@@ -91,17 +104,33 @@ internal static class TenantIsolationChecks
         Assert.Contains("POST /companies/{id:guid}/members", exercised);
     }
 
-    private static Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company) =>
-        owner.QuerySingleAsync<string>(new CommandDefinition("""
-            SELECT jsonb_build_object(
-              'company', (SELECT to_jsonb(c) FROM company c WHERE id = @company),
-              'members', (SELECT jsonb_agg(to_jsonb(m) ORDER BY user_id) FROM membership m WHERE company_id = @company),
-              'audit', (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM audit_entry a WHERE company_id = @company))::text
-            """, new { company }, cancellationToken: TestContext.Current.CancellationToken));
-
-    private static HttpRequestMessage Request(string method, string route, Guid company, Guid user)
+    private static async Task<Resources> SeedResourcesAsync(CfdiImporter importer, Guid company, Guid actor)
     {
-        var request = new HttpRequestMessage(new HttpMethod(method), route.Replace("{id:guid}", company.ToString(), StringComparison.Ordinal));
+        var report = await importer.ImportAsync(company, actor, [UploadedFile.FromBytes("synthetic.xml", SyntheticCfdi.Invoice())], TestContext.Current.CancellationToken);
+        return new Resources(report.Files[0].CfdiId!.Value, report.UploadId, report.Files[0].FileId);
+    }
+
+    private static async Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company)
+    {
+        var rows = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var table in await TenantTablesAsync(owner))
+        {
+            using var builder = new NpgsqlCommandBuilder();
+            var identifier = builder.QuoteIdentifier(table);
+            var key = table == "company" ? "id" : "company_id";
+            rows[table] = await owner.QuerySingleAsync<string>(new CommandDefinition(
+                $"SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]')::text FROM {identifier} t WHERE {key} = @company",
+                new { company }, cancellationToken: TestContext.Current.CancellationToken));
+        }
+        return JsonSerializer.Serialize(rows);
+    }
+
+    private static HttpRequestMessage Request(string method, string route, Guid company, Guid user, Resources resources)
+    {
+        var request = new HttpRequestMessage(new HttpMethod(method), route.Replace("{id:guid}", company.ToString(), StringComparison.Ordinal)
+            .Replace("{invoiceId:guid}", resources.InvoiceId.ToString(), StringComparison.Ordinal)
+            .Replace("{uploadId:guid}", resources.UploadId.ToString(), StringComparison.Ordinal)
+            .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal));
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
@@ -109,7 +138,22 @@ internal static class TenantIsolationChecks
             case "GET /companies/{id:guid}/members":
             case "GET /companies/{id:guid}/settings":
             case "POST /companies/{id:guid}/archive":
+            case "GET /companies/{id:guid}/banks":
+            case "GET /companies/{id:guid}/imports/{uploadId:guid}":
+            case "GET /companies/{id:guid}/cfdi/{invoiceId:guid}":
+            case "GET /companies/{id:guid}/cfdi/{invoiceId:guid}/xml":
+            case "GET /companies/{id:guid}/imports/files/{fileId:guid}/original":
             case "POST /test/decisions":
+                break;
+            case "POST /companies/{id:guid}/imports/cfdi":
+                request.Content = IngestionHttpTests.CfdiBody(SyntheticCfdi.Invoice());
+                break;
+            case "POST /companies/{id:guid}/imports/bank-statement":
+                request.Content = new MultipartFormDataContent
+                {
+                    { new StringContent("reference"), "bank" }, { new StringContent("Synthetic-1234"), "accountReference" },
+                    { new ByteArrayContent(Encoding.UTF8.GetBytes("fecha,concepto,abono,cargo,saldo\n2026-10-10,SYNTHETIC,1,0,1\n")), "files", "synthetic.csv" }
+                };
                 break;
             case "POST /companies":
                 request.Content = JsonContent.Create(new { rfc = "AAA010101AAA", name = "Synthetic isolated", adminEmail = $"isolation-admin-{Guid.NewGuid():N}@example.invalid", adminPassword = ApiFixture.Password });

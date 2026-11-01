@@ -11,7 +11,8 @@ public sealed class M0004Ingestion : Migration
           upload_id uuid NOT NULL, filename text NOT NULL, kind text NOT NULL CHECK(kind IN ('cfdi','bank-statement')),
           status text NOT NULL CHECK(status IN ('imported','already_imported','rejected')), reason text,
           original bytea, sha256 bytea NOT NULL CHECK(octet_length(sha256) = 32),
-          original_file_id uuid, retained_until timestamptz, created_at timestamptz NOT NULL DEFAULT now(),
+          original_file_id uuid, retained_until timestamptz, imported_movements integer NOT NULL DEFAULT 0,
+          duplicate_movements integer NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(),
           UNIQUE(company_id, id),
           FOREIGN KEY(company_id, original_file_id) REFERENCES import_file(company_id, id),
           CHECK(status <> 'rejected' OR original IS NULL),
@@ -78,7 +79,7 @@ public sealed class M0004Ingestion : Migration
             EXECUTE format('GRANT SELECT, INSERT ON %I TO cfdi_app', tenant_table);
           END LOOP;
         END $$;
-        GRANT UPDATE(status, reason, original, sha256, original_file_id, retained_until) ON import_file TO cfdi_app;
+        GRANT UPDATE(status, reason, original, sha256, original_file_id, retained_until, imported_movements, duplicate_movements) ON import_file TO cfdi_app;
         GRANT UPDATE(review_reason) ON cfdi TO cfdi_app;
         GRANT UPDATE(inconsistent_balance) ON cfdi_payment_doc TO cfdi_app;
         CREATE FUNCTION preserve_import_original() RETURNS trigger LANGUAGE plpgsql AS $$

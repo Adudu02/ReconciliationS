@@ -55,6 +55,9 @@ public sealed partial class BankStatementImporter(TenantContext tenant, IEnumera
                         if (changed == 1) imported++; else duplicates++;
                     }
                 }
+                await connection.ExecuteAsync(new CommandDefinition(
+                    "UPDATE import_file SET imported_movements = @imported, duplicate_movements = @duplicates WHERE id = @fileId",
+                    new { imported, duplicates, fileId }, transaction, cancellationToken: ct));
                 await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "bank-statement." + status, fileId, ct);
                 return new FileImportResult(fileId, file.Name, status, reason, ImportedMovements: imported, DuplicateMovements: duplicates);
             }, cancellationToken));
