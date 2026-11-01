@@ -160,6 +160,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
         var bytes = SyntheticCfdi.Invoice(root =>
         {
             root.Element(SyntheticCfdi.Cfdi + "Receptor")!.SetAttributeValue("Rfc", receiver);
+            if (global) root.Add(new XElement(SyntheticCfdi.Cfdi + "InformacionGlobal", new XAttribute("Periodicidad", "01"), new XAttribute("Meses", "09"), new XAttribute("Año", "2026")));
             root.SetAttributeValue("Fecha", "2026-09-30T23:50:00");
             root.Descendants(SyntheticCfdi.Stamp + "TimbreFiscalDigital").Single().SetAttributeValue("FechaTimbrado", "2026-10-01T00:05:00");
         });

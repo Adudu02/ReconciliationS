@@ -37,6 +37,17 @@ public sealed class IngestionEdgeCaseTests(ApiFixture fixture)
     }
 
     [Fact]
+    public async Task Dates_finer_than_PostgreSQL_microseconds_are_rejected_instead_of_silently_changed()
+    {
+        var user = await fixture.SeedUserAsync();
+        var company = await fixture.SeedCompanyAsync(user.Id);
+        var bytes = SyntheticCfdi.Invoice(root => root.SetAttributeValue("Fecha", "2026-09-30T23:59:59.9999999"));
+        var report = await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(company, user.Id,
+            [UploadedFile.FromBytes("synthetic.xml", bytes)], TestContext.Current.CancellationToken);
+        Assert.Equal("rejected", Assert.Single(report.Files).Status);
+    }
+
+    [Fact]
     public async Task Concept_amounts_with_six_decimals_are_not_recomputed_or_rejected()
     {
         var user = await fixture.SeedUserAsync();
