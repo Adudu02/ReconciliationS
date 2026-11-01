@@ -24,7 +24,7 @@
 ## 3. Domain model and ingestion (days 2–4)
 
 - [ ] 3.1 Document the reference CSV format (columns, date and number conventions, reference tokens, sample lines) and verify the sample lines parse in task 3.6
-- [ ] 3.2 Create migrations for company (RFC, settings), import_file, cfdi, cfdi_relation, cfdi_payment, cfdi_payment_doc, bank_account, bank_movement and verify uniqueness constraints reject duplicates
+- [x] 3.2 Create migrations for company (RFC, settings), import_file, cfdi, cfdi_relation, cfdi_payment, cfdi_payment_doc, bank_account, bank_movement and verify uniqueness constraints reject duplicates
 - [ ] 3.3 Implement safe CFDI 4.0 XML parsing (DTD and external entities disabled, size and count limits) and verify the hostile-file tests pass
 - [ ] 3.4 Implement CFDI import for income, payment complement and credit note with per-file report, and verify the cfdi-ingestion scenarios pass
 - [ ] 3.4b Parse discount, taxes, retentions and local taxes and verify `samples/synthetic-income-ppd-retention.xml` imports with total 1,939.27, a discount case imports, and an inconsistent total or an excessive discount is rejected
@@ -35,7 +35,7 @@
 - [ ] 3.5 Implement idempotent CFDI import by UUID per company and verify uploading the same file twice creates one record
 - [ ] 3.6 Implement the bank parser interface, the reference-format parser and reference extraction, and verify valid, malformed, unknown-bank and tracking-key scenarios pass
 - [ ] 3.7 Implement idempotent movement import with overlapping statements and verify the overlap and identical-lines scenarios pass
-- [ ] 3.8 Verify money handling is exact by adding a test summing 0.10 and 0.20 to 0.30 in storage and code
+- [x] 3.8 Verify money handling is exact by adding a test summing 0.10 and 0.20 to 0.30 in storage and code
 
 ## 4. Jobs (days 3–4)
 
