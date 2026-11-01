@@ -12,7 +12,7 @@ This log explains them; the status map below is generated from them.
 
 ![Build status map](progress/status-map.png)
 
-**5 of 85 tasks done (group 1, Foundations). Next: group 2, Tenancy and access.**
+**11 of 85 tasks done. Group 2: 6 of 9 complete; 2.4, 2.6 and 2.9 await domain scenarios in later groups.**
 Regenerate the picture after ticking tasks: `python3 tools/progress_diagram.py` (add `--lang es` for the Spanish map).
 
 ### What the types mean
@@ -33,21 +33,76 @@ Regenerate the picture after ticking tasks: `python3 tools/progress_diagram.py` 
 | Solution file | Build | Groups the six projects so one `dotnet build` builds everything | `Reconciliation.slnx` |
 | Shared build rules | Build | Every project gets the same settings: .NET 10, nullable checks on, warnings are errors | `Directory.Build.props`, `.editorconfig`, `global.json` |
 | **Core library** | Module area | The code both hosts share. Holds the seven module boundaries and the common database and health code | `src/Reconciliation.Core` |
-| **API host** | Host | The web API users will call. Today it only answers `GET /health` | `src/Reconciliation.Api` |
+| **API host** | Host | The web API users will call. Now serves authentication, companies, members, settings, archival, health and OpenAPI | `src/Reconciliation.Api` |
 | **Worker host** | Host | Runs background jobs (imports, matching, SAT checks). Today it starts, reports health and idles | `src/Reconciliation.Worker` |
 | **Migrator** | Tool | Applies or reverts database changes (`up`, `down`) | `src/Reconciliation.Migrator` |
 | **SAT stub** | Host | A fake of the SAT status service so development needs no real account. Today only a placeholder | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Database | Stores all data. First tables: `company`, `app_user`, `membership` | `docker-compose.yml`, migration `M0001` |
+| **PostgreSQL 17** | Database | Stores all data. Identity and tenancy tables plus a minimal `audit_entry`, with forced tenant RLS | `docker-compose.yml`, migration `M0001` |
 | Docker Compose | Pipeline | Starts database, migrator, API, worker and stub with one command and waits until all are healthy | `docker-compose.yml`, `Dockerfile` |
 | CI pipeline | Pipeline | On every push: format check, build, tests, migrations up/down/up, and a full stack start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Short records of big decisions and the alternatives rejected | `docs/adr/` |
 | Requirements and plan | Docs | BRS, SRS (English and Spanish), diagrams, and the OpenSpec change that defines the work | `docs/`, `openspec/` |
-| Tests | Tests | 4 xUnit tests: health answers 200/503, configuration errors are clear | `tests/Reconciliation.Tests` |
+| Tests | Tests | 45 xUnit cases: 40 passing, 5 explicitly pending; real PostgreSQL tenancy tests | `tests/Reconciliation.Tests` |
 | Progress map | Tool | Draws the status picture from `tasks.md` | `tools/progress_diagram.py` |
 
 ## 3. Pull request log
 
 Newest first. Each entry says what changed, why, and what you can learn from it.
+
+### PR-2: Tenancy and access (group 2; six tasks complete, three pending)
+
+**Purpose:** isolate each company below the application layer, authenticate callers, and let administrators
+manage company access and settings. All identifiers and credentials used for tests are synthetic.
+**How:** each slice committed its red tests before implementation. Testcontainers runs the actual migrator
+against PostgreSQL 17; the application connects as `cfdi_app`, without superuser or BYPASSRLS.
+**Verified:** `dotnet build` (zero warnings/errors), `dotnet test --solution Reconciliation.slnx` (40 passed,
+5 explicitly skipped), `dotnet format --verify-no-changes`, Compose healthy after build, and migrator up/down/up
+on a separate disposable database. Full rollback to version zero and reapplication also succeeded.
+
+#### Tenant transactions and forced RLS (2.1, 2.2)
+- **Purpose:** a forgotten WHERE must not return or change another company's rows.
+- **How:** `TenantContext.ExecuteAsync` sets a parameterized transaction-local company setting. RLS is enabled
+  and forced on `company`, `membership` and the minimal `audit_entry`. Missing context yields no rows and is
+  logged. API and worker use the restricted login; migrations use the owner.
+- **What I learned:** `SET LOCAL` ends with the transaction, which matters when pooled connections are reused.
+  RLS and authenticated membership checks solve different parts of access control; both are necessary.
+
+#### Credentials and company roles (2.3; 2.4 remains pending)
+- **Purpose:** identify callers and limit each action to the selected company's current role.
+- **How:** Identity PasswordHasher stores salted PBKDF2 credentials; login issues a signed, expiring JWT.
+  A fallback policy requires authentication. Only health, OpenAPI and login are anonymous. `X-Company-Id`
+  must match the route and membership; policies query PostgreSQL per request. A test-only endpoint proves
+  the accountant policy; the real admin-only member-management endpoint proves refusal and allowed writes.
+- **What I learned:** keeping membership roles out of tokens avoids stale permissions after a role change.
+  `WebApplicationFactory` can add a policy probe without shipping placeholder domain endpoints.
+
+#### Company provisioning, settings and archival (2.7, 2.8; 2.9 remains pending)
+- **Purpose:** provision a company safely, preserve identity and records, and explain changes.
+- **How:** the migrator optionally seeds an operator from `OPERATOR_EMAIL` / `OPERATOR_PASSWORD`. An operator
+  creates a company and first administrator; RFC is format-validated and immutable in PostgreSQL. New passwords
+  require 12 characters; existing users keep their password, with the same response shape. Settings changes
+  store previous/new values and the actor in the same transaction. Archival preserves rows; there is no DELETE
+  route. A denied audit insert proves that settings roll back. The migrator image needs the ASP.NET runtime
+  because the seed uses PasswordHasher; the first Compose check exposed and verified that packaging fix.
+- **What I learned:** a transaction is the useful boundary for an action and its audit entry. The minimal audit
+  table depends on group 5 for hash chaining, rejection triggers and the rest of the audit contract.
+- **Demo shortcut:** a password in the creation request keeps this demo small; production would use invite/reset
+  links and managed secrets. `.env.example` contains placeholders, not operator credentials.
+
+#### Isolation regression suite and ADR (2.5; 2.6 remains pending)
+- **Purpose:** make a later table or endpoint fail the checks until its isolation is covered.
+- **How:** `information_schema` discovers tenant tables; the guard requires enabled/forced RLS and a policy.
+  `EndpointDataSource` discovers routes; every protected route needs a successful baseline, anonymous refusal,
+  and cross-company/non-operator checks. Company B's rows are compared before/after the attempts. Deliberately
+  dropping `membership_isolation` produced four failures, including the explicit missing-policy guard; restoring
+  it returned the suite to green. ADR-003 compares RLS, schema-per-company and database-per-company.
+- **What I learned:** dropping a policy causes default-deny rather than a leak, so endpoint refusal alone cannot
+  prove a policy is present; the structural policy guard is essential.
+
+**Explicitly pending:** tasks 2.4, 2.6 and 2.9 stay unticked. Five skipped tests retain the exact scenario names:
+“Viewer cannot decide” and “Different roles” need real links in group 8; “Cross-company attempt in the test suite”
+and “Delete attempt” need imported CFDI in group 3; “Tolerance changed” needs a reconciliation run in group 6.
+Persistence/audit of settings is verified now, but the future run behavior is not claimed. No task is ticked on a skip.
 
 ### PR-1: Foundations (tasks 1.1 to 1.5), commit `a10c3ab`
 
@@ -137,25 +192,11 @@ up/down/up on a real database, and the GitHub Actions run `41122200072` succeede
   fix was to pin a patched version (`System.Security.Cryptography.Pkcs` 10.0.14) instead of silencing the warning.
 - The first scaffold was TypeScript. It was discarded when the stack changed to C#; nothing depended on it.
 
-## 4. Next pull request: PR-2, Tenancy and access (group 2, 9 tasks)
+## 4. Next work: group 3, with three tenancy tasks still pending
 
-**Goal:** make the system multi-company and safe: a company's data can never leak to another company, even if a
-developer forgets a filter. This is the foundation every later group builds on.
-
-| Task | New piece | Type | Why it is needed | You will learn (planned approach) |
-|---|---|---|---|---|
-| 2.1 | Transaction wrapper that sets the company context | Module (Tenancy) | Every request and job runs in one transaction that tells the database which company it acts for | Scoped services, `NpgsqlTransaction`, ASP.NET middleware, PostgreSQL `set_config` |
-| 2.2 | Row-level security policies and a restricted database role | Database | The database itself hides other companies' rows; the app's role must not be able to bypass it (the current Compose user is a superuser, which would bypass it) | Migration `M0002` in SQL: `ENABLE`/`FORCE ROW LEVEL SECURITY`, `CREATE POLICY`, roles |
-| 2.3 | Authentication: password hashing and tokens | Module + API | Know who is calling; refuse anonymous requests | `PasswordHasher`, JWT bearer tokens, `RequireAuthorization()` |
-| 2.4 | Roles per company (administrator, accountant, viewer) | Module | Different people may do different things in each company | Authorization policies and claims |
-| 2.5 | ADR-003: tenant isolation | Docs | Records why row-level security beat schema-per-company or database-per-company | Writing a decision record |
-| 2.6 | Cross-company isolation tests | Tests | Fail the build if any endpoint leaks data; also fail if a policy is removed | Testcontainers: a real PostgreSQL started by the test |
-| 2.7 | Company creation by a platform operator, immutable RFC | API + Database | Companies need an RFC; only an operator may create them | Validation, `Results.Created`, 403 responses |
-| 2.8 | Company settings (tolerances, due-date rule) with audit of changes | API + Module | Administrators tune matching without code changes | `PATCH` endpoints, optimistic checks |
-| 2.9 | No deletion of imported data; archive companies | Module + Database | Accounting records must be kept | Soft delete with `archived_at` |
-
-**What the map will show afterwards:** Tenancy and Tenant isolation turn green, API host and Migrator gain
-progress, and ADRs move one step closer to done.
+Group 3 adds the domain model and real imports. Replace the pending invoice-isolation and retention tests when
+those endpoints exist. Group 6 replaces the settings/run scenario; group 8 replaces the link-decision scenarios.
+The generated map intentionally keeps Tenancy and Tenant isolation in progress until those checks are real.
 
 ## 5. The rest of the road
 

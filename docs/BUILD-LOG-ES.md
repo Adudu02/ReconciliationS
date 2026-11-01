@@ -12,7 +12,7 @@ Fuente de verdad de los elementos de trabajo: `openspec/changes/mvp-reconciliati
 
 ![Mapa de estado de la construcción](progress/status-map-es.png)
 
-**5 de 85 tareas completas (grupo 1, Cimientos). Siguiente: grupo 2, Multiempresa y acceso.**
+**11 de 85 tareas completas. Grupo 2: 6 de 9; 2.4, 2.6 y 2.9 esperan escenarios de grupos posteriores.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -34,21 +34,77 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
 | Archivo de solución | Compilación | Agrupa los seis proyectos para que un solo `dotnet build` compile todo | `Reconciliation.slnx` |
 | Reglas de compilación compartidas | Compilación | Todos los proyectos usan la misma configuración: .NET 10, verificación de nulos, las advertencias son errores | `Directory.Build.props`, `.editorconfig`, `global.json` |
 | **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts. Contiene los límites de los siete módulos y el código común de base de datos y salud | `src/Reconciliation.Core` |
-| **Host de la API** | Host | La API web que llamarán los usuarios. Hoy solo responde `GET /health` | `src/Reconciliation.Api` |
+| **Host de la API** | Host | La API web que llamarán los usuarios. Ahora atiende autenticación, empresas, miembros, configuración, archivo, salud y OpenAPI | `src/Reconciliation.Api` |
 | **Host del worker** | Host | Ejecuta trabajos en segundo plano (importaciones, conciliación, consultas al SAT). Hoy arranca, reporta su salud y espera | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Una simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos. Primeras tablas: `company`, `app_user`, `membership` | `docker-compose.yml`, migración `M0001` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos. Identidad, multiempresa y una `audit_entry` mínima con RLS forzado | `docker-compose.yml`, migración `M0001` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: revisión de formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Registros breves de las decisiones grandes y de las alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS (inglés y español), diagramas y el cambio de OpenSpec que define el trabajo | `docs/`, `openspec/` |
-| Pruebas | Pruebas | 4 pruebas xUnit: la salud responde 200/503 y los errores de configuración son claros | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 45 casos xUnit: 40 aprobados, 5 pendientes explícitos; PostgreSQL real para multiempresa | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 3. Registro de pull requests
 
 Primero el más reciente. Cada entrada dice qué cambió, por qué y qué puedes aprender de ello.
+
+### PR-2: Multiempresa y acceso (grupo 2; seis tareas completas y tres pendientes)
+
+**Para qué:** aislar cada empresa desde PostgreSQL, autenticar al usuario y permitir que administradores gestionen
+acceso y configuración. Los identificadores y las credenciales de prueba son sintéticos.
+**Cómo:** cada corte tuvo primero su commit de pruebas rojas y después el de implementación. Testcontainers ejecuta
+el migrador real contra PostgreSQL 17; la aplicación entra como `cfdi_app`, sin superusuario ni BYPASSRLS.
+**Verificado:** `dotnet build` sin advertencias ni errores, `dotnet test --solution Reconciliation.slnx` con 40 casos
+aprobados y 5 omitidos explícitamente, `dotnet format --verify-no-changes`, Compose sano tras compilar y migraciones
+subir/bajar/subir en una base desechable separada. También funcionó revertir hasta cero y volver a aplicar todo.
+
+#### Transacciones y RLS forzado (2.1, 2.2)
+- **Para qué:** olvidar un WHERE no debe revelar ni modificar filas de otra empresa.
+- **Cómo:** `TenantContext.ExecuteAsync` fija la empresa con un parámetro local a la transacción. `company`,
+  `membership` y la `audit_entry` mínima tienen RLS habilitado y forzado. Sin contexto no hay filas visibles y se
+  registra el intento. API y worker usan el rol restringido; el migrador usa el propietario.
+- **Qué aprendí:** `SET LOCAL` termina con la transacción y evita arrastrar contexto al reutilizar conexiones del
+  pool. RLS y la verificación de membresía autenticada resuelven partes distintas; hacen falta ambas.
+
+#### Credenciales y roles por empresa (2.3; 2.4 pendiente)
+- **Para qué:** identificar al usuario y comprobar su rol actual en la empresa elegida.
+- **Cómo:** PasswordHasher de Identity genera hashes PBKDF2 con sal aleatoria. Login emite JWT firmado con caducidad.
+  La política de respaldo exige autenticación; solo salud, OpenAPI y login son anónimos. `X-Company-Id` debe coincidir
+  con la ruta y una membresía. Las políticas consultan PostgreSQL en cada solicitud. Un endpoint exclusivo del host
+  de pruebas verifica la política de contador; la gestión real de miembros verifica permisos de administrador.
+- **Qué aprendí:** no guardar roles por empresa en el token evita permisos desactualizados después de un cambio.
+  WebApplicationFactory permite probar la política sin publicar endpoints ficticios del dominio.
+
+#### Alta, configuración y archivo (2.7, 2.8; 2.9 pendiente)
+- **Para qué:** crear empresas, conservar su identidad y sus registros, y explicar los cambios.
+- **Cómo:** el migrador crea opcionalmente un operador desde `OPERATOR_EMAIL` / `OPERATOR_PASSWORD`. Solo ese operador
+  puede dar de alta empresa y primer administrador. El RFC se valida y un trigger impide cambiarlo. Una cuenta nueva
+  requiere contraseña de 12 caracteres; una existente conserva su contraseña y recibe la misma forma de respuesta.
+  Cambios de configuración guardan valores anteriores/nuevos y actor en la misma transacción. Archivar conserva las
+  filas; no hay rutas DELETE. Denegar INSERT en auditoría demuestra que la configuración se revierte. El primer
+  arranque Compose detectó que el migrador necesitaba la imagen de runtime ASP.NET para PasswordHasher; se corrigió.
+- **Qué aprendí:** acción y auditoría deben compartir transacción. La auditoría mínima depende del grupo 5 para
+  encadenamiento por hash, triggers de rechazo y el resto de su contrato.
+- **Atajo de demo:** enviar la contraseña en el alta simplifica esta demo; producción usaría enlaces de invitación o
+  restablecimiento y gestión de secretos. `.env.example` solo contiene marcadores, no credenciales de operadores.
+
+#### Pruebas de aislamiento y ADR (2.5; 2.6 pendiente)
+- **Para qué:** detectar tablas y rutas nuevas cuyo aislamiento todavía no se ha probado.
+- **Cómo:** `information_schema` descubre tablas de empresa; se exige RLS habilitado/forzado y política. EndpointDataSource
+  descubre rutas; cada ruta protegida debe tener caso exitoso, rechazo anónimo y rechazo entre empresas o de no operador.
+  Se comparan las filas de B antes/después. Quitar deliberadamente `membership_isolation` produjo cuatro fallos, incluido
+  el guardián de políticas; restaurarla devolvió la suite a verde. ADR-003 compara RLS, schema-per-company y
+  database-per-company.
+- **Qué aprendí:** quitar una política causa denegación por defecto; un 403 por sí solo no demuestra que exista la
+  política. Por eso también se verifica la estructura de PostgreSQL.
+
+**Pendientes explícitos:** 2.4, 2.6 y 2.9 siguen sin marcar. Cinco pruebas omitidas conservan los nombres exactos:
+“Viewer cannot decide” y “Different roles” esperan vínculos reales del grupo 8; “Cross-company attempt in the test suite”
+y “Delete attempt” esperan CFDI importados del grupo 3; “Tolerance changed” espera una corrida del grupo 6. Persistencia
+y auditoría de configuración sí se prueban ahora; no se afirma el comportamiento de la corrida futura. Ninguna tarea
+se marca completa por una prueba omitida.
 
 ### PR-1: Cimientos (tareas 1.1 a 1.5), commit `a10c3ab`
 
@@ -154,25 +210,11 @@ terminó con éxito.
   10.0.14) en lugar de silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 4. Siguiente pull request: PR-2, Multiempresa y acceso (grupo 2, 9 tareas)
+## 4. Siguiente trabajo: grupo 3, con tres tareas de multiempresa pendientes
 
-**Objetivo:** volver el sistema multiempresa y seguro: los datos de una empresa nunca pueden filtrarse a otra, aun
-si un desarrollador olvida un filtro. Es la base sobre la que se construyen todos los grupos posteriores.
-
-| Tarea | Pieza nueva | Tipo | Por qué se necesita | Aprenderás (enfoque planeado) |
-|---|---|---|---|---|
-| 2.1 | Envoltorio de transacción que fija el contexto de empresa | Módulo (Tenancy) | Cada solicitud y cada trabajo corre en una transacción que le dice a la base de datos para qué empresa actúa | Servicios *scoped*, `NpgsqlTransaction`, middleware de ASP.NET, `set_config` de PostgreSQL |
-| 2.2 | Políticas de seguridad a nivel de fila y un rol de base de datos restringido | Base de datos | La propia base de datos oculta las filas de otras empresas; el rol de la app no debe poder saltarse esa regla (el usuario actual de Compose es superusuario y la saltaría) | Migración `M0002` en SQL: `ENABLE`/`FORCE ROW LEVEL SECURITY`, `CREATE POLICY`, roles |
-| 2.3 | Autenticación: hash de contraseñas y tokens | Módulo + API | Saber quién llama; rechazar solicitudes anónimas | `PasswordHasher`, tokens JWT bearer, `RequireAuthorization()` |
-| 2.4 | Roles por empresa (administrador, contador, consulta) | Módulo | Cada persona puede hacer cosas distintas en cada empresa | Políticas de autorización y *claims* |
-| 2.5 | ADR-003: aislamiento por empresa | Docs | Registra por qué la seguridad a nivel de fila superó a esquema por empresa o base de datos por empresa | Escribir un registro de decisión |
-| 2.6 | Pruebas de aislamiento entre empresas | Pruebas | Hacer fallar la compilación si algún endpoint filtra datos; también si se quita una política | Testcontainers: una PostgreSQL real iniciada por la prueba |
-| 2.7 | Alta de empresa por un operador de la plataforma, RFC inmutable | API + Base de datos | Las empresas necesitan un RFC; solo un operador puede crearlas | Validación, `Results.Created`, respuestas 403 |
-| 2.8 | Configuración de la empresa (tolerancias, regla de fecha límite) con auditoría de cambios | API + Módulo | Los administradores ajustan la conciliación sin cambiar código | Endpoints `PATCH`, verificaciones |
-| 2.9 | Sin eliminación de datos importados; las empresas se archivan | Módulo + Base de datos | Los registros contables deben conservarse | Borrado lógico con `archived_at` |
-
-**Qué mostrará el mapa después:** Multiempresa y Aislamiento por empresa se vuelven verdes, el Host de la API y el
-Migrador avanzan, y los ADR dan un paso más hacia completarse.
+El grupo 3 agrega modelo de dominio e importaciones reales. Al existir esos endpoints se reemplazan las pruebas
+pendientes de aislamiento de facturas y conservación. El grupo 6 reemplaza el escenario configuración/corrida y el
+8 los escenarios de decisiones. El mapa conserva Multiempresa y Aislamiento en progreso hasta verificar esos casos.
 
 ## 5. El resto del camino
 

@@ -13,7 +13,7 @@
 - [x] 2.3 Implement authentication (slow salted password hashing, token issuance) and verify an anonymous request to a data endpoint is refused
 - [ ] 2.4 Implement roles (administrator, accountant, viewer) and per-company memberships, and verify the role scenarios of the tenancy spec pass
   pending: Viewer cannot decide; Different roles (real link decisions) -> group 8.
-- [ ] 2.5 Write ADR-003 (tenant isolation with row-level security) and verify it compares schema-per-company and database-per-company
+- [x] 2.5 Write ADR-003 (tenant isolation with row-level security) and verify it compares schema-per-company and database-per-company
 - [ ] 2.6 Add the cross-company isolation test suite over every data endpoint and verify it fails when a policy is deliberately removed
   pending: Cross-company attempt in the test suite (real invoice read and future data endpoints) -> groups 3 and 8.
 - [x] 2.7 Implement company creation by a platform operator with a validated, immutable RFC, and verify the operator and non-operator scenarios

@@ -39,19 +39,42 @@ Install the .NET 10 SDK (Fedora: `sudo dnf install dotnet-sdk-10.0`) and start a
 (`docker compose up -d postgres`).
 
 ```bash
+# Owner connection is only for migrations. These credentials are synthetic local defaults.
 export ConnectionStrings__Default="Host=localhost;Port=5432;Username=cfdi;Password=cfdi;Database=cfdi"
+export APP_DB_PASSWORD="synthetic-local-app-password"
+# Optional: set OPERATOR_EMAIL and OPERATOR_PASSWORD before migrating to create the first operator.
 dotnet build                                             # warnings are errors
 dotnet format --verify-no-changes                        # style check
-dotnet test
+dotnet test --solution Reconciliation.slnx
 dotnet run --project src/Reconciliation.Migrator -- up   # or `down` to revert one migration
+export ConnectionStrings__Default="Host=localhost;Port=5432;Username=cfdi_app;Password=$APP_DB_PASSWORD;Database=cfdi"
+export Jwt__SigningKey="synthetic-local-signing-key-at-least-32-bytes"
 dotnet run --project src/Reconciliation.Api
 ```
 
 No SDK on the machine? Run any command inside the official image, for example:
 
 ```bash
-docker run --rm -v "$PWD":/src -w /src mcr.microsoft.com/dotnet/sdk:10.0 dotnet test
+docker run --rm --network host -e TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 \
+  -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:$PWD" -w "$PWD" \
+  mcr.microsoft.com/dotnet/sdk:10.0 dotnet test --solution Reconciliation.slnx --solution Reconciliation.slnx
 ```
+
+## Tenancy API
+
+`POST /auth/tokens` accepts `{email, password}` and returns `{accessToken}`. Send that token as
+`Authorization: Bearer <token>` and choose the company with `X-Company-Id`. The header must match the route id
+and a current membership. Health and `/openapi.json` remain anonymous.
+
+A bootstrapped platform operator can `POST /companies` with `{rfc, name, adminEmail, adminPassword}`. The password
+must have 12 characters for a new account; an existing account keeps its password. Any member can read
+`GET /companies/{id}`, `/companies/{id}/members`, and `/companies/{id}/settings`. Administrators can post a
+`{userId, role}` to the members route, patch settings, and `POST /companies/{id}/archive`. There are no DELETE routes.
+
+The initial audit table records company creation, settings and archival atomically. Group 5 adds the full audit
+contract. Five domain-dependent tenancy scenarios remain explicitly skipped; tasks 2.4, 2.6 and 2.9 stay open.
+Compose uses synthetic local credentials; replace them and use invite/reset links for a production deployment.
+See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
 
 ## Decisions
 
