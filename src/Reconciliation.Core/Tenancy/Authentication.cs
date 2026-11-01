@@ -47,6 +47,7 @@ public static class Authentication
             };
         });
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        CompanyAuthorization.AddCompanyAuthorization(services);
         return services;
     }
 
