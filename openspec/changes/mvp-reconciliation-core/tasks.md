@@ -15,6 +15,7 @@
   pending: Viewer cannot decide; Different roles (real link decisions) -> group 8.
 - [ ] 2.5 Write ADR-003 (tenant isolation with row-level security) and verify it compares schema-per-company and database-per-company
 - [ ] 2.6 Add the cross-company isolation test suite over every data endpoint and verify it fails when a policy is deliberately removed
+  pending: Cross-company attempt in the test suite (real invoice read and future data endpoints) -> groups 3 and 8.
 - [ ] 2.7 Implement company creation by a platform operator with a validated, immutable RFC, and verify the operator and non-operator scenarios
 - [ ] 2.8 Implement company settings changes by administrators with audit of old and new values, and verify an accountant is refused
 - [ ] 2.9 Block deletion of imported data and archive companies instead, and verify a delete attempt is unavailable
