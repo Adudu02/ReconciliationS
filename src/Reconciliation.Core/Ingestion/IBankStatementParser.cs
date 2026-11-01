@@ -5,5 +5,5 @@ public sealed record BankStatementLine(DateTime MovementDate, string Description
 public interface IBankStatementParser
 {
     string Bank { get; }
-    IReadOnlyList<BankStatementLine> Parse(byte[] content);
+    IReadOnlyList<BankStatementLine> Parse(byte[] content, int? length = null);
 }

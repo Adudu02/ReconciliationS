@@ -2,8 +2,10 @@ using System.Security.Cryptography;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed record UploadedFile(string Name, byte[]? Content, byte[] Hash, string? Error = null)
+public sealed record UploadedFile(string Name, byte[]? Content, byte[] Hash, string? Error = null, int? Length = null)
 {
+    public int ContentLength => Length ?? Content?.Length ?? 0;
+    public ReadOnlyMemory<byte>? ContentMemory => Content is null ? null : Content.AsMemory(0, ContentLength);
     public static UploadedFile FromBytes(string name, byte[] bytes) => new(name, bytes, SHA256.HashData(bytes));
 }
 public sealed record FileImportResult(Guid FileId, string Name, string Status, string? Reason, Guid? CfdiId = null,

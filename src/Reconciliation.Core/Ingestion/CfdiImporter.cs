@@ -1,20 +1,25 @@
 using System.Xml;
 using Dapper;
+using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 using Reconciliation.Core.Tenancy;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, IngestionOptions options)
+public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, IngestionOptions options, IMemoryCache companyRfcs)
 {
     private sealed record ExistingInvoice(Guid Id, Guid ImportFileId);
     public async Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(files);
-        if (files.Count > options.MaxFiles || files.Sum(file => (long)(file.Content?.Length ?? 0)) > options.MaxUploadBytes)
+        if (files.Count > options.MaxFiles || files.Sum(file => (long)file.ContentLength) > options.MaxUploadBytes)
             throw new InvalidDataException("Upload exceeds file-count or total-size limit.");
-        var rfc = await tenant.ExecuteAsync(companyId, (connection, transaction, ct) =>
-            connection.QuerySingleAsync<string>(new CommandDefinition("SELECT rfc FROM company", transaction: transaction, cancellationToken: ct)), cancellationToken);
+        var rfc = await companyRfcs.GetOrCreateAsync("company-rfc:" + companyId, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+            return await tenant.ExecuteAsync(companyId, (connection, transaction, ct) =>
+                connection.QuerySingleAsync<string>(new CommandDefinition("SELECT rfc FROM company", transaction: transaction, cancellationToken: ct)), cancellationToken);
+        });
         var uploadId = Guid.NewGuid();
         var parsed = new List<(UploadedFile File, ParsedCfdi? Cfdi, string? Error)>();
         foreach (var file in files)
@@ -22,7 +27,7 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
             try
             {
                 if (file.Error is not null || file.Content is null) throw new InvalidDataException(file.Error ?? "Missing file bytes.");
-                var doc = CfdiParser.Parse(xml.Read(file.Content));
+                var doc = CfdiParser.Parse(xml.Read(file.Content, file.ContentLength));
                 parsed.Add(doc.IssuerRfc != rfc && doc.ReceiverRfc != rfc
                     ? (file, null, "does not involve this company") : (file, doc, null));
             }
@@ -52,34 +57,18 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
                     var reason = item.Error;
                     var doc = item.Cfdi;
                     var status = reason is null ? "imported" : "rejected";
-                    if (status == "imported" && doc is not null)
-                    {
-                        // Serialize one company/UUID so a concurrent duplicate never rewrites the accepted original.
-                        await connection.ExecuteAsync(new CommandDefinition("SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))",
-                            new { key = companyId.ToString() + doc.Uuid.ToString() }, transaction, cancellationToken: ct));
-                        var existing = await connection.QuerySingleOrDefaultAsync<ExistingInvoice>(new CommandDefinition(
-                            "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid = @Uuid", doc, transaction, cancellationToken: ct));
-                        if (existing is not null)
-                        {
-                            var duplicateFile = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, item.File,
-                                "cfdi", "already_imported", null, options.RetentionYears, ct);
-                            await connection.ExecuteAsync(new CommandDefinition("UPDATE import_file SET original_file_id = @ImportFileId WHERE id = @duplicateFile",
-                                new { existing.ImportFileId, duplicateFile }, transaction, cancellationToken: ct));
-                            await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "cfdi.already_imported", duplicateFile, ct);
-                            return new FileImportResult(duplicateFile, item.File.Name, "already_imported", null, existing.Id);
-                        }
-                    }
                     reason ??= doc?.ReviewReason;
-                    var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, item.File, "cfdi", status, reason, options.RetentionYears, ct);
+                    var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, item.File, "cfdi",
+                        status == "imported" ? "importing" : status, reason, options.RetentionYears, ct);
                     Guid? invoiceId = null;
                     if (status == "imported" && doc is not null)
                     {
-                        invoiceId = await connection.QuerySingleAsync<Guid>(new CommandDefinition("""
+                        invoiceId = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
                         INSERT INTO cfdi(company_id, import_file_id, uuid, type, direction, issuer_rfc, receiver_rfc, issued_at, stamped_at,
                           currency, payment_method, subtotal, discount, transferred_tax, retained_tax, local_transferred_tax, local_retained_tax, total, is_global, review_reason)
                         VALUES (@companyId, @fileId, @Uuid, @Type, @direction, @IssuerRfc, @ReceiverRfc, @IssuedAt, @StampedAt,
                           @Currency, @PaymentMethod, @Subtotal, @Discount, @TransferredTax, @RetainedTax, @LocalTransferredTax, @LocalRetainedTax, @Total, @IsGlobal, @ReviewReason)
-                        RETURNING id
+                        ON CONFLICT (company_id, uuid) DO NOTHING RETURNING id
                         """, new
                         {
                             companyId,
@@ -103,22 +92,59 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
                             doc.IsGlobal,
                             doc.ReviewReason
                         }, transaction, cancellationToken: ct));
-                        foreach (var relation in doc.Relations)
-                            await connection.ExecuteAsync(new CommandDefinition("INSERT INTO cfdi_relation(company_id, cfdi_id, related_uuid, relation_code) VALUES (@companyId, @invoiceId, @RelatedUuid, @RelationCode)",
-                                new { companyId, invoiceId, relation.RelatedUuid, relation.RelationCode }, transaction, cancellationToken: ct));
-                        for (var index = 0; index < doc.Payments.Count; index++)
+                        if (invoiceId is null)
                         {
-                            var payment = doc.Payments[index];
-                            var paymentId = await connection.QuerySingleAsync<Guid>(new CommandDefinition("""
-                            INSERT INTO cfdi_payment(company_id, cfdi_id, payment_index, paid_at, payment_form, currency, exchange_rate, amount, operation_number)
-                            VALUES (@companyId, @invoiceId, @index, @PaidAt, @PaymentForm, @Currency, @ExchangeRate, @Amount, @OperationNumber) RETURNING id
-                            """, new { companyId, invoiceId, index, payment.PaidAt, payment.PaymentForm, payment.Currency, payment.ExchangeRate, payment.Amount, payment.OperationNumber }, transaction, cancellationToken: ct));
-                            foreach (var line in payment.Documents)
-                                await connection.ExecuteAsync(new CommandDefinition("""
-                                INSERT INTO cfdi_payment_doc(company_id, payment_id, invoice_uuid, installment, currency, previous_balance, paid, remaining_balance, inconsistent_balance)
-                                VALUES (@companyId, @paymentId, @InvoiceUuid, @Installment, @Currency, @PreviousBalance, @Paid, @RemainingBalance, @InconsistentBalance)
-                                """, new { companyId, paymentId, line.InvoiceUuid, line.Installment, line.Currency, line.PreviousBalance, line.Paid, line.RemainingBalance, line.InconsistentBalance }, transaction, cancellationToken: ct));
+                            var existing = await connection.QuerySingleAsync<ExistingInvoice>(new CommandDefinition(
+                                "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid=@Uuid", doc, transaction, cancellationToken: ct));
+                            await connection.ExecuteAsync(new CommandDefinition("UPDATE import_file SET status='already_imported', reason=NULL, original_file_id=@ImportFileId WHERE id=@fileId",
+                                new { existing.ImportFileId, fileId }, transaction, cancellationToken: ct));
+                            await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "cfdi.already_imported", fileId, ct);
+                            return new FileImportResult(fileId, item.File.Name, "already_imported", null, existing.Id);
                         }
+                        if (doc.Relations.Count > 0)
+                            await connection.ExecuteAsync(new CommandDefinition("""
+                                INSERT INTO cfdi_relation(company_id, cfdi_id, related_uuid, relation_code)
+                                SELECT @companyId, @invoiceId, * FROM unnest(@related::uuid[], @codes::text[])
+                                """, new { companyId, invoiceId, related = doc.Relations.Select(relation => relation.RelatedUuid).ToArray(), codes = doc.Relations.Select(relation => relation.RelationCode).ToArray() }, transaction, cancellationToken: ct));
+                        if (doc.Payments.Count > 0)
+                        {
+                            var payments = doc.Payments.Select((payment, index) => new { Payment = payment, Index = index, Id = Guid.NewGuid() }).ToArray();
+                            await connection.ExecuteAsync(new CommandDefinition("""
+                                INSERT INTO cfdi_payment(company_id, cfdi_id, id, payment_index, paid_at, payment_form, currency, exchange_rate, amount, operation_number)
+                                SELECT @companyId, @invoiceId, * FROM unnest(@ids::uuid[], @indexes::integer[], @dates::timestamp[],
+                                  @forms::text[], @currencies::text[], @rates::numeric[], @amounts::numeric[], @operations::text[])
+                                """, new
+                            {
+                                companyId,
+                                invoiceId,
+                                ids = payments.Select(payment => payment.Id).ToArray(),
+                                indexes = payments.Select(payment => payment.Index).ToArray(),
+                                dates = payments.Select(payment => payment.Payment.PaidAt).ToArray(),
+                                forms = payments.Select(payment => payment.Payment.PaymentForm).ToArray(),
+                                currencies = payments.Select(payment => payment.Payment.Currency).ToArray(),
+                                rates = payments.Select(payment => payment.Payment.ExchangeRate).ToArray(),
+                                amounts = payments.Select(payment => payment.Payment.Amount).ToArray(),
+                                operations = payments.Select(payment => payment.Payment.OperationNumber).ToArray()
+                            }, transaction, cancellationToken: ct));
+                            var documents = payments.SelectMany(payment => payment.Payment.Documents.Select(line => new { PaymentId = payment.Id, Line = line })).ToArray();
+                            await connection.ExecuteAsync(new CommandDefinition("""
+                                INSERT INTO cfdi_payment_doc(company_id, payment_id, invoice_uuid, installment, currency, previous_balance, paid, remaining_balance, inconsistent_balance)
+                                SELECT @companyId, * FROM unnest(@paymentIds::uuid[], @invoices::uuid[], @installments::integer[], @currencies::text[],
+                                  @previous::numeric[], @paid::numeric[], @remaining::numeric[], @inconsistent::boolean[])
+                                """, new
+                            {
+                                companyId,
+                                paymentIds = documents.Select(line => line.PaymentId).ToArray(),
+                                invoices = documents.Select(line => line.Line.InvoiceUuid).ToArray(),
+                                installments = documents.Select(line => line.Line.Installment).ToArray(),
+                                currencies = documents.Select(line => line.Line.Currency).ToArray(),
+                                previous = documents.Select(line => line.Line.PreviousBalance).ToArray(),
+                                paid = documents.Select(line => line.Line.Paid).ToArray(),
+                                remaining = documents.Select(line => line.Line.RemainingBalance).ToArray(),
+                                inconsistent = documents.Select(line => line.Line.InconsistentBalance).ToArray()
+                            }, transaction, cancellationToken: ct));
+                        }
+                        await ImportStorage.FinalizeAsync(connection, transaction, fileId, item.File, options.RetentionYears, 0, 0, ct);
                     }
                     await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "cfdi." + status, fileId, ct);
                     return new FileImportResult(fileId, item.File.Name, status, reason ?? doc?.ReviewReason, invoiceId);

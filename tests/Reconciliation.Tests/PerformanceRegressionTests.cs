@@ -93,6 +93,7 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
             UPDATE import_file SET status='imported', original='\x01', sha256=sha256('\x01'::bytea), retained_until=now()+interval '10 years'
             WHERE id=@FileId
             """, new { report.Files[0].FileId }, cancellationToken: TestContext.Current.CancellationToken)));
+        await owner.OpenAsync(TestContext.Current.CancellationToken);
         await using var transaction = await owner.BeginTransactionAsync(TestContext.Current.CancellationToken);
         var pending = await owner.QuerySingleAsync<Guid>(new CommandDefinition("""
             INSERT INTO import_file(company_id,upload_id,filename,kind,status,sha256)

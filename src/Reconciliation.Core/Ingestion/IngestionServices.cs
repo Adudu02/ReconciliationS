@@ -9,6 +9,7 @@ public static class IngestionServices
     {
         var options = configuration.GetSection("Ingestion").Get<IngestionOptions>() ?? new IngestionOptions();
         options.Validate();
+        services.AddMemoryCache();
         services.AddSingleton(options);
         services.AddSingleton<SafeCfdiXml>();
         services.AddSingleton<CfdiImporter>();

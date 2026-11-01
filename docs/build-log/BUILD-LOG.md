@@ -260,10 +260,44 @@ one warm-up plus three measured samples, same SDK container and machine. Default
 
 | Workload | Before samples (ms) | Before median (ms) | After median (ms) |
 |---|---|---|---|
-| 50,000 statement lines | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | Pending |
-| Pagos with 300 related documents | 65.4256, 66.9515, 63.3336 | 65.4256 | Pending |
+| 50,000 statement lines | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | 4089.7699 |
+| Pagos with 300 related documents | 65.4256, 66.9515, 63.3336 | 65.4256 | 17.5534 |
 
 These are local elapsed timings, not production latency guarantees. Findings and after measurements follow in this PR.
+
+**After samples (ms):** bank 4230.7872 / 4089.7699 / 4083.4153; Pagos300 17.5399 / 17.5534 / 17.9515.
+The medians improved about 3.28x and 3.73x respectively, including the new security checks and indexes.
+
+**What changed / findings:**
+
+| Review finding | Fix or conscious decision |
+|---|---|
+| Hostile multipart names and undiscoverable partial imports | Strip controls/NUL, replace invalid Unicode, cap 255; DB failures return uploadId for completed files |
+| XML attribute amplification | Attributes count toward node budget; XML is parsed once through a bounded reader |
+| Archived writes and last-admin races | A company row lock guards writes; archived changes return 409 and concurrent demotions retain one administrator |
+| Unknown-email password work | One startup dummy hash; exactly one PBKDF2 verification per well-formed attempt |
+| Login abuse | Chained normalized-email (10/min) and IP (30/min) fixed windows, configurable limits/window; 429 plus Retry-After |
+| Public JWT default | Compose requires JWT_SIGNING_KEY and startup rejects the known old literal; CI supplies a synthetic value explicitly |
+| Download interpretation and buffering | Attachment + nosniff; bytea streams with SequentialAccess and Results.Stream while the tenant transaction remains open |
+| Unbounded CSV work / btree key failures | MaxStatementLines=100000 and MaxDescriptionLength=500; reject the complete file with reason |
+| Date tolerance and operator bootstrap | API + M0005 cap 366; bootstrap logs existing accounts as not modified |
+| Exception leakage / OpenAPI | AddProblemDetails + UseExceptionHandler give safe errors in every environment; OpenAPI stays anonymous per spec (the reviewed Production-auth suggestion was dropped) |
+| Per-row writes | 5000-row bank unnest chunks; one relation/payment/document batch; duplicates within/across chunks retain counts |
+| Rehashing originals | A transient importing metadata row is finalized once with bytes, hash validation and counters; no importing row commits; rollback removes all rows |
+| Weak NULL-to-bytes guard | M0005 allows original finalization only importing -> imported; committed rejected/already_imported originals cannot change |
+| Extra UUID/RFC/tenant round trips | INSERT ON CONFLICT RETURNING with duplicate SELECT fallback; immutable RFC cached for five minutes; NpgsqlBatch folds context + write lock/check |
+| Tenant lookup scans | M0005 adds tenant-first import-file/payment/document indexes; membership already has the (company_id,user_id) primary-key index |
+| Memory copies | Capacity hints, buffer plus explicit length, bytea memory binding, one XML parse, StreamReader CSV (no full decoded string) |
+| UNIQUE company.rfc | Intentionally not added: the same RFC may identify several workspaces |
+| app_user column grants / SECURITY DEFINER | Deferred to group 5 audit hardening |
+| Role cache | Skipped: live per-request memberships preserve revocation correctness |
+
+**What I learned:** fewer client/server commands do not remove PostgreSQL's per-row constraints/index work; backend
+work is still proportional to rows. A pending row stays private inside its transaction, so finalizing a blob once avoids
+re-hashing a 10 MiB original during counter updates without a new table or FK deferral. A streaming download holds a
+connection until the body finishes. Per-email limiting can be abused to throttle a victim; the generous default and IP
+limit reduce abuse but do not eliminate denial-of-service trade-offs. Production needs appropriate monitoring/tuning.
+All baseline tests remain green. The opt-in benchmark is skipped by default/CI; the three pre-existing domain skips remain.
 
 ### PR-3: Domain model and ingestion (3.1–3.8, including 3.4b–3.4f)
 

@@ -9,13 +9,11 @@ public sealed partial class ReferenceBankStatementParser(IngestionOptions option
 {
     public string Bank => "reference";
 
-    public IReadOnlyList<BankStatementLine> Parse(byte[] content)
+    public IReadOnlyList<BankStatementLine> Parse(byte[] content, int? length = null)
     {
         ArgumentNullException.ThrowIfNull(content);
-        string text;
-        try { text = new UTF8Encoding(false, true).GetString(content).TrimStart('\uFEFF'); }
-        catch (DecoderFallbackException error) { throw new InvalidDataException("Line 1: expected UTF-8 CSV.", error); }
-        using var reader = new StringReader(text);
+        using var stream = new MemoryStream(content, 0, length ?? content.Length, writable: false);
+        using var reader = new StreamReader(stream, new UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: true);
         using var csv = new TextFieldParser(reader) { HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = true };
         csv.SetDelimiters(",");
         var rows = new List<BankStatementLine>();
@@ -44,6 +42,7 @@ public sealed partial class ReferenceBankStatementParser(IngestionOptions option
                 rows.Add(new BankStatementLine(date, description, credit, debit, balance, reference.Success ? reference.Groups[1].Value : null));
             }
         }
+        catch (DecoderFallbackException error) { throw new InvalidDataException("Line 1: expected UTF-8 CSV.", error); }
         catch (MalformedLineException error) { throw new InvalidDataException($"Line {csv.ErrorLineNumber}: malformed quoted CSV.", error); }
         if (rows.Count == 0) throw new InvalidDataException("Line 2: statement contains no movements.");
         return rows;

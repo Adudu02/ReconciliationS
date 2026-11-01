@@ -261,10 +261,44 @@ real, un calentamiento y tres muestras, mismo contenedor SDK y máquina. Se omit
 
 | Carga | Muestras antes (ms) | Mediana antes (ms) | Mediana después (ms) |
 |---|---|---|---|
-| 50,000 movimientos | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | Pendiente |
-| Pagos con 300 documentos relacionados | 65.4256, 66.9515, 63.3336 | 65.4256 | Pendiente |
+| 50,000 movimientos | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | 4089.7699 |
+| Pagos con 300 documentos relacionados | 65.4256, 66.9515, 63.3336 | 65.4256 | 17.5534 |
 
 Son tiempos locales, no garantías de latencia en producción. Los hallazgos y las mediciones posteriores se agregan en este PR.
+
+**Muestras después (ms):** banco 4230.7872 / 4089.7699 / 4083.4153; Pagos300 17.5399 / 17.5534 / 17.9515.
+Las medianas mejoraron aproximadamente 3.28x y 3.73x, incluidos los nuevos controles e índices.
+
+**Qué cambió / hallazgos:**
+
+| Hallazgo | Corrección o decisión consciente |
+|---|---|
+| Nombres multipart hostiles e importación parcial sin localizar | Quitar controles/NUL, reemplazar Unicode inválido y limitar a 255; errores SQL devuelven uploadId |
+| Amplificación por atributos XML | Atributos cuentan en el límite; un lector acotado carga XML una sola vez |
+| Escrituras archivadas y último administrador | Bloqueo de fila de empresa: cambios archivados dan 409 y demociones concurrentes conservan un administrador |
+| Costo distinto para correo desconocido | Hash ficticio precalculado al arrancar; una verificación PBKDF2 por intento bien formado |
+| Abuso de login | Ventanas encadenadas por correo normalizado (10/min) e IP (30/min), configurables; 429 y Retry-After |
+| JWT público por defecto | Compose exige JWT_SIGNING_KEY; se rechaza el literal anterior; CI suministra valor sintético explícito |
+| Descargas interpretadas/buffer completo | Attachment y nosniff; bytea con SequentialAccess y Results.Stream dentro de transacción por empresa |
+| CSV ilimitado / índice btree demasiado grande | MaxStatementLines=100000 y MaxDescriptionLength=500; rechazar archivo completo con motivo |
+| Tolerancia y semilla de operador | API + M0005 limitan a 366; se registra que un operador existente no fue modificado |
+| Excepciones y OpenAPI | AddProblemDetails + UseExceptionHandler dan errores seguros; OpenAPI sigue anónimo según spec, se descartó exigir auth en Production |
+| INSERT por fila | Chunks unnest de 5000 movimientos; lotes para relaciones/pagos/documentos, conservando conteos de duplicados |
+| Hash repetido del original | Fila temporal importing y una finalización con bytes, hash y conteos; no se confirma importing; rollback elimina todo |
+| Cambio inseguro de NULL a bytes | M0005 solo permite importing -> imported; originales rechazados/already_imported confirmados no cambian |
+| Viajes extra de UUID/RFC/contexto | INSERT ON CONFLICT RETURNING y SELECT solo para duplicado; caché de RFC inmutable de cinco minutos; NpgsqlBatch junta contexto y bloqueo |
+| Búsquedas sin índice | M0005 agrega índices con company_id primero; membership ya tiene PK (company_id,user_id) |
+| Copias de memoria | Capacidad inicial, buffer con longitud explícita, binding bytea sin copia, un parse XML y StreamReader CSV |
+| UNIQUE company.rfc | No se agrega: un RFC puede existir en varios espacios de trabajo |
+| Permisos por columna / SECURITY DEFINER app_user | Diferido al endurecimiento de auditoría del grupo 5 |
+| Caché de roles | Se omite para conservar revocación por membresía consultada en cada solicitud |
+
+**Qué aprendí:** reducir comandos no elimina restricciones e índices por fila de PostgreSQL; el trabajo del servidor
+sigue siendo proporcional a las filas. Una fila pendiente no es visible fuera de la transacción: finalizar el blob una
+vez evita recalcular hash de originales de 10 MiB al cambiar conteos, sin otra tabla ni diferir claves foráneas.
+Streaming mantiene la conexión hasta terminar la descarga. El límite por correo puede usarse para bloquear a una
+víctima; el valor generoso y el límite por IP ayudan, pero no eliminan ese riesgo. Producción requiere monitoreo y ajuste.
+Las pruebas anteriores siguen verdes; benchmark omitido por defecto/CI y los tres escenarios previos siguen pendientes.
 
 ### PR-3: Modelo de dominio e ingesta (3.1–3.8, incluidas 3.4b–3.4f)
 

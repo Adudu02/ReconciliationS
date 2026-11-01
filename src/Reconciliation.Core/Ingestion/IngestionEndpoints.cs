@@ -62,25 +62,16 @@ public static class IngestionEndpoints
                     """, new { invoiceId }, transaction, cancellationToken: token));
                 return invoice is null ? Results.NotFound() : Results.Ok(invoice);
             }, ct)).RequireAuthorization("company-member");
-        routes.MapGet("/companies/{id:guid}/cfdi/{invoiceId:guid}/xml", (Guid id, Guid invoiceId, HttpContext http, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
-            {
-                http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-                var bytes = await connection.QuerySingleOrDefaultAsync<byte[]>(new CommandDefinition(
-                    "SELECT f.original FROM import_file f JOIN cfdi c ON c.import_file_id = f.id WHERE c.id = @invoiceId", new { invoiceId }, transaction, cancellationToken: token));
-                return bytes is null ? Results.NotFound() : Results.File(bytes, "application/xml", "original.xml");
-            }, ct)).RequireAuthorization("company-member");
-        routes.MapGet("/companies/{id:guid}/imports/files/{fileId:guid}/original", (Guid id, Guid fileId, HttpContext http, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
-            {
-                http.Response.Headers["X-Content-Type-Options"] = "nosniff";
-                var bytes = await connection.QuerySingleOrDefaultAsync<byte[]>(new CommandDefinition("""
-                    SELECT original.original FROM import_file requested
-                    JOIN import_file original ON original.id = coalesce(requested.original_file_id, requested.id)
-                    WHERE requested.id = @fileId AND original.original IS NOT NULL
-                    """, new { fileId }, transaction, cancellationToken: token));
-                return bytes is null ? Results.NotFound() : Results.File(bytes, "application/octet-stream", "original");
-            }, ct)).RequireAuthorization("company-member");
+        routes.MapGet("/companies/{id:guid}/cfdi/{invoiceId:guid}/xml", (Guid id, Guid invoiceId, TenantContext tenant) =>
+            (IResult)new StoredOriginalResult(tenant, id, invoiceId,
+                "SELECT f.original FROM import_file f JOIN cfdi c ON c.import_file_id=f.id WHERE c.id=@resourceId", "application/xml", "original.xml"))
+            .RequireAuthorization("company-member");
+        routes.MapGet("/companies/{id:guid}/imports/files/{fileId:guid}/original", (Guid id, Guid fileId, TenantContext tenant) =>
+            (IResult)new StoredOriginalResult(tenant, id, fileId, """
+                SELECT original.original FROM import_file requested
+                JOIN import_file original ON original.id=coalesce(requested.original_file_id,requested.id)
+                WHERE requested.id=@resourceId AND original.original IS NOT NULL
+                """, "application/octet-stream", "original")).RequireAuthorization("company-member");
         return routes;
     }
 

@@ -45,7 +45,7 @@ internal sealed record MultipartUpload(IReadOnlyList<UploadedFile> Files, IReadO
             if (files.Count >= options.MaxFiles) throw new BadHttpRequestException("Upload exceeds MaxFiles.");
             if (field != "files") throw new BadHttpRequestException("File parts must use the field name files.");
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            using var content = new MemoryStream();
+            using var content = new MemoryStream((int)Math.Min(options.MaxFileBytes, Math.Min(request.ContentLength ?? 8192, 65536)));
             var oversized = false;
             long length = 0;
             int read;
@@ -56,8 +56,8 @@ internal sealed record MultipartUpload(IReadOnlyList<UploadedFile> Files, IReadO
                 if (length > options.MaxFileBytes) oversized = true;
                 if (!oversized) content.Write(buffer, 0, read);
             }
-            files.Add(new UploadedFile(SafeFileName(filename), oversized ? null : content.ToArray(), hash.GetHashAndReset(),
-                oversized ? "File exceeds MaxFileBytes." : null));
+            files.Add(new UploadedFile(SafeFileName(filename), oversized ? null : content.GetBuffer(), hash.GetHashAndReset(),
+                oversized ? "File exceeds MaxFileBytes." : null, oversized ? null : (int)length));
         }
         if (files.Count == 0) throw new BadHttpRequestException("Upload must contain at least one file.");
         return new MultipartUpload(files, fields);
