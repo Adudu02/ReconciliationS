@@ -253,6 +253,19 @@ Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la 
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó).
 
+### PR-4: Hardening and performance
+
+**Para qué:** aplicar la revisión de corrección/seguridad y rendimiento sin cambiar contratos públicos de datos.
+**Medición inicial anterior a cambios de producción:** benchmark xUnit opcional con `RUN_BENCHMARKS=1`, PostgreSQL 17
+real, un calentamiento y tres muestras, mismo contenedor SDK y máquina. Se omite por defecto y en CI.
+
+| Carga | Muestras antes (ms) | Mediana antes (ms) | Mediana después (ms) |
+|---|---|---|---|
+| 50,000 movimientos | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | Pendiente |
+| Pagos con 300 documentos relacionados | 65.4256, 66.9515, 63.3336 | 65.4256 | Pendiente |
+
+Son tiempos locales, no garantías de latencia en producción. Los hallazgos y las mediciones posteriores se agregan en este PR.
+
 ### PR-3: Modelo de dominio e ingesta (3.1–3.8, incluidas 3.4b–3.4f)
 
 **Qué es:** la entrada de datos al sistema. Convierte CFDI sintéticos (XML) y estados de cuenta CSV de referencia en

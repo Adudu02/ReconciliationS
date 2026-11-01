@@ -252,6 +252,19 @@ Most recent first. Each entry answers six questions: **What it is** (the piece),
 **Names and variables** (what each new term means), **Why this way** (decision and rejected alternative), **What you
 learn** (C#, SQL or tooling idea) and **Verified** (how it was checked).
 
+### PR-4: Hardening and performance
+
+**Purpose:** apply the correctness/security and performance review without changing public data contracts.
+**Baseline measured before production changes:** opt-in `RUN_BENCHMARKS=1` xUnit benchmark, real PostgreSQL 17,
+one warm-up plus three measured samples, same SDK container and machine. Default/CI runs skip this benchmark.
+
+| Workload | Before samples (ms) | Before median (ms) | After median (ms) |
+|---|---|---|---|
+| 50,000 statement lines | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | Pending |
+| Pagos with 300 related documents | 65.4256, 66.9515, 63.3336 | 65.4256 | Pending |
+
+These are local elapsed timings, not production latency guarantees. Findings and after measurements follow in this PR.
+
 ### PR-3: Domain model and ingestion (3.1–3.8, including 3.4b–3.4f)
 
 **What it is:** the way data enters the system. It turns synthetic CFDI (XML) and reference bank CSV statements into
