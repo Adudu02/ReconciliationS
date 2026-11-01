@@ -81,9 +81,20 @@ public sealed class M0004Ingestion : Migration
         GRANT UPDATE(status, reason, original, sha256, original_file_id, retained_until) ON import_file TO cfdi_app;
         GRANT UPDATE(review_reason) ON cfdi TO cfdi_app;
         GRANT UPDATE(inconsistent_balance) ON cfdi_payment_doc TO cfdi_app;
+        CREATE FUNCTION preserve_import_original() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF OLD.original IS NOT NULL AND (NEW.original IS DISTINCT FROM OLD.original OR NEW.sha256 IS DISTINCT FROM OLD.sha256
+            OR NEW.retained_until IS NULL OR NEW.retained_until < OLD.retained_until) THEN
+            RAISE EXCEPTION 'Accepted originals and their hashes are immutable; retention cannot be shortened';
+          END IF;
+          RETURN NEW;
+        END $$;
+        CREATE TRIGGER import_original_immutable BEFORE UPDATE ON import_file
+          FOR EACH ROW EXECUTE FUNCTION preserve_import_original();
         """);
 
     public override void Down() => Execute.Sql("""
         DROP TABLE bank_movement, bank_account, cfdi_payment_doc, cfdi_payment, cfdi_relation, cfdi, import_file;
+        DROP FUNCTION preserve_import_original();
         """);
 }

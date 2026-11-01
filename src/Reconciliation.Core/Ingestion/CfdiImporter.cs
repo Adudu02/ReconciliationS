@@ -6,6 +6,7 @@ namespace Reconciliation.Core.Ingestion;
 
 public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, IngestionOptions options)
 {
+    private sealed record ExistingInvoice(Guid Id, Guid ImportFileId);
     public async Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(files);
@@ -46,6 +47,24 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
                 var doc = item.Cfdi;
                 if (doc is not null && doc.IssuerRfc != rfc && doc.ReceiverRfc != rfc) reason = "does not involve this company";
                 var status = reason is null ? "imported" : "rejected";
+                if (status == "imported" && doc is not null)
+                {
+                    // Serialize one company/UUID so a concurrent duplicate never rewrites the accepted original.
+                    await connection.ExecuteAsync(new CommandDefinition("SELECT pg_advisory_xact_lock(hashtextextended(@key, 0))",
+                        new { key = companyId.ToString() + doc.Uuid.ToString() }, transaction, cancellationToken: ct));
+                    var existing = await connection.QuerySingleOrDefaultAsync<ExistingInvoice>(new CommandDefinition(
+                        "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid = @Uuid", doc, transaction, cancellationToken: ct));
+                    if (existing is not null)
+                    {
+                        var duplicateFile = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, item.File,
+                            "cfdi", "already_imported", null, options.RetentionYears, ct);
+                        await connection.ExecuteAsync(new CommandDefinition("UPDATE import_file SET original_file_id = @ImportFileId WHERE id = @duplicateFile",
+                            new { existing.ImportFileId, duplicateFile }, transaction, cancellationToken: ct));
+                        await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "cfdi.already_imported", duplicateFile, ct);
+                        return new FileImportResult(duplicateFile, item.File.Name, "already_imported", null, existing.Id);
+                    }
+                }
+                reason ??= doc?.ReviewReason;
                 var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, item.File, "cfdi", status, reason, options.RetentionYears, ct);
                 Guid? invoiceId = null;
                 if (status == "imported" && doc is not null)
