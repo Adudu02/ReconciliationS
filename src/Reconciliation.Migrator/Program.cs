@@ -3,8 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Reconciliation.Migrator;
 
-string[] commands = ["up", "down"];
-if (args.Length != 1 || !commands.Contains(args[0]))
+string[] supportedCommands = ["up", "down"];
+if (args.Length != 1 || !supportedCommands.Contains(args[0]))
 {
     Console.Error.WriteLine("Usage: Reconciliation.Migrator up|down   (down reverts one migration)");
     return 2;
@@ -19,7 +19,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 try
 {
-    using var provider = new ServiceCollection()
+    using var migrationServices = new ServiceCollection()
         .AddFluentMigratorCore()
         .ConfigureRunner(runner => runner
             .AddPostgres()
@@ -28,30 +28,30 @@ try
         .AddLogging(logging => logging.AddFluentMigratorConsole())
         .BuildServiceProvider(validateScopes: false);
 
-    using var scope = provider.CreateScope();
-    var migrations = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+    using var migrationScope = migrationServices.CreateScope();
+    var migrationRunner = migrationScope.ServiceProvider.GetRequiredService<IMigrationRunner>();
     if (args[0] == "up")
     {
-        migrations.MigrateUp();
+        migrationRunner.MigrateUp();
         var operatorEmail = Environment.GetEnvironmentVariable("OPERATOR_EMAIL");
         var operatorPassword = Environment.GetEnvironmentVariable("OPERATOR_PASSWORD");
         if (!string.IsNullOrEmpty(operatorEmail) || !string.IsNullOrEmpty(operatorPassword))
             await OperatorBootstrap.SeedAsync(connectionString, operatorEmail ?? "", operatorPassword ?? "");
-        var appPassword = Environment.GetEnvironmentVariable("APP_DB_PASSWORD");
-        if (!string.IsNullOrEmpty(appPassword))
+        var appRolePassword = Environment.GetEnvironmentVariable("APP_DB_PASSWORD");
+        if (!string.IsNullOrEmpty(appRolePassword))
         {
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync();
-            await using var format = new NpgsqlCommand("SELECT format('ALTER ROLE cfdi_app LOGIN PASSWORD %L', @password)", connection);
-            format.Parameters.AddWithValue("password", appPassword);
-            var sql = (string)(await format.ExecuteScalarAsync())!;
-            await using var command = new NpgsqlCommand(sql, connection);
-            await command.ExecuteNonQueryAsync();
+            await using var formatRoleCommand = new NpgsqlCommand("SELECT format('ALTER ROLE cfdi_app LOGIN PASSWORD %L', @password)", connection);
+            formatRoleCommand.Parameters.AddWithValue("password", appRolePassword);
+            var alterRoleSql = (string)(await formatRoleCommand.ExecuteScalarAsync())!;
+            await using var alterRoleCommand = new NpgsqlCommand(alterRoleSql, connection);
+            await alterRoleCommand.ExecuteNonQueryAsync();
         }
     }
     else
     {
-        migrations.Rollback(1);
+        migrationRunner.Rollback(1);
     }
 
     return 0;

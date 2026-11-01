@@ -9,52 +9,52 @@ public sealed partial class ReferenceBankStatementParser(IngestionOptions option
 {
     public string Bank => "reference";
 
-    public IReadOnlyList<BankStatementLine> Parse(byte[] content, int? length = null)
+    public IReadOnlyList<BankStatementLine> Parse(byte[] csvBytes, int? length = null)
     {
-        ArgumentNullException.ThrowIfNull(content);
-        using var stream = new MemoryStream(content, 0, length ?? content.Length, writable: false);
-        using var reader = new StreamReader(stream, new UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: true);
-        using var csv = new TextFieldParser(reader) { HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = true };
-        csv.SetDelimiters(",");
-        var rows = new List<BankStatementLine>();
+        ArgumentNullException.ThrowIfNull(csvBytes);
+        using var stream = new MemoryStream(csvBytes, 0, length ?? csvBytes.Length, writable: false);
+        using var csvTextReader = new StreamReader(stream, new UTF8Encoding(false, true), detectEncodingFromByteOrderMarks: true);
+        using var csvReader = new TextFieldParser(csvTextReader) { HasFieldsEnclosedInQuotes = true, TrimWhiteSpace = true };
+        csvReader.SetDelimiters(",");
+        var statementLines = new List<BankStatementLine>();
         try
         {
-            var header = csv.ReadFields();
-            if (header is null || !header.SequenceEqual(["fecha", "concepto", "abono", "cargo", "saldo"], StringComparer.Ordinal))
+            var headerFields = csvReader.ReadFields();
+            if (headerFields is null || !headerFields.SequenceEqual(["fecha", "concepto", "abono", "cargo", "saldo"], StringComparer.Ordinal))
                 throw new InvalidDataException("Line 1: expected header fecha,concepto,abono,cargo,saldo.");
-            while (!csv.EndOfData)
+            while (!csvReader.EndOfData)
             {
-                if (rows.Count >= options.MaxStatementLines) throw new InvalidDataException("Statement exceeds MaxStatementLines.");
-                var lineNumber = csv.LineNumber;
-                var fields = csv.ReadFields()!;
-                if (fields.Length != 5) throw new InvalidDataException($"Line {lineNumber}: expected five columns.");
-                if (!DateTime.TryParseExact(fields[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+                if (statementLines.Count >= options.MaxStatementLines) throw new InvalidDataException("Statement exceeds MaxStatementLines.");
+                var lineNumber = csvReader.LineNumber;
+                var columnValues = csvReader.ReadFields()!;
+                if (columnValues.Length != 5) throw new InvalidDataException($"Line {lineNumber}: expected five columns.");
+                if (!DateTime.TryParseExact(columnValues[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var movementDate))
                     throw new InvalidDataException($"Line {lineNumber}: invalid date; expected yyyy-MM-dd.");
-                var description = fields[1].Trim();
+                var description = columnValues[1].Trim();
                 if (description.Length > options.MaxDescriptionLength) throw new InvalidDataException($"Line {lineNumber}: description exceeds {options.MaxDescriptionLength} characters.");
-                var credit = Amount(fields[2], lineNumber, signed: false, emptyZero: true);
-                var debit = Amount(fields[3], lineNumber, signed: false, emptyZero: true);
-                var balance = Amount(fields[4], lineNumber, signed: true, emptyZero: false);
-                if (description.Length == 0 || !((credit > 0 && debit == 0) || (debit > 0 && credit == 0)))
+                var creditAmount = Amount(columnValues[2], lineNumber, signed: false, emptyZero: true);
+                var debitAmount = Amount(columnValues[3], lineNumber, signed: false, emptyZero: true);
+                var runningBalance = Amount(columnValues[4], lineNumber, signed: true, emptyZero: false);
+                if (description.Length == 0 || !((creditAmount > 0 && debitAmount == 0) || (debitAmount > 0 && creditAmount == 0)))
                     throw new InvalidDataException($"Line {lineNumber}: description and exactly one positive credit/debit are required.");
-                var reference = TrackingKey().Match(description);
-                if (!reference.Success) reference = ReferenceNumber().Match(description);
-                rows.Add(new BankStatementLine(date, description, credit, debit, balance, reference.Success ? reference.Groups[1].Value : null));
+                var referenceMatch = TrackingKey().Match(description);
+                if (!referenceMatch.Success) referenceMatch = ReferenceNumber().Match(description);
+                statementLines.Add(new BankStatementLine(movementDate, description, creditAmount, debitAmount, runningBalance, referenceMatch.Success ? referenceMatch.Groups[1].Value : null));
             }
         }
         catch (DecoderFallbackException error) { throw new InvalidDataException("Line 1: expected UTF-8 CSV.", error); }
-        catch (MalformedLineException error) { throw new InvalidDataException($"Line {csv.ErrorLineNumber}: malformed quoted CSV.", error); }
-        if (rows.Count == 0) throw new InvalidDataException("Line 2: statement contains no movements.");
-        return rows;
+        catch (MalformedLineException error) { throw new InvalidDataException($"Line {csvReader.ErrorLineNumber}: malformed quoted CSV.", error); }
+        if (statementLines.Count == 0) throw new InvalidDataException("Line 2: statement contains no movements.");
+        return statementLines;
     }
 
-    private static decimal Amount(string text, long line, bool signed, bool emptyZero)
+    private static decimal Amount(string declaredAmount, long lineNumber, bool signed, bool emptyZero)
     {
-        if (emptyZero && text.Length == 0) return 0;
-        if (!NumberFormat().IsMatch(text) || (!signed && text.StartsWith('-')) ||
-            !decimal.TryParse(text, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
+        if (emptyZero && declaredAmount.Length == 0) return 0;
+        if (!NumberFormat().IsMatch(declaredAmount) || (!signed && declaredAmount.StartsWith('-')) ||
+            !decimal.TryParse(declaredAmount, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
             amount is < -9999999999999999.99m or > 9999999999999999.99m)
-            throw new InvalidDataException($"Line {line}: invalid amount; use a decimal point and at most two decimals.");
+            throw new InvalidDataException($"Line {lineNumber}: invalid amount; use a decimal point and at most two decimals.");
         return amount;
     }
 

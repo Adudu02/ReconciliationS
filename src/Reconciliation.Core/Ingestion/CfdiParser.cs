@@ -15,7 +15,7 @@ internal sealed record ParsedCfdi(Guid Uuid, string Type, string IssuerRfc, stri
     decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal,
     IReadOnlyList<CfdiRelation> Relations, IReadOnlyList<CfdiPayment> Payments)
 {
-    public string? ReviewReason => Payments.SelectMany(payment => payment.Documents).Any(doc => doc.InconsistentBalance) ? "inconsistent balance" : null;
+    public string? ReviewReason => Payments.SelectMany(payment => payment.Documents).Any(paidInvoice => paidInvoice.InconsistentBalance) ? "inconsistent balance" : null;
 }
 
 internal static class CfdiParser
@@ -25,93 +25,93 @@ internal static class CfdiParser
     private static readonly XNamespace Payments = "http://www.sat.gob.mx/Pagos20";
     private static readonly XNamespace LocalTaxes = "http://www.sat.gob.mx/implocal";
 
-    public static ParsedCfdi Parse(XDocument xml)
+    public static ParsedCfdi Parse(XDocument cfdiXml)
     {
-        var root = xml.Root;
-        if (root?.Name != Cfdi + "Comprobante") throw new InvalidDataException("File is not a CFDI.");
-        if (Required(root, "Version") != "4.0") throw new InvalidDataException("Unsupported CFDI version; expected 4.0.");
-        var type = Required(root, "TipoDeComprobante");
+        var comprobante = cfdiXml.Root;
+        if (comprobante?.Name != Cfdi + "Comprobante") throw new InvalidDataException("File is not a CFDI.");
+        if (Required(comprobante, "Version") != "4.0") throw new InvalidDataException("Unsupported CFDI version; expected 4.0.");
+        var type = Required(comprobante, "TipoDeComprobante");
         if (type is not ("I" or "P" or "E")) throw new InvalidDataException("Unsupported CFDI type.");
-        var issuer = Required(One(root, Cfdi + "Emisor"), "Rfc");
-        var receiver = Required(One(root, Cfdi + "Receptor"), "Rfc");
-        var complement = One(root, Cfdi + "Complemento");
+        var issuerRfc = Required(One(comprobante, Cfdi + "Emisor"), "Rfc");
+        var receiverRfc = Required(One(comprobante, Cfdi + "Receptor"), "Rfc");
+        var complement = One(comprobante, Cfdi + "Complemento");
         var stamp = One(complement, Stamp + "TimbreFiscalDigital");
-        var subtotal = Money(root, "SubTotal");
-        var discount = Money(root, "Descuento", optional: true);
+        var subtotal = Money(comprobante, "SubTotal");
+        var discount = Money(comprobante, "Descuento", optional: true);
         if (discount > subtotal) throw new InvalidDataException("Discount exceeds subtotal.");
-        var taxes = root.Element(Cfdi + "Impuestos");
-        var local = complement.Element(LocalTaxes + "ImpuestosLocales");
-        var transferred = Money(taxes, "TotalImpuestosTrasladados", optional: true);
-        var retained = Money(taxes, "TotalImpuestosRetenidos", optional: true);
-        var localTransferred = Money(local, "TotaldeTraslados", optional: true);
-        var localRetained = Money(local, "TotaldeRetenciones", optional: true);
-        var total = Money(root, "Total");
-        if (total != subtotal - discount + transferred - retained + localTransferred - localRetained)
+        var taxesNode = comprobante.Element(Cfdi + "Impuestos");
+        var localTaxesNode = complement.Element(LocalTaxes + "ImpuestosLocales");
+        var transferredTax = Money(taxesNode, "TotalImpuestosTrasladados", optional: true);
+        var retainedTax = Money(taxesNode, "TotalImpuestosRetenidos", optional: true);
+        var localTransferredTax = Money(localTaxesNode, "TotaldeTraslados", optional: true);
+        var localRetainedTax = Money(localTaxesNode, "TotaldeRetenciones", optional: true);
+        var total = Money(comprobante, "Total");
+        if (total != subtotal - discount + transferredTax - retainedTax + localTransferredTax - localRetainedTax)
             throw new InvalidDataException("Inconsistent total from declared header amounts.");
-        var relations = root.Elements(Cfdi + "CfdiRelacionados").SelectMany(group =>
-            group.Elements(Cfdi + "CfdiRelacionado").Select(item => new CfdiRelation(Uuid(item, "UUID"), Required(group, "TipoRelacion")))).Distinct().ToArray();
+        var relations = comprobante.Elements(Cfdi + "CfdiRelacionados").SelectMany(relationGroup =>
+            relationGroup.Elements(Cfdi + "CfdiRelacionado").Select(relatedDocument => new CfdiRelation(Uuid(relatedDocument, "UUID"), Required(relationGroup, "TipoRelacion")))).Distinct().ToArray();
         var payments = new List<CfdiPayment>();
         if (type == "P")
         {
-            var paymentGroups = complement.Elements().Where(element => element.Name.LocalName == "Pagos").ToArray();
+            var paymentGroups = complement.Elements().Where(xmlNode => xmlNode.Name.LocalName == "Pagos").ToArray();
             if (paymentGroups.Length != 1 || paymentGroups[0].Name != Payments + "Pagos" || Required(paymentGroups[0], "Version") != "2.0")
                 throw new InvalidDataException("Unsupported payment complement version; expected 2.0.");
             foreach (var payment in paymentGroups[0].Elements(Payments + "Pago"))
             {
-                var documents = payment.Elements(Payments + "DoctoRelacionado").Select(item =>
+                var documents = payment.Elements(Payments + "DoctoRelacionado").Select(relatedDocument =>
                 {
-                    if (!int.TryParse(Required(item, "NumParcialidad"), NumberStyles.None, CultureInfo.InvariantCulture, out var installment) || installment <= 0)
+                    if (!int.TryParse(Required(relatedDocument, "NumParcialidad"), NumberStyles.None, CultureInfo.InvariantCulture, out var installment) || installment <= 0)
                         throw new InvalidDataException("Invalid installment number.");
-                    var doc = new PaymentDocument(Uuid(item, "IdDocumento"), installment, Required(item, "MonedaDR"),
-                        Money(item, "ImpSaldoAnt"), Money(item, "ImpPagado"), Money(item, "ImpSaldoInsoluto"));
-                    doc.InconsistentBalance = doc.RemainingBalance != doc.PreviousBalance - doc.Paid;
-                    return doc;
+                    var paidInvoice = new PaymentDocument(Uuid(relatedDocument, "IdDocumento"), installment, Required(relatedDocument, "MonedaDR"),
+                        Money(relatedDocument, "ImpSaldoAnt"), Money(relatedDocument, "ImpPagado"), Money(relatedDocument, "ImpSaldoInsoluto"));
+                    paidInvoice.InconsistentBalance = paidInvoice.RemainingBalance != paidInvoice.PreviousBalance - paidInvoice.Paid;
+                    return paidInvoice;
                 }).ToArray();
                 if (documents.Length == 0) throw new InvalidDataException("Payment has no related documents.");
-                decimal? rate = null;
+                decimal? exchangeRate = null;
                 if (payment.Attribute("TipoCambioP") is not null)
                 {
-                    var declared = Required(payment, "TipoCambioP");
-                    if (!decimal.TryParse(declared, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsed) || parsed <= 0 || parsed >= 10000000000m || decimal.Round(parsed, 10) != parsed)
+                    var declaredRate = Required(payment, "TipoCambioP");
+                    if (!decimal.TryParse(declaredRate, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var parsedRate) || parsedRate <= 0 || parsedRate >= 10000000000m || decimal.Round(parsedRate, 10) != parsedRate)
                         throw new InvalidDataException("Invalid payment exchange rate.");
-                    rate = parsed;
+                    exchangeRate = parsedRate;
                 }
                 payments.Add(new CfdiPayment(Date(payment, "FechaPago"), Required(payment, "FormaDePagoP"), Required(payment, "MonedaP"),
-                    rate, Money(payment, "Monto"), (string?)payment.Attribute("NumOperacion"), documents));
+                    exchangeRate, Money(payment, "Monto"), (string?)payment.Attribute("NumOperacion"), documents));
             }
             if (payments.Count == 0) throw new InvalidDataException("Payment complement has no payments.");
         }
-        var method = (string?)root.Attribute("MetodoPago");
-        if (method is not (null or "PUE" or "PPD")) throw new InvalidDataException("Invalid payment method.");
-        return new ParsedCfdi(Uuid(stamp, "UUID"), type, issuer, receiver, Date(root, "Fecha"), Date(stamp, "FechaTimbrado"),
-            Required(root, "Moneda"), method, subtotal, discount, transferred, retained, localTransferred, localRetained, total,
-            receiver == "XAXX010101000" || root.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
+        var paymentMethod = (string?)comprobante.Attribute("MetodoPago");
+        if (paymentMethod is not (null or "PUE" or "PPD")) throw new InvalidDataException("Invalid payment method.");
+        return new ParsedCfdi(Uuid(stamp, "UUID"), type, issuerRfc, receiverRfc, Date(comprobante, "Fecha"), Date(stamp, "FechaTimbrado"),
+            Required(comprobante, "Moneda"), paymentMethod, subtotal, discount, transferredTax, retainedTax, localTransferredTax, localRetainedTax, total,
+            receiverRfc == "XAXX010101000" || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
     }
 
-    private static XElement One(XElement element, XName name)
+    private static XElement One(XElement xmlNode, XName attributeName)
     {
-        var children = element.Elements(name).ToArray();
-        return children.Length == 1 ? children[0] : throw new InvalidDataException($"Expected one {name.LocalName} node.");
+        var children = xmlNode.Elements(attributeName).ToArray();
+        return children.Length == 1 ? children[0] : throw new InvalidDataException($"Expected one {attributeName.LocalName} node.");
     }
 
-    private static string Required(XElement element, string name) =>
-        !string.IsNullOrWhiteSpace((string?)element.Attribute(name)) ? element.Attribute(name)!.Value : throw new InvalidDataException($"Missing {name}.");
+    private static string Required(XElement xmlNode, string attributeName) =>
+        !string.IsNullOrWhiteSpace((string?)xmlNode.Attribute(attributeName)) ? xmlNode.Attribute(attributeName)!.Value : throw new InvalidDataException($"Missing {attributeName}.");
 
-    private static Guid Uuid(XElement element, string name) =>
-        Guid.TryParse(Required(element, name), out var id) && id != Guid.Empty ? id : throw new InvalidDataException($"Invalid {name} UUID.");
+    private static Guid Uuid(XElement xmlNode, string attributeName) =>
+        Guid.TryParse(Required(xmlNode, attributeName), out var documentUuid) && documentUuid != Guid.Empty ? documentUuid : throw new InvalidDataException($"Invalid {attributeName} UUID.");
 
-    private static DateTime Date(XElement element, string name) =>
-        DateTime.TryParseExact(Required(element, name), ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFF"],
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out var value) ? value : throw new InvalidDataException($"Invalid local date {name}.");
+    private static DateTime Date(XElement xmlNode, string attributeName) =>
+        DateTime.TryParseExact(Required(xmlNode, attributeName), ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFF"],
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var amount) ? amount : throw new InvalidDataException($"Invalid local date {attributeName}.");
 
-    private static decimal Money(XElement? element, string name, bool optional = false)
+    private static decimal Money(XElement? xmlNode, string attributeName, bool optional = false)
     {
-        var text = (string?)element?.Attribute(name);
-        if (text is null && optional) return 0;
-        var decimalPoint = text?.IndexOf('.') ?? -1;
-        if (text is null || (decimalPoint >= 0 && text.Length - decimalPoint - 1 > 2) || !decimal.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) ||
-            value < 0 || value > 9999999999999999.99m || decimal.Round(value, 2) != value)
-            throw new InvalidDataException($"Invalid {name}: monetary values require at most two decimals and must fit numeric(18,2).");
-        return value;
+        var declaredAmount = (string?)xmlNode?.Attribute(attributeName);
+        if (declaredAmount is null && optional) return 0;
+        var decimalPoint = declaredAmount?.IndexOf('.') ?? -1;
+        if (declaredAmount is null || (decimalPoint >= 0 && declaredAmount.Length - decimalPoint - 1 > 2) || !decimal.TryParse(declaredAmount, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
+            amount < 0 || amount > 9999999999999999.99m || decimal.Round(amount, 2) != amount)
+            throw new InvalidDataException($"Invalid {attributeName}: monetary values require at most two decimals and must fit numeric(18,2).");
+        return amount;
     }
 }

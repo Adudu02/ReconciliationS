@@ -26,98 +26,98 @@ public static partial class CompanyManagement
     public static IEndpointRouteBuilder MapCompanyManagement(this IEndpointRouteBuilder routes)
     {
         routes.MapPost("/companies", CreateAsync).RequireAuthorization("platform-operator");
-        routes.MapGet("/companies/{id:guid}/settings", (Guid id, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+        routes.MapGet("/companies/{companyId:guid}/settings", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
+            companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                var settings = await ReadSettingsAsync(connection, transaction, token);
-                return settings is null ? Results.NotFound() : Results.Ok(settings);
-            }, ct)).RequireAuthorization("company-member");
-        routes.MapPatch("/companies/{id:guid}/settings", ChangeSettingsAsync).RequireAuthorization("administrator");
-        routes.MapPost("/companies/{id:guid}/archive", (Guid id, HttpContext http, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+                var companySettings = await ReadSettingsAsync(connection, transaction, transactionCancellationToken);
+                return companySettings is null ? Results.NotFound() : Results.Ok(companySettings);
+            }, cancellationToken)).RequireAuthorization("company-member");
+        routes.MapPatch("/companies/{companyId:guid}/settings", ChangeSettingsAsync).RequireAuthorization("administrator");
+        routes.MapPost("/companies/{companyId:guid}/archive", (Guid companyId, HttpContext httpContext, TenantContext companyScope, CancellationToken cancellationToken) =>
+            companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                var changed = await connection.ExecuteAsync(new CommandDefinition(
-                    "UPDATE company SET archived_at = now() WHERE archived_at IS NULL", transaction: transaction, cancellationToken: token));
-                if (changed > 0) await AuditAsync(connection, transaction, id, http, "company.archived", null, new { archived = true }, token);
+                var rowsInserted = await connection.ExecuteAsync(new CommandDefinition(
+                    "UPDATE company SET archived_at = now() WHERE archived_at IS NULL", transaction: transaction, cancellationToken: transactionCancellationToken));
+                if (rowsInserted > 0) await AuditAsync(connection, transaction, companyId, httpContext, "company.archived", null, new { archived = true }, transactionCancellationToken);
                 return Results.NoContent();
-            }, ct)).RequireAuthorization("administrator");
+            }, cancellationToken)).RequireAuthorization("administrator");
         return routes;
     }
 
-    private static Task<IResult> CreateAsync(CreateCompanyRequest request, HttpContext http, TenantContext tenant,
-        IPasswordHasher<string> hasher, CancellationToken ct)
+    private static Task<IResult> CreateAsync(CreateCompanyRequest companyToCreate, HttpContext httpContext, TenantContext companyScope,
+        IPasswordHasher<string> passwordHasher, CancellationToken cancellationToken)
     {
-        if (request.Rfc is null || !RfcFormat().IsMatch(request.Rfc))
+        if (companyToCreate.Rfc is null || !RfcFormat().IsMatch(companyToCreate.Rfc))
             return Task.FromResult<IResult>(Results.BadRequest(new { error = "RFC has an invalid format." }));
-        if (string.IsNullOrWhiteSpace(request.Name) || !MailAddress.TryCreate(request.AdminEmail, out var address) || address.Address != request.AdminEmail)
+        if (string.IsNullOrWhiteSpace(companyToCreate.Name) || !MailAddress.TryCreate(companyToCreate.AdminEmail, out var parsedEmail) || parsedEmail.Address != companyToCreate.AdminEmail)
             return Task.FromResult<IResult>(Results.BadRequest(new { error = "Name and valid administrator email are required." }));
-        var id = Guid.NewGuid();
-        return tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+        var companyId = Guid.NewGuid();
+        return companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
-            var admin = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
-                "SELECT id FROM app_user WHERE lower(email) = lower(@AdminEmail)", request, transaction, cancellationToken: token));
-            if (admin is null)
+            var adminUserId = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
+                "SELECT id FROM app_user WHERE lower(email) = lower(@AdminEmail)", companyToCreate, transaction, cancellationToken: transactionCancellationToken));
+            if (adminUserId is null)
             {
-                if (request.AdminPassword is null || request.AdminPassword.Length < 12)
+                if (companyToCreate.AdminPassword is null || companyToCreate.AdminPassword.Length < 12)
                     return Results.BadRequest(new { error = "Administrator password requires at least 12 characters." });
-                var hash = hasher.HashPassword(request.AdminEmail, request.AdminPassword);
+                var adminPasswordHash = passwordHasher.HashPassword(companyToCreate.AdminEmail, companyToCreate.AdminPassword);
                 // Concurrent creation may have inserted the email; attach without changing that password.
                 await connection.ExecuteAsync(new CommandDefinition("""
                     INSERT INTO app_user(email, password_hash) VALUES (@AdminEmail, @hash)
                     ON CONFLICT (lower(email)) DO NOTHING
-                    """, new { request.AdminEmail, hash }, transaction, cancellationToken: token));
-                admin = await connection.QuerySingleAsync<Guid>(new CommandDefinition(
-                    "SELECT id FROM app_user WHERE lower(email) = lower(@AdminEmail)", request, transaction, cancellationToken: token));
+                    """, new { companyToCreate.AdminEmail, hash = adminPasswordHash }, transaction, cancellationToken: transactionCancellationToken));
+                adminUserId = await connection.QuerySingleAsync<Guid>(new CommandDefinition(
+                    "SELECT id FROM app_user WHERE lower(email) = lower(@AdminEmail)", companyToCreate, transaction, cancellationToken: transactionCancellationToken));
             }
             await connection.ExecuteAsync(new CommandDefinition("""
                 INSERT INTO company(id, rfc, name) VALUES (@id, @Rfc, @Name);
                 INSERT INTO membership(company_id, user_id, role) VALUES (@id, @admin, 'administrator');
-                """, new { id, request.Rfc, request.Name, admin }, transaction, cancellationToken: token));
-            var company = new CompanyResponse(id, request.Rfc, request.Name, null);
-            await AuditAsync(connection, transaction, id, http, "company.created", null, company, token);
-            return Results.Created($"/companies/{id}", company);
-        }, ct);
+                """, new { id = companyId, companyToCreate.Rfc, companyToCreate.Name, admin = adminUserId }, transaction, cancellationToken: transactionCancellationToken));
+            var company = new CompanyResponse(companyId, companyToCreate.Rfc, companyToCreate.Name, null);
+            await AuditAsync(connection, transaction, companyId, httpContext, "company.created", null, company, transactionCancellationToken);
+            return Results.Created($"/companies/{companyId}", company);
+        }, cancellationToken);
     }
 
-    private static Task<IResult> ChangeSettingsAsync(Guid id, SettingsChange request, HttpContext http, TenantContext tenant, CancellationToken ct) =>
-        tenant.ExecuteWriteAsync<IResult>(id, async (connection, transaction, token) =>
+    private static Task<IResult> ChangeSettingsAsync(Guid companyId, SettingsChange settingsChange, HttpContext httpContext, TenantContext companyScope, CancellationToken cancellationToken) =>
+        companyScope.ExecuteWriteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
-            if (request.DateToleranceDays is < 0 or > 366 || request.AmountTolerance < 0 || request.AmountTolerance > 9999999999999999.99m ||
-                (request.AmountTolerance is decimal amount && decimal.Round(amount, 2) != amount))
+            if (settingsChange.DateToleranceDays is < 0 or > 366 || settingsChange.AmountTolerance < 0 || settingsChange.AmountTolerance > 9999999999999999.99m ||
+                (settingsChange.AmountTolerance is decimal amount && decimal.Round(amount, 2) != amount))
                 return Results.BadRequest(new { error = "Tolerances must be nonnegative; amount must fit numeric(18,2)." });
-            var old = await ReadSettingsAsync(connection, transaction, token, forUpdate: true);
-            if (old is null) return Results.NotFound();
-            var updated = new CompanySettings(request.DateToleranceDays ?? old.DateToleranceDays,
-                request.AmountTolerance ?? old.AmountTolerance, request.ComplementNextBizDay ?? old.ComplementNextBizDay);
-            if (updated != old)
+            var before = await ReadSettingsAsync(connection, transaction, transactionCancellationToken, forUpdate: true);
+            if (before is null) return Results.NotFound();
+            var after = new CompanySettings(settingsChange.DateToleranceDays ?? before.DateToleranceDays,
+                settingsChange.AmountTolerance ?? before.AmountTolerance, settingsChange.ComplementNextBizDay ?? before.ComplementNextBizDay);
+            if (after != before)
             {
                 await connection.ExecuteAsync(new CommandDefinition("""
                     UPDATE company SET date_tolerance_days = @DateToleranceDays,
                       amount_tolerance = @AmountTolerance, complement_next_biz_day = @ComplementNextBizDay
-                    """, updated, transaction, cancellationToken: token));
-                await AuditAsync(connection, transaction, id, http, "company.settings_changed", old, updated, token);
+                    """, after, transaction, cancellationToken: transactionCancellationToken));
+                await AuditAsync(connection, transaction, companyId, httpContext, "company.settings_changed", before, after, transactionCancellationToken);
             }
-            return Results.Ok(updated);
-        }, ct);
+            return Results.Ok(after);
+        }, cancellationToken);
 
-    private static Task<CompanySettings?> ReadSettingsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken ct, bool forUpdate = false) =>
+    private static Task<CompanySettings?> ReadSettingsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken, bool forUpdate = false) =>
         connection.QuerySingleOrDefaultAsync<CompanySettings>(new CommandDefinition("""
             SELECT date_tolerance_days AS DateToleranceDays, amount_tolerance AS AmountTolerance,
               complement_next_biz_day AS ComplementNextBizDay FROM company
-            """ + (forUpdate ? " FOR UPDATE" : ""), transaction: transaction, cancellationToken: ct));
+            """ + (forUpdate ? " FOR UPDATE" : ""), transaction: transaction, cancellationToken: cancellationToken));
 
     // shortcut: minimal transactional tenancy audit; group 5 adds hash chaining and rejection triggers.
-    private static Task<int> AuditAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, HttpContext http,
-        string action, object? previous, object current, CancellationToken ct) =>
+    private static Task<int> AuditAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, HttpContext httpContext,
+        string auditAction, object? previousValues, object currentValues, CancellationToken cancellationToken) =>
         connection.ExecuteAsync(new CommandDefinition("""
             INSERT INTO audit_entry(company_id, actor_id, action, old_values, new_values)
             VALUES (@companyId, @actor::uuid, @action, @oldValues::jsonb, @newValues::jsonb)
             """, new
         {
             companyId,
-            actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub),
-            action,
-            oldValues = previous is null ? null : JsonSerializer.Serialize(previous, JsonSerializerOptions.Web),
-            newValues = JsonSerializer.Serialize(current, JsonSerializerOptions.Web)
-        }, transaction, cancellationToken: ct));
+            actor = httpContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub),
+            action = auditAction,
+            oldValues = previousValues is null ? null : JsonSerializer.Serialize(previousValues, JsonSerializerOptions.Web),
+            newValues = JsonSerializer.Serialize(currentValues, JsonSerializerOptions.Web)
+        }, transaction, cancellationToken: cancellationToken));
 }

@@ -6,18 +6,18 @@ namespace Reconciliation.Core.Tenancy;
 public sealed partial class TenantContext(NpgsqlDataSource dataSource, ILogger<TenantContext> logger)
 {
     public Task<T> ExecuteAsync<T>(Guid? companyId,
-        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> action,
-        CancellationToken cancellationToken = default) => ExecuteTransactionAsync(companyId, action, false, cancellationToken);
+        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken = default) => ExecuteTransactionAsync(companyId, work, false, cancellationToken);
 
     public Task<T> ExecuteWriteAsync<T>(Guid companyId,
-        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> action,
-        CancellationToken cancellationToken = default) => ExecuteTransactionAsync(companyId, action, true, cancellationToken);
+        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken = default) => ExecuteTransactionAsync(companyId, work, true, cancellationToken);
 
     private async Task<T> ExecuteTransactionAsync<T>(Guid? companyId,
-        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> action, bool writing,
+        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> work, bool writing,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(action);
+        ArgumentNullException.ThrowIfNull(work);
         if (companyId is null) MissingContext(logger);
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -35,9 +35,9 @@ public sealed partial class TenantContext(NpgsqlDataSource dataSource, ILogger<T
                 if (reader.GetBoolean(0)) throw new CompanyReadOnlyException();
             }
         }
-        var result = await action(connection, transaction, cancellationToken);
+        var outcome = await work(connection, transaction, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return result;
+        return outcome;
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Database access attempted without company context")]

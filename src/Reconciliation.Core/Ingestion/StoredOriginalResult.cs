@@ -9,12 +9,12 @@ internal sealed class StoredOriginalResult(TenantContext tenant, Guid companyId,
 {
     public async Task ExecuteAsync(HttpContext httpContext)
     {
-        await tenant.ExecuteAsync(companyId, async (connection, transaction, cancellationToken) =>
+        await tenant.ExecuteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("resourceId", resourceId);
-            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken) || await reader.IsDBNullAsync(0, cancellationToken))
+            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, transactionCancellationToken);
+            if (!await reader.ReadAsync(transactionCancellationToken) || await reader.IsDBNullAsync(0, transactionCancellationToken))
             {
                 httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
                 return 0;

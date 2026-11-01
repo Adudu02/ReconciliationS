@@ -100,8 +100,8 @@ internal static class TenantIsolationChecks
             }
         }
         Assert.Equal(before, await SnapshotAsync(owner, b));
-        Assert.Contains("GET /companies/{id:guid}", exercised);
-        Assert.Contains("POST /companies/{id:guid}/members", exercised);
+        Assert.Contains("GET /companies/{companyId:guid}", exercised);
+        Assert.Contains("POST /companies/{companyId:guid}/members", exercised);
     }
 
     private static async Task<Resources> SeedResourcesAsync(CfdiImporter importer, Guid company, Guid actor)
@@ -127,28 +127,28 @@ internal static class TenantIsolationChecks
 
     private static HttpRequestMessage Request(string method, string route, Guid company, Guid user, Resources resources)
     {
-        var request = new HttpRequestMessage(new HttpMethod(method), route.Replace("{id:guid}", company.ToString(), StringComparison.Ordinal)
+        var request = new HttpRequestMessage(new HttpMethod(method), route.Replace("{companyId:guid}", company.ToString(), StringComparison.Ordinal)
             .Replace("{invoiceId:guid}", resources.InvoiceId.ToString(), StringComparison.Ordinal)
             .Replace("{uploadId:guid}", resources.UploadId.ToString(), StringComparison.Ordinal)
             .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal));
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
-            case "GET /companies/{id:guid}":
-            case "GET /companies/{id:guid}/members":
-            case "GET /companies/{id:guid}/settings":
-            case "POST /companies/{id:guid}/archive":
-            case "GET /companies/{id:guid}/banks":
-            case "GET /companies/{id:guid}/imports/{uploadId:guid}":
-            case "GET /companies/{id:guid}/cfdi/{invoiceId:guid}":
-            case "GET /companies/{id:guid}/cfdi/{invoiceId:guid}/xml":
-            case "GET /companies/{id:guid}/imports/files/{fileId:guid}/original":
+            case "GET /companies/{companyId:guid}":
+            case "GET /companies/{companyId:guid}/members":
+            case "GET /companies/{companyId:guid}/settings":
+            case "POST /companies/{companyId:guid}/archive":
+            case "GET /companies/{companyId:guid}/banks":
+            case "GET /companies/{companyId:guid}/imports/{uploadId:guid}":
+            case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}":
+            case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}/xml":
+            case "GET /companies/{companyId:guid}/imports/files/{fileId:guid}/original":
             case "POST /test/decisions":
                 break;
-            case "POST /companies/{id:guid}/imports/cfdi":
+            case "POST /companies/{companyId:guid}/imports/cfdi":
                 request.Content = IngestionHttpTests.CfdiBody(SyntheticCfdi.Invoice());
                 break;
-            case "POST /companies/{id:guid}/imports/bank-statement":
+            case "POST /companies/{companyId:guid}/imports/bank-statement":
                 request.Content = new MultipartFormDataContent
                 {
                     { new StringContent("reference"), "bank" }, { new StringContent("Synthetic-1234"), "accountReference" },
@@ -158,10 +158,10 @@ internal static class TenantIsolationChecks
             case "POST /companies":
                 request.Content = JsonContent.Create(new { rfc = "AAA010101AAA", name = "Synthetic isolated", adminEmail = $"isolation-admin-{Guid.NewGuid():N}@example.invalid", adminPassword = ApiFixture.Password });
                 break;
-            case "PATCH /companies/{id:guid}/settings":
+            case "PATCH /companies/{companyId:guid}/settings":
                 request.Content = JsonContent.Create(new { amountTolerance = 0.02m });
                 break;
-            case "POST /companies/{id:guid}/members":
+            case "POST /companies/{companyId:guid}/members":
                 request.Content = JsonContent.Create(new { userId = user, role = "viewer" });
                 break;
             default:

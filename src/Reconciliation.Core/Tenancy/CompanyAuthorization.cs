@@ -9,19 +9,21 @@ namespace Reconciliation.Core.Tenancy;
 
 public sealed record CompanyRoleRequirement(string[] Roles) : IAuthorizationRequirement;
 
-public sealed class CompanyAuthorization(TenantContext tenant) : AuthorizationHandler<CompanyRoleRequirement>
+public sealed class CompanyAuthorization(TenantContext companyScope) : AuthorizationHandler<CompanyRoleRequirement>
 {
-    protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, CompanyRoleRequirement requirement)
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, CompanyRoleRequirement requirement) => AuthorizeCompanyAsync(context, requirement);
+
+    private async Task AuthorizeCompanyAsync(AuthorizationHandlerContext authorizationContext, CompanyRoleRequirement requirement)
     {
-        if (context.Resource is not HttpContext http ||
-            !Guid.TryParse(http.Request.Headers["X-Company-Id"], out var companyId) ||
-            !Guid.TryParse(context.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var userId)) return;
-        if (http.Request.RouteValues.TryGetValue("id", out var routeId) &&
-            (!Guid.TryParse(routeId?.ToString(), out var id) || id != companyId)) return;
-        var role = await tenant.ExecuteAsync(companyId, (connection, transaction, ct) =>
+        if (authorizationContext.Resource is not HttpContext httpContext ||
+            !Guid.TryParse(httpContext.Request.Headers["X-Company-Id"], out var companyId) ||
+            !Guid.TryParse(authorizationContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var memberUserId)) return;
+        if (httpContext.Request.RouteValues.TryGetValue("companyId", out var routeId) &&
+            (!Guid.TryParse(routeId?.ToString(), out var routeCompanyId) || routeCompanyId != companyId)) return;
+        var memberRole = await companyScope.ExecuteAsync(companyId, (connection, transaction, transactionCancellationToken) =>
             connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
-                "SELECT role::text FROM membership WHERE user_id = @userId", new { userId }, transaction, cancellationToken: ct)), http.RequestAborted);
-        if (role is not null && requirement.Roles.Contains(role, StringComparer.Ordinal)) context.Succeed(requirement);
+                "SELECT role::text FROM membership WHERE user_id = @userId", new { userId = memberUserId }, transaction, cancellationToken: transactionCancellationToken)), httpContext.RequestAborted);
+        if (memberRole is not null && requirement.Roles.Contains(memberRole, StringComparer.Ordinal)) authorizationContext.Succeed(requirement);
     }
 
     public static IServiceCollection AddCompanyAuthorization(IServiceCollection services)

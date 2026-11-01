@@ -13,42 +13,42 @@ public static class CompanyEndpoints
 {
     public static IEndpointRouteBuilder MapCompanies(this IEndpointRouteBuilder routes)
     {
-        routes.MapGet("/companies/{id:guid}", (Guid id, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+        routes.MapGet("/companies/{companyId:guid}", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
+            companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                var company = await connection.QuerySingleOrDefaultAsync<CompanyResponse>(new CommandDefinition(
-                    "SELECT id, rfc, name, archived_at AS ArchivedAt FROM company", transaction: transaction, cancellationToken: token));
-                return company is null ? Results.NotFound() : Results.Ok(company);
-            }, ct)).RequireAuthorization("company-member");
+                var workspace = await connection.QuerySingleOrDefaultAsync<CompanyResponse>(new CommandDefinition(
+                    "SELECT id, rfc, name, archived_at AS ArchivedAt FROM company", transaction: transaction, cancellationToken: transactionCancellationToken));
+                return workspace is null ? Results.NotFound() : Results.Ok(workspace);
+            }, cancellationToken)).RequireAuthorization("company-member");
 
-        routes.MapGet("/companies/{id:guid}/members", (Guid id, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+        routes.MapGet("/companies/{companyId:guid}/members", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
+            companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
                 Results.Ok(await connection.QueryAsync<MemberResponse>(new CommandDefinition(
-                    "SELECT user_id AS UserId, role::text AS Role FROM membership", transaction: transaction, cancellationToken: token))), ct))
+                    "SELECT user_id AS UserId, role::text AS Role FROM membership", transaction: transaction, cancellationToken: transactionCancellationToken))), cancellationToken))
             .RequireAuthorization("company-member");
 
-        routes.MapPost("/companies/{id:guid}/members", (Guid id, MemberRequest request, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteWriteAsync<IResult>(id, async (connection, transaction, token) =>
+        routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, TenantContext companyScope, CancellationToken cancellationToken) =>
+            companyScope.ExecuteWriteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                if (request.Role is not ("administrator" or "accountant" or "viewer"))
+                if (membershipChange.Role is not ("administrator" or "accountant" or "viewer"))
                     return Results.BadRequest(new { error = "Role must be administrator, accountant or viewer." });
-                var exists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-                    "SELECT EXISTS(SELECT FROM app_user WHERE id = @UserId)", request, transaction, cancellationToken: token));
-                if (!exists) return Results.BadRequest(new { error = "Unknown user." });
-                if (request.Role != "administrator")
+                var userExists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+                    "SELECT EXISTS(SELECT FROM app_user WHERE id = @UserId)", membershipChange, transaction, cancellationToken: transactionCancellationToken));
+                if (!userExists) return Results.BadRequest(new { error = "Unknown user." });
+                if (membershipChange.Role != "administrator")
                 {
-                    var lastAdmin = await connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
+                    var wouldRemoveLastAdministrator = await connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
                         SELECT EXISTS(SELECT FROM membership WHERE user_id=@UserId AND role='administrator')
                           AND (SELECT count(*) FROM membership WHERE role='administrator') <= 1
-                        """, request, transaction, cancellationToken: token));
-                    if (lastAdmin) return Results.Conflict(new { error = "The company must retain at least one administrator." });
+                        """, membershipChange, transaction, cancellationToken: transactionCancellationToken));
+                    if (wouldRemoveLastAdministrator) return Results.Conflict(new { error = "The company must retain at least one administrator." });
                 }
                 await connection.ExecuteAsync(new CommandDefinition("""
                     INSERT INTO membership(company_id, user_id, role) VALUES (@id, @UserId, @Role::membership_role)
                     ON CONFLICT (company_id, user_id) DO UPDATE SET role = excluded.role
-                    """, new { id, request.UserId, request.Role }, transaction, cancellationToken: token));
+                    """, new { id = companyId, membershipChange.UserId, membershipChange.Role }, transaction, cancellationToken: transactionCancellationToken));
                 return Results.NoContent();
-            }, ct)).RequireAuthorization("administrator");
+            }, cancellationToken)).RequireAuthorization("administrator");
         return routes;
     }
 }
