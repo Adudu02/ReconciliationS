@@ -95,7 +95,7 @@ aislamiento por empresa y las tablas de ingesta, y el *SAT stub* como marcador. 
 
 ### 2.2 Ciclo de una solicitud autenticada
 
-Ejemplo: un contador sube una factura con `POST /companies/{id}/imports/cfdi`.
+Ejemplo: un contador sube una factura con `POST /companies/{companyId}/imports/cfdi`.
 
 1. **Login.** El cliente llama `POST /auth/tokens` con `{"email","password"}`. La API busca el usuario sin distinguir
    mayúsculas, verifica la contraseña (PBKDF2 con sal) y devuelve un JWT firmado (HMAC-SHA256) válido una hora.
@@ -172,8 +172,13 @@ RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18
 | `Ingestion__MaxFileBytes` | 10485760 (10 MiB) | Ingesta | Tamaño máximo de un archivo. Uno mayor se rechaza solo a él |
 | `Ingestion__MaxUploadBytes` | 20971520 (20 MiB) | Ingesta | Tamaño máximo de toda la subida, contando cabeceras multipart. Excederlo rechaza toda la carga (413) |
 | `Ingestion__MaxFiles` | 20 | Ingesta | Cantidad máxima de archivos por subida (400 si se excede) |
-| `Ingestion__MaxXmlNodes` | 100000 | Ingesta | Nodos XML máximos; frena archivos "bomba" |
+| `Ingestion__MaxXmlNodes` | 100000 | Ingesta | Nodos y atributos XML máximos; frena archivos "bomba" |
 | `Ingestion__MaxXmlDepth` | 64 | Ingesta | Profundidad máxima de anidación XML |
+| `Ingestion__MaxStatementLines` | 100000 | Ingesta | Filas máximas; excederlas rechaza ese archivo |
+| `Ingestion__MaxDescriptionLength` | 500 | Ingesta | Caracteres máximos del concepto; acota las claves del índice |
+| `LoginRateLimit__EmailPermitLimit` | 10 | API | Intentos por correo normalizado en cada ventana fija |
+| `LoginRateLimit__IpPermitLimit` | 30 | API | Intentos por IP remota en cada ventana fija |
+| `LoginRateLimit__WindowSeconds` | 60 | API | Duración; al exceder se devuelve 429 y Retry-After |
 | `Ingestion__RetentionYears` | 10 (mínimo 5, máximo 100) | Ingesta | Años que se conserva el original; fija `retained_until` |
 
 `IngestionOptions.Validate()` revisa todo al arrancar: un valor no positivo o una retención fuera de 5–100 impide
@@ -288,6 +293,15 @@ Roslyn temporal queda fuera del repositorio. Cada refactor se verificó con la s
 | `M0003CompanyManagement` | `M0003OperatorAndAudit` | Esquema de operador/auditoría; versión 3 igual |
 | `M0004Ingestion` | `M0004IngestionTables` | Esquema de ingesta; versión 4 igual |
 
+| Hallazgo | Corrección o decisión consciente |
+|---|---|
+| Variables y parámetros genéricos | Nombres de dominio; alias Dapper explícitos y cancellationToken / transactionCancellationToken |
+| Literales repetidos de políticas/estados/límites | Constantes y mapeo explícito de enums a DB; mismas cadenas públicas |
+| SQL/auditoría/cargas/pruebas duplicados | DapperExtensions, un AuditLog.WriteAsync, handler de carga, resultados, claims y utilidades compartidas |
+| Métodos largos de lectura/persistencia | Etapas con nombre, CfdiInsertRow y marcas inmutables de PaidInvoice |
+| Nombres de tipos ambiguos | Mapa anterior; código, README, ADR-003 y ambas bitácoras actualizados juntos |
+| Reducir visibilidad / borrar módulos / traducir XML | Se omite a propósito: conservar visibilidad, mapa de módulos previstos y terminología fiscal |
+
 **Revisiones de nombres/duplicación:** los nombres genéricos se sustituyeron por nombres del dominio; las constantes
 y helpers compartidos eliminan duplicación; los métodos largos tienen etapas con nombre; los siete módulos previstos
 siguen como mapa del plan con un comentario. No se redujo visibilidad de tipos ni se tradujeron términos XML/SAT.
@@ -305,7 +319,7 @@ real, un calentamiento y tres muestras, mismo contenedor SDK y máquina. Se omit
 | 50,000 movimientos | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | 4089.7699 |
 | Pagos con 300 documentos relacionados | 65.4256, 66.9515, 63.3336 | 65.4256 | 17.5534 |
 
-Son tiempos locales, no garantías de latencia en producción. Los hallazgos y las mediciones posteriores se agregan en este PR.
+Son tiempos locales, no garantías de latencia en producción. La medición inicial se comprometió antes de los cambios de rendimiento.
 
 **Muestras después (ms):** banco 4230.7872 / 4089.7699 / 4083.4153; Pagos300 17.5399 / 17.5534 / 17.9515.
 Las medianas mejoraron aproximadamente 3.28x y 3.73x, incluidos los nuevos controles e índices.
@@ -340,6 +354,19 @@ vez evita recalcular hash de originales de 10 MiB al cambiar conteos, sin otra t
 Streaming mantiene la conexión hasta terminar la descarga. El límite por correo puede usarse para bloquear a una
 víctima; el valor generoso y el límite por IP ayudan, pero no eliminan ese riesgo. Producción requiere monitoreo y ajuste.
 Las pruebas anteriores siguen verdes; benchmark omitido por defecto/CI y los tres escenarios previos siguen pendientes.
+
+**Verificación final de PR-4 / PR-5:** `dotnet build` aprobó con 0 advertencias y 0 errores; la ejecución normal de
+`dotnet test --solution Reconciliation.slnx` aprobó 122 de 126 casos con cuatro omisiones explícitas; formato limpio.
+Con `RUN_BENCHMARKS=1` aprobaron 123 y solo se omitieron los tres escenarios futuros del dominio. Tras el refactor,
+el benchmark confirmó medianas de 3983.3587 ms (50k filas) y 17.3551 ms (Pagos300), con muestras
+4143.5624 / 3983.3587 / 3926.9649 y 17.7486 / 17.3551 / 17.2354 respectivamente.
+`docker compose up --build --wait` terminó con PostgreSQL, API, worker y stub SAT saludables y el migrador finalizado
+correctamente. Migraciones up/down/up aprobaron en una base desechable y conservaron un original sintético;
+VersionInfo conserva versiones 1–5, existe el índice de clave primaria compuesta de membership y las diez tablas
+por empresa tienen RLS habilitado y forzado. Ambos comandos del mapa se ejecutaron: 26/85 tareas; no se marcó ninguna
+adicional. Siguen pendientes “Viewer cannot decide” y “Different roles” (grupo 8) y “Tolerance changed” (grupo 6).
+Los commits rojos registran sus fallos esperados antes de las correcciones. Todo queda en commits locales, sin push.
+No quedan preguntas abiertas de implementación de esta revisión.
 
 ### PR-3: Modelo de dominio e ingesta (3.1–3.8, incluidas 3.4b–3.4f)
 
@@ -433,8 +460,8 @@ y ambos mapas regenerados. No se hizo push.
 
 #### API y cierre de escenarios de multiempresa
 - **Qué es:** `IngestionEndpoints`: dos `POST` de importación y cuatro `GET` de consulta.
-- **Cómo funciona:** todas las rutas validan membresía y `X-Company-Id`. `POST /companies/{id}/imports/cfdi` y
-  `/imports/bank-statement` exigen contador o administrador. `GET /companies/{id}/imports/{uploadId}`,
+- **Cómo funciona:** todas las rutas validan membresía y `X-Company-Id`. `POST /companies/{companyId}/imports/cfdi` y
+  `/imports/bank-statement` exigen contador o administrador. `GET /companies/{companyId}/imports/{uploadId}`,
   `/cfdi/{invoiceId}`, `/cfdi/{invoiceId}/xml`, `/imports/files/{fileId}/original` y `/banks` aceptan a cualquier
   miembro, incluido consulta. Los archivos usan el campo multipart `files`.
 - **Pruebas:** el guardián de aislamiento descubre rutas, prepara casos exitosos, intenta ids de la empresa B bajo
@@ -495,7 +522,7 @@ subir/bajar/subir en una base desechable separada. También funcionó revertir h
   expresión regular y un trigger (`company_rfc_immutable`) impide cambiarlo. Una cuenta nueva requiere contraseña de 12
   caracteres; una existente conserva su contraseña y recibe la misma forma de respuesta. Los cambios de configuración
   (`DateToleranceDays`, `AmountTolerance`, `ComplementNextBizDay`) guardan valores anteriores y nuevos más el actor en
-  `audit_entry`, en la misma transacción. Archivar (`POST /companies/{id}/archive`) conserva las filas.
+  `audit_entry`, en la misma transacción. Archivar (`POST /companies/{companyId}/archive`) conserva las filas.
 - **Por qué así:** denegar INSERT en auditoría demuestra que la configuración se revierte; la acción y su auditoría
   deben compartir transacción. El primer arranque con Compose detectó que el migrador necesitaba la imagen de runtime de
   ASP.NET para usar `PasswordHasher`; se corrigió.
