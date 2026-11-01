@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Npgsql;
+using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
 
@@ -15,9 +16,9 @@ public sealed class PlatformAuthorization(NpgsqlDataSource dataSource) : Authori
 
     private async Task AuthorizeOperatorAsync(AuthorizationHandlerContext authorizationContext, PlatformOperatorRequirement requirement)
     {
-        if (authorizationContext.Resource is not HttpContext httpContext || !Guid.TryParse(authorizationContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var operatorUserId)) return;
+        if (authorizationContext.Resource is not HttpContext httpContext || authorizationContext.User.UserId() is not Guid operatorUserId) return;
         await using var connection = await dataSource.OpenConnectionAsync(httpContext.RequestAborted);
-        if (await connection.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT is_operator FROM app_user WHERE id = @userId", new { userId = operatorUserId }, cancellationToken: httpContext.RequestAborted)))
+        if (await connection.ExecuteScalarAsync<bool>(Command("SELECT is_operator FROM app_user WHERE id = @userId", new { userId = operatorUserId }, cancellationToken: httpContext.RequestAborted)))
             authorizationContext.Succeed(requirement);
     }
 }

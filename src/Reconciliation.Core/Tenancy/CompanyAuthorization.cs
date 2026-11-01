@@ -4,6 +4,7 @@ using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
 
@@ -17,11 +18,11 @@ public sealed class CompanyAuthorization(TenantContext companyScope) : Authoriza
     {
         if (authorizationContext.Resource is not HttpContext httpContext ||
             !Guid.TryParse(httpContext.Request.Headers[CompanyHeader.Name], out var companyId) ||
-            !Guid.TryParse(authorizationContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var memberUserId)) return;
+            authorizationContext.User.UserId() is not Guid memberUserId) return;
         if (httpContext.Request.RouteValues.TryGetValue("companyId", out var routeId) &&
             (!Guid.TryParse(routeId?.ToString(), out var routeCompanyId) || routeCompanyId != companyId)) return;
         var memberRole = await companyScope.ExecuteAsync(companyId, (connection, transaction, transactionCancellationToken) =>
-            connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            connection.QuerySingleOrDefaultAsync<string>(Command(
                 "SELECT role::text FROM membership WHERE user_id = @userId", new { userId = memberUserId }, transaction, cancellationToken: transactionCancellationToken)), httpContext.RequestAborted);
         if (memberRole is not null && requirement.Roles.Contains(memberRole, StringComparer.Ordinal)) authorizationContext.Succeed(requirement);
     }

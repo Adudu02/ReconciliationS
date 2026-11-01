@@ -15,8 +15,7 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
     [Fact]
     public async Task Statement_inserts_use_bounded_chunks_and_count_duplicates_across_chunks()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var probe = new QueryProbe();
         using var logging = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(probe));
         await using var source = new NpgsqlDataSourceBuilder(fixture.Database.AppConnectionString).UseLoggerFactory(logging).Build();
@@ -30,15 +29,13 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
         Assert.Equal(10_001, report.Files[0].ImportedMovements);
         Assert.Equal(1, report.Files[0].DuplicateMovements);
         Assert.InRange(probe.MovementInserts, 1, 3);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
-        Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id=@company AND status='importing'", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM import_file WHERE company_id=@company AND status='importing'", new { company }));
     }
 
     [Fact]
     public async Task Payment_and_relation_details_are_inserted_in_batches()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var probe = new QueryProbe();
         using var logging = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(probe));
         await using var source = new NpgsqlDataSourceBuilder(fixture.Database.AppConnectionString).UseLoggerFactory(logging).Build();
@@ -67,9 +64,8 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
     [Fact]
     public async Task Failed_statement_rolls_back_placeholder_account_and_movements()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("REVOKE INSERT ON audit_entry FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
         try
         {
@@ -84,16 +80,14 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
     [Fact]
     public async Task Committed_rejected_original_cannot_be_replaced_and_finalization_still_checks_hash()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var report = await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(company, user.Id,
             [UploadedFile.FromBytes("rejected.xml", Encoding.UTF8.GetBytes("<invalid/>"))], TestContext.Current.CancellationToken);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await Assert.ThrowsAsync<PostgresException>(() => owner.ExecuteAsync(new CommandDefinition("""
             UPDATE import_file SET status='imported', original='\x01', sha256=sha256('\x01'::bytea), retained_until=now()+interval '10 years'
             WHERE id=@FileId
             """, new { report.Files[0].FileId }, cancellationToken: TestContext.Current.CancellationToken)));
-        await owner.OpenAsync(TestContext.Current.CancellationToken);
         await using var transaction = await owner.BeginTransactionAsync(TestContext.Current.CancellationToken);
         var pending = await owner.QuerySingleAsync<Guid>(new CommandDefinition("""
             INSERT INTO import_file(company_id,upload_id,filename,kind,status,sha256)

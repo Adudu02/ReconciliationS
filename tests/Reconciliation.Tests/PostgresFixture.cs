@@ -18,6 +18,19 @@ public sealed class PostgresFixture : IAsyncLifetime
         Password = "synthetic-test-password"
     }.ConnectionString;
 
+    public async Task<NpgsqlConnection> OpenOwnerAsync()
+    {
+        var connection = new NpgsqlConnection(OwnerConnectionString);
+        try { await connection.OpenAsync(TestContext.Current.CancellationToken); return connection; }
+        catch { await connection.DisposeAsync(); throw; }
+    }
+
+    public async Task<T?> ScalarAsync<T>(string sql, object? parameters = null)
+    {
+        await using var connection = await OpenOwnerAsync();
+        return await connection.ExecuteScalarAsync<T>(new CommandDefinition(sql, parameters, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
     public async ValueTask InitializeAsync()
     {
         await container.StartAsync(TestContext.Current.CancellationToken);

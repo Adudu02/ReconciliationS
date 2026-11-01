@@ -13,6 +13,13 @@ public sealed class IngestionOptions
     public int MaxDescriptionLength { get; init; } = 500;
     public int RetentionYears { get; init; } = 10;
 
+    public void EnsureWithinLimits(IReadOnlyList<UploadedFile> files)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+        if (files.Count > MaxFiles || files.Sum(file => (long)file.ContentLength) > MaxUploadBytes)
+            throw new InvalidDataException(UploadErrors.AggregateLimit);
+    }
+
     public void Validate()
     {
         if (MaxFileBytes <= 0 || MaxUploadBytes <= 0 || MaxFiles <= 0 || MaxXmlNodes <= 0 || MaxXmlDepth <= 0 || MaxStatementLines <= 0 || MaxDescriptionLength <= 0 || RetentionYears is < MinimumRetentionYears or > 100)

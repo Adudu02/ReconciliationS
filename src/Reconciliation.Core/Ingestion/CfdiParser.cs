@@ -37,16 +37,16 @@ internal static class CfdiParser
         var receiverRfc = Required(One(comprobante, Cfdi + "Receptor"), "Rfc");
         var complement = One(comprobante, Cfdi + "Complemento");
         var stamp = One(complement, Stamp + "TimbreFiscalDigital");
-        var subtotal = Money(comprobante, "SubTotal");
-        var discount = Money(comprobante, "Descuento", optional: true);
+        var subtotal = RequiredMoney(comprobante, "SubTotal");
+        var discount = OptionalMoney(comprobante, "Descuento");
         if (discount > subtotal) throw new InvalidDataException("Discount exceeds subtotal.");
         var taxesNode = comprobante.Element(Cfdi + "Impuestos");
         var localTaxesNode = complement.Element(LocalTaxes + "ImpuestosLocales");
-        var transferredTax = Money(taxesNode, "TotalImpuestosTrasladados", optional: true);
-        var retainedTax = Money(taxesNode, "TotalImpuestosRetenidos", optional: true);
-        var localTransferredTax = Money(localTaxesNode, "TotaldeTraslados", optional: true);
-        var localRetainedTax = Money(localTaxesNode, "TotaldeRetenciones", optional: true);
-        var total = Money(comprobante, "Total");
+        var transferredTax = OptionalMoney(taxesNode, "TotalImpuestosTrasladados");
+        var retainedTax = OptionalMoney(taxesNode, "TotalImpuestosRetenidos");
+        var localTransferredTax = OptionalMoney(localTaxesNode, "TotaldeTraslados");
+        var localRetainedTax = OptionalMoney(localTaxesNode, "TotaldeRetenciones");
+        var total = RequiredMoney(comprobante, "Total");
         if (total != subtotal - discount + transferredTax - retainedTax + localTransferredTax - localRetainedTax)
             throw new InvalidDataException("Inconsistent total from declared header amounts.");
         var relations = comprobante.Elements(Cfdi + "CfdiRelacionados").SelectMany(relationGroup =>
@@ -64,7 +64,7 @@ internal static class CfdiParser
                     if (!int.TryParse(Required(relatedDocument, "NumParcialidad"), NumberStyles.None, CultureInfo.InvariantCulture, out var installment) || installment <= 0)
                         throw new InvalidDataException("Invalid installment number.");
                     var paidInvoice = new PaymentDocument(Uuid(relatedDocument, "IdDocumento"), installment, Required(relatedDocument, "MonedaDR"),
-                        Money(relatedDocument, "ImpSaldoAnt"), Money(relatedDocument, "ImpPagado"), Money(relatedDocument, "ImpSaldoInsoluto"));
+                        RequiredMoney(relatedDocument, "ImpSaldoAnt"), RequiredMoney(relatedDocument, "ImpPagado"), RequiredMoney(relatedDocument, "ImpSaldoInsoluto"));
                     paidInvoice.InconsistentBalance = paidInvoice.RemainingBalance != paidInvoice.PreviousBalance - paidInvoice.Paid;
                     return paidInvoice;
                 }).ToArray();
@@ -78,7 +78,7 @@ internal static class CfdiParser
                     exchangeRate = parsedRate;
                 }
                 payments.Add(new CfdiPayment(Date(payment, "FechaPago"), Required(payment, "FormaDePagoP"), Required(payment, "MonedaP"),
-                    exchangeRate, Money(payment, "Monto"), (string?)payment.Attribute("NumOperacion"), documents));
+                    exchangeRate, RequiredMoney(payment, "Monto"), (string?)payment.Attribute("NumOperacion"), documents));
             }
             if (payments.Count == 0) throw new InvalidDataException("Payment complement has no payments.");
         }
@@ -105,10 +105,12 @@ internal static class CfdiParser
         DateTime.TryParseExact(Required(xmlNode, attributeName), ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFF"],
             CultureInfo.InvariantCulture, DateTimeStyles.None, out var amount) ? amount : throw new InvalidDataException($"Invalid local date {attributeName}.");
 
-    private static decimal Money(XElement? xmlNode, string attributeName, bool optional = false)
+    private static decimal OptionalMoney(XElement? xmlNode, string attributeName) =>
+        xmlNode?.Attribute(attributeName) is null ? 0 : RequiredMoney(xmlNode, attributeName);
+
+    private static decimal RequiredMoney(XElement? xmlNode, string attributeName)
     {
         var declaredAmount = (string?)xmlNode?.Attribute(attributeName);
-        if (declaredAmount is null && optional) return 0;
         if (declaredAmount is null || !MoneyRules.HasAtMostTwoDecimals(declaredAmount) || !decimal.TryParse(declaredAmount, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
             amount < 0 || amount > MoneyRules.MaxAmount || !MoneyRules.HasAtMostTwoDecimals(amount))
             throw new InvalidDataException($"Invalid {attributeName}: monetary values require at most two decimals and must fit numeric(18,2).");

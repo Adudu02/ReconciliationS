@@ -5,7 +5,7 @@ namespace Reconciliation.Migrator.Migrations;
 [Migration(3, "Operator provisioning and minimal tenancy audit")]
 public sealed class M0003CompanyManagement : Migration
 {
-    public override void Up() => Execute.Sql("""
+    public override void Up() => Execute.Sql($$"""
         ALTER TABLE app_user ADD COLUMN is_operator boolean NOT NULL DEFAULT false;
         REVOKE UPDATE ON app_user FROM cfdi_app;
         CREATE FUNCTION prevent_rfc_change() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -27,12 +27,12 @@ public sealed class M0003CompanyManagement : Migration
         ALTER TABLE audit_entry ENABLE ROW LEVEL SECURITY;
         ALTER TABLE audit_entry FORCE ROW LEVEL SECURITY;
         CREATE POLICY audit_entry_isolation ON audit_entry
-          USING (company_id = nullif(current_setting('app.company_id', true), '')::uuid)
-          WITH CHECK (company_id = nullif(current_setting('app.company_id', true), '')::uuid);
+          USING (company_id = {{TenantSql.CompanyId}})
+          WITH CHECK (company_id = {{TenantSql.CompanyId}});
         GRANT SELECT, INSERT ON audit_entry TO cfdi_app;
         """);
 
-    public override void Down() => Execute.Sql("""
+    public override void Down() => Execute.Sql($$"""
         DROP TABLE audit_entry;
         DROP TRIGGER company_rfc_immutable ON company;
         DROP FUNCTION prevent_rfc_change();

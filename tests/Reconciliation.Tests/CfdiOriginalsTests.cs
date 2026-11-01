@@ -13,8 +13,7 @@ public sealed class CfdiOriginalsTests(ApiFixture fixture)
     [Fact]
     public async Task Same_file_uploaded_twice_keeps_one_invoice_and_original_available_byte_for_byte()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var importer = fixture.App.Services.GetRequiredService<CfdiImporter>();
         var bytes = SyntheticCfdi.Invoice();
         var first = Assert.Single((await importer.ImportAsync(company, user.Id, [UploadedFile.FromBytes("synthetic.xml", bytes)], TestContext.Current.CancellationToken)).Files);
@@ -22,7 +21,7 @@ public sealed class CfdiOriginalsTests(ApiFixture fixture)
         Assert.Equal("imported", first.Status);
         Assert.Equal("already_imported", second.Status);
         Assert.Equal(first.CfdiId, second.CfdiId);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM cfdi WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         var original = await owner.QuerySingleAsync<(byte[] Bytes, byte[] Hash, bool Retained)>(new CommandDefinition("SELECT original, sha256, retained_until >= created_at + interval '10 years' FROM import_file WHERE id = @FileId", new { first.FileId }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(bytes, original.Bytes);
@@ -38,15 +37,14 @@ public sealed class CfdiOriginalsTests(ApiFixture fixture)
     [Fact]
     public async Task Mixed_upload_reports_imported_duplicate_and_rejected_independently()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var importer = fixture.App.Services.GetRequiredService<CfdiImporter>();
         var existing = UploadedFile.FromBytes("existing.xml", SyntheticCfdi.Invoice());
         await importer.ImportAsync(company, user.Id, [existing], TestContext.Current.CancellationToken);
         var report = await importer.ImportAsync(company, user.Id,
             [UploadedFile.FromBytes("new.xml", SyntheticCfdi.Invoice()), existing, UploadedFile.FromBytes("invalid.xml", Encoding.UTF8.GetBytes("<invalid/>"))], TestContext.Current.CancellationToken);
         Assert.Equal(["imported", "already_imported", "rejected"], report.Files.Select(file => file.Status));
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(2, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM cfdi WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(3, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id = @company AND upload_id = @UploadId", new { company, report.UploadId }, cancellationToken: TestContext.Current.CancellationToken)));
     }
@@ -54,8 +52,7 @@ public sealed class CfdiOriginalsTests(ApiFixture fixture)
     [Fact]
     public async Task Same_UUID_in_two_companies_and_concurrent_duplicates_are_isolated_and_idempotent()
     {
-        var user = await fixture.SeedUserAsync();
-        var a = await fixture.SeedCompanyAsync(user.Id);
+        var (user, a) = await fixture.SeedCompanyWithAdminAsync();
         var b = await fixture.SeedCompanyAsync(user.Id);
         var importer = fixture.App.Services.GetRequiredService<CfdiImporter>();
         var file = UploadedFile.FromBytes("same.xml", SyntheticCfdi.Invoice());

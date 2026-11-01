@@ -13,13 +13,12 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [Fact]
     public async Task Income_invoice_accepted_with_sample_retention_and_declared_header_amounts()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
-        var path = Path.GetFullPath("../../../../../samples/synthetic-income-ppd-retention.xml", AppContext.BaseDirectory);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
+        var path = RepoPaths.Sample("synthetic-income-ppd-retention.xml");
         var bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
         var report = await ImportAsync(company, user.Id, bytes);
-        Assert.Equal("imported", Assert.Single(report.Files).Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        ImportAssertions.AssertSingleStatus(report, "imported");
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var row = await owner.QuerySingleAsync<(decimal Subtotal, decimal Discount, decimal Transferred, decimal Retained, decimal Total, string Direction)>(new CommandDefinition(
             "SELECT subtotal, discount, transferred_tax, retained_tax, total, direction FROM cfdi WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal((1690m, 0m, 270.40m, 21.13m, 1939.27m, "issued"), row);
@@ -28,8 +27,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [Fact]
     public async Task Invoice_with_discount_and_local_taxes_uses_only_declared_header_values()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var bytes = SyntheticCfdi.Invoice(root =>
         {
             root.SetAttributeValue("SubTotal", "1000.00"); root.SetAttributeValue("Descuento", "100.00"); root.SetAttributeValue("Total", "1044.00");
@@ -45,7 +43,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
             root.SetAttributeValue("Total", "1944.27");
         });
         Assert.Equal("imported", Assert.Single((await ImportAsync(company, user.Id, local)).Files).Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(5m, await owner.ExecuteScalarAsync<decimal>(new CommandDefinition("SELECT local_transferred_tax - local_retained_tax FROM cfdi WHERE company_id = @company AND local_transferred_tax > 0", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
@@ -57,12 +55,11 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [InlineData("Total", "1939.271", "decimals")]
     public async Task Invalid_header_is_rejected_without_partial_domain_rows(string attribute, string value, string reason)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var result = Assert.Single((await ImportAsync(company, user.Id, SyntheticCfdi.Invoice(root => root.SetAttributeValue(attribute, value)))).Files);
         Assert.Equal("rejected", result.Status);
         Assert.Contains(reason, result.Reason!, StringComparison.OrdinalIgnoreCase);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM cfdi WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id = @company AND original IS NULL AND octet_length(sha256) = 32", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
@@ -70,8 +67,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [Fact]
     public async Task Unrelated_CFDI_is_rejected_and_receiver_company_is_received()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var unrelated = SyntheticCfdi.Invoice(root => root.Element(SyntheticCfdi.Cfdi + "Emisor")!.SetAttributeValue("Rfc", "CCC010101CCC"));
         var refused = Assert.Single((await ImportAsync(company, user.Id, unrelated)).Files);
         Assert.Equal("rejected", refused.Status);
@@ -82,7 +78,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
             root.Element(SyntheticCfdi.Cfdi + "Receptor")!.SetAttributeValue("Rfc", "AAA010101AAA");
         });
         Assert.Equal("imported", Assert.Single((await ImportAsync(company, user.Id, received)).Files).Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal("received", await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT direction FROM cfdi WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
@@ -91,12 +87,11 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [InlineData("4000.00", true)]
     public async Task Payment_complement_accepted_and_inconsistent_balance_is_flagged(string remaining, bool flagged)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var invoice = Guid.NewGuid();
         var result = Assert.Single((await ImportAsync(company, user.Id, SyntheticCfdi.Payment(invoice, remaining))).Files);
         Assert.Equal("imported", result.Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var row = await owner.QuerySingleAsync<(Guid Invoice, int Installment, decimal Previous, decimal Paid, decimal Remaining, bool Flagged)>(new CommandDefinition(
             "SELECT invoice_uuid, installment, previous_balance, paid, remaining_balance, inconsistent_balance FROM cfdi_payment_doc WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal((invoice, 1, 11600m, 5800m, decimal.Parse(remaining, System.Globalization.CultureInfo.InvariantCulture), flagged), row);
@@ -108,8 +103,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [Fact]
     public async Task Balance_continuity_is_checked_within_upload_without_requiring_prior_invoice()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var invoice = Guid.NewGuid();
         var result = await ImportAsync(company, user.Id, SyntheticCfdi.Payment(invoice),
             SyntheticCfdi.Payment(invoice, remaining: "0", installment: 2, previous: "5000", paid: "5000"));
@@ -122,8 +116,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [InlineData("1.1")]
     public async Task Old_complement_version_is_rejected(string version)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var result = Assert.Single((await ImportAsync(company, user.Id, SyntheticCfdi.Payment(Guid.NewGuid(), version: version))).Files);
         Assert.Equal("rejected", result.Status);
         Assert.Contains("version", result.Reason!, StringComparison.OrdinalIgnoreCase);
@@ -137,8 +130,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [InlineData("99", "I")]
     public async Task Credit_note_and_substitution_relations_keep_declared_code(string code, string type)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var related = Guid.NewGuid();
         var bytes = SyntheticCfdi.Invoice(root =>
         {
@@ -146,7 +138,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
             root.Add(new XElement(SyntheticCfdi.Cfdi + "CfdiRelacionados", new XAttribute("TipoRelacion", code), new XElement(SyntheticCfdi.Cfdi + "CfdiRelacionado", new XAttribute("UUID", related))));
         });
         Assert.Equal("imported", Assert.Single((await ImportAsync(company, user.Id, bytes)).Files).Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal((related, code), await owner.QuerySingleAsync<(Guid Related, string Code)>(new CommandDefinition("SELECT related_uuid, relation_code FROM cfdi_relation WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
@@ -155,8 +147,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [InlineData("XEXX010101000", false)]
     public async Task Global_generic_and_foreign_receiver_and_midnight_dates_are_preserved(string receiver, bool global)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var bytes = SyntheticCfdi.Invoice(root =>
         {
             root.Element(SyntheticCfdi.Cfdi + "Receptor")!.SetAttributeValue("Rfc", receiver);
@@ -165,7 +156,7 @@ public sealed class CfdiImportTests(ApiFixture fixture)
             root.Descendants(SyntheticCfdi.Stamp + "TimbreFiscalDigital").Single().SetAttributeValue("FechaTimbrado", "2026-10-01T00:05:00");
         });
         Assert.Equal("imported", Assert.Single((await ImportAsync(company, user.Id, bytes)).Files).Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var row = await owner.QuerySingleAsync<(DateTime Issue, DateTime Stamp, bool Global)>(new CommandDefinition("SELECT issued_at, stamped_at, is_global FROM cfdi WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(new DateTime(2026, 9, 30, 23, 50, 0, DateTimeKind.Unspecified), row.Issue);
         Assert.Equal(new DateTime(2026, 10, 1, 0, 5, 0, DateTimeKind.Unspecified), row.Stamp);
@@ -177,11 +168,10 @@ public sealed class CfdiImportTests(ApiFixture fixture)
     [InlineData("<!DOCTYPE x [<!ENTITY a SYSTEM 'file:///synthetic'>]><x>&a;</x>")]
     public async Task Hostile_or_non_CFDI_file_records_rejection_without_bytes(string xml)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var result = Assert.Single((await ImportAsync(company, user.Id, Encoding.UTF8.GetBytes(xml))).Files);
         Assert.Equal("rejected", result.Status);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id = @company AND status = 'rejected' AND original IS NULL", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 

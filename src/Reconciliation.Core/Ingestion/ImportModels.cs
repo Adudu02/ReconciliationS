@@ -6,6 +6,7 @@ public sealed record UploadedFile(string Name, byte[]? Content, byte[] Hash, str
 {
     public int ContentLength => Length ?? Content?.Length ?? 0;
     public ReadOnlyMemory<byte>? ContentMemory => Content is null ? null : Content.AsMemory(0, ContentLength);
+    public byte[] RequireContent() => Error is null && Content is not null ? Content : throw new InvalidDataException(Error ?? UploadErrors.MissingContent);
     public static UploadedFile FromBytes(string name, byte[] bytes) => new(name, bytes, SHA256.HashData(bytes));
 }
 public sealed record FileImportResult(Guid FileId, string Name, string Status, string? Reason, Guid? CfdiId = null,

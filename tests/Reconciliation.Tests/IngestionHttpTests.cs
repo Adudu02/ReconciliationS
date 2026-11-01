@@ -32,7 +32,7 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
         var uploadId = report.GetProperty("uploadId").GetGuid();
         var file = report.GetProperty("files")[0];
         var invoice = file.GetProperty("cfdiId").GetGuid();
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("UPDATE membership SET role = 'viewer' WHERE company_id = @company AND user_id = @Id", new { company, user.Id }, cancellationToken: TestContext.Current.CancellationToken));
         using var read = await client.GetAsync($"/companies/{company}/cfdi/{invoice}", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, read.StatusCode);
@@ -74,7 +74,7 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
         Assert.Equal(1, stored.GetProperty("files")[0].GetProperty("importedMovements").GetInt32());
         using var original = await client.GetAsync($"/companies/{company}/imports/files/{fileId}/original", TestContext.Current.CancellationToken);
         Assert.Equal(bytes, await original.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken));
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("UPDATE membership SET role = 'viewer' WHERE company_id = @company AND user_id = @Id", new { company, user.Id }, cancellationToken: TestContext.Current.CancellationToken));
         using var deniedBody = new MultipartFormDataContent { { new ByteArrayContent(bytes), "files", "synthetic.csv" } };
         using var denied = await client.PostAsync($"/companies/{company}/imports/bank-statement", deniedBody, TestContext.Current.CancellationToken);
@@ -97,7 +97,7 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var report = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(["rejected", "rejected", "imported"], report.GetProperty("files").EnumerateArray().Select(file => file.GetProperty("status").GetString()));
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(2, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id = @company AND status = 'rejected' AND original IS NULL AND octet_length(sha256) = 32", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
@@ -118,7 +118,7 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
         using HttpContent body = streaming ? new UnmeasuredContent(await multipart.ReadAsByteArrayAsync(TestContext.Current.CancellationToken), multipart.Headers.ContentType!.ToString()) : multipart;
         using var response = await client.PostAsync($"/companies/{company}/imports/cfdi", body, TestContext.Current.CancellationToken);
         Assert.Equal(expected, response.StatusCode);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 

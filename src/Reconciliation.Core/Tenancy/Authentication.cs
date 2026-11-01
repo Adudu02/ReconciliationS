@@ -12,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
+using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
 
@@ -64,7 +65,7 @@ public static class Authentication
         {
             if (string.IsNullOrWhiteSpace(credentials.Email) || string.IsNullOrEmpty(credentials.Password)) return Results.Unauthorized();
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-            var account = await connection.QuerySingleOrDefaultAsync<LoginUser>(new CommandDefinition(
+            var account = await connection.QuerySingleOrDefaultAsync<LoginUser>(Command(
                 "SELECT id, email, password_hash AS PasswordHash FROM app_user WHERE lower(email) = lower(@Email)", credentials, cancellationToken: cancellationToken));
             // Perform the slow verification even for an unknown email.
             var hashToCompare = account?.PasswordHash ?? dummyHash.Value;

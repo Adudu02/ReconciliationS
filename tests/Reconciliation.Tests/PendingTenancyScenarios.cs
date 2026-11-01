@@ -35,8 +35,7 @@ public sealed class PendingTenancyScenarios(ApiFixture fixture)
     [Fact(DisplayName = "Delete attempt")]
     public async Task Imported_CFDI_retained_on_delete_attempt()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var bytes = SyntheticCfdi.Invoice();
         var report = await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(company, user.Id,
             [UploadedFile.FromBytes("synthetic.xml", bytes)], TestContext.Current.CancellationToken);

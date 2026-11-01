@@ -48,7 +48,7 @@ internal static class TenantIsolationChecks
         var operatorEmail = $"isolation-operator-{Guid.NewGuid():N}@example.invalid";
         await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, operatorEmail, ApiFixture.Password, TestContext.Current.CancellationToken);
         using var platform = await fixture.LoginAsync(operatorEmail);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var importer = fixture.App.Services.GetRequiredService<CfdiImporter>();
         var resourceA = await SeedResourcesAsync(importer, a, user.Id);
         var resourceB = await SeedResourcesAsync(importer, b, other.Id);

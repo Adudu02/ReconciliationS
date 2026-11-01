@@ -9,10 +9,9 @@ public sealed class IngestionDatabaseTests(ApiFixture fixture)
     [Fact]
     public async Task Domain_tables_exist_and_invoice_UUID_is_unique_within_company()
     {
-        var user = await fixture.SeedUserAsync();
-        var a = await fixture.SeedCompanyAsync(user.Id);
+        var (user, a) = await fixture.SeedCompanyWithAdminAsync();
         var b = await fixture.SeedCompanyAsync(user.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         foreach (var table in new[] { "import_file", "cfdi", "cfdi_relation", "cfdi_payment", "cfdi_payment_doc", "bank_account", "bank_movement" })
             Assert.True(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT to_regclass(@table) IS NOT NULL", new { table }, cancellationToken: TestContext.Current.CancellationToken)), table);
         var uuid = Guid.NewGuid();
@@ -26,9 +25,8 @@ public sealed class IngestionDatabaseTests(ApiFixture fixture)
     [Fact]
     public async Task Movement_uniqueness_preserves_different_balances_and_money_is_cent_exact()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var account = await owner.QuerySingleAsync<Guid>(new CommandDefinition("INSERT INTO bank_account(company_id, bank, account_reference) VALUES (@company, 'reference', 'Synthetic-1234') RETURNING id", new { company }, cancellationToken: TestContext.Current.CancellationToken));
         const string insert = "INSERT INTO bank_movement(company_id, bank_account_id, movement_date, description, credit, debit, balance) VALUES (@company, @account, '2026-10-10', 'Synthetic', @amount, 0, @balance)";
         await owner.ExecuteAsync(new CommandDefinition(insert, new { company, account, amount = 0.10m, balance = 0.10m }, cancellationToken: TestContext.Current.CancellationToken));
@@ -45,10 +43,9 @@ public sealed class IngestionDatabaseTests(ApiFixture fixture)
     [Fact]
     public async Task Cross_company_foreign_keys_and_imported_data_deletion_are_refused()
     {
-        var user = await fixture.SeedUserAsync();
-        var a = await fixture.SeedCompanyAsync(user.Id);
+        var (user, a) = await fixture.SeedCompanyWithAdminAsync();
         var b = await fixture.SeedCompanyAsync(user.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var invoice = await InsertInvoiceAsync(owner, b, Guid.NewGuid());
         var error = await Assert.ThrowsAsync<PostgresException>(() => owner.ExecuteAsync(new CommandDefinition("INSERT INTO cfdi_relation(company_id, cfdi_id, related_uuid, relation_code) VALUES (@a, @invoice, gen_random_uuid(), '04')", new { a, invoice }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, error.SqlState);

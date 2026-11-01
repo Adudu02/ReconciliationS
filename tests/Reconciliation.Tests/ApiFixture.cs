@@ -39,15 +39,21 @@ public sealed class ApiFixture : IAsyncLifetime
         var email = $"synthetic-{id:N}@example.invalid";
         var hasher = App.Services.GetRequiredService<IPasswordHasher<string>>();
         var hash = hasher.HashPassword(email, Password);
-        await using var owner = new NpgsqlConnection(Database.OwnerConnectionString);
+        await using var owner = await Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("INSERT INTO app_user(id, email, password_hash) VALUES (@id, @email, @hash)",
             new { id, email, hash }, cancellationToken: TestContext.Current.CancellationToken));
         return (id, email);
     }
 
+    public async Task<((Guid Id, string Email) User, Guid CompanyId)> SeedCompanyWithAdminAsync()
+    {
+        var user = await SeedUserAsync();
+        return (user, await SeedCompanyAsync(user.Id));
+    }
+
     public async Task<Guid> SeedCompanyAsync(Guid userId, string role = "administrator")
     {
-        await using var owner = new NpgsqlConnection(Database.OwnerConnectionString);
+        await using var owner = await Database.OpenOwnerAsync();
         var id = await owner.QuerySingleAsync<Guid>(new CommandDefinition(
             "INSERT INTO company(rfc, name) VALUES ('AAA010101AAA', 'Synthetic company') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
         await owner.ExecuteAsync(new CommandDefinition("INSERT INTO membership(company_id, user_id, role) VALUES (@id, @userId, @role::membership_role)",

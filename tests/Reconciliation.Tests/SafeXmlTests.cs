@@ -26,7 +26,7 @@ public sealed class SafeXmlTests
     [Fact]
     public async Task Synthetic_CFDI_is_read_without_following_schema_network_locations()
     {
-        var path = Path.GetFullPath("../../../../../samples/synthetic-income-ppd-retention.xml", AppContext.BaseDirectory);
+        var path = RepoPaths.Sample("synthetic-income-ppd-retention.xml");
         var bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
         var root = new SafeCfdiXml(new IngestionOptions()).Read(bytes).Root!;
         Assert.Equal("Comprobante", root.Name.LocalName);

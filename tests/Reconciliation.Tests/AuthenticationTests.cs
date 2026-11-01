@@ -28,7 +28,7 @@ public sealed class AuthenticationTests(ApiFixture fixture)
     {
         var user = await fixture.SeedUserAsync();
         var hasher = fixture.App.Services.GetRequiredService<IPasswordHasher<string>>();
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var hash = await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT password_hash FROM app_user WHERE id = @Id", new { user.Id }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.NotEqual(ApiFixture.Password, hash);
         Assert.NotEqual(hash, hasher.HashPassword(user.Email, ApiFixture.Password));

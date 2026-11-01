@@ -33,9 +33,9 @@ public sealed partial class ReferenceBankStatementParser(IngestionOptions option
                     throw new InvalidDataException($"Line {lineNumber}: invalid date; expected yyyy-MM-dd.");
                 var description = columnValues[1].Trim();
                 if (description.Length > options.MaxDescriptionLength) throw new InvalidDataException($"Line {lineNumber}: description exceeds {options.MaxDescriptionLength} characters.");
-                var creditAmount = Amount(columnValues[2], lineNumber, signed: false, emptyZero: true);
-                var debitAmount = Amount(columnValues[3], lineNumber, signed: false, emptyZero: true);
-                var runningBalance = Amount(columnValues[4], lineNumber, signed: true, emptyZero: false);
+                var creditAmount = CreditOrDebit(columnValues[2], lineNumber);
+                var debitAmount = CreditOrDebit(columnValues[3], lineNumber);
+                var runningBalance = Balance(columnValues[4], lineNumber);
                 if (description.Length == 0 || !((creditAmount > 0 && debitAmount == 0) || (debitAmount > 0 && creditAmount == 0)))
                     throw new InvalidDataException($"Line {lineNumber}: description and exactly one positive credit/debit are required.");
                 var referenceMatch = TrackingKey().Match(description);
@@ -49,13 +49,22 @@ public sealed partial class ReferenceBankStatementParser(IngestionOptions option
         return statementLines;
     }
 
-    private static decimal Amount(string declaredAmount, long lineNumber, bool signed, bool emptyZero)
+    private static decimal CreditOrDebit(string declaredAmount, long lineNumber)
     {
-        if (emptyZero && declaredAmount.Length == 0) return 0;
-        if (!NumberFormat().IsMatch(declaredAmount) || (!signed && declaredAmount.StartsWith('-')) ||
+        if (declaredAmount.Length == 0) return 0;
+        if (declaredAmount.StartsWith('-')) throw InvalidAmount(lineNumber);
+        return Balance(declaredAmount, lineNumber);
+    }
+
+    private static InvalidDataException InvalidAmount(long lineNumber) =>
+        new($"Line {lineNumber}: invalid amount; use a decimal point and at most two decimals.");
+
+    private static decimal Balance(string declaredAmount, long lineNumber)
+    {
+        if (!NumberFormat().IsMatch(declaredAmount) ||
             !decimal.TryParse(declaredAmount, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
             amount is < -Money.MaxAmount or > Money.MaxAmount)
-            throw new InvalidDataException($"Line {lineNumber}: invalid amount; use a decimal point and at most two decimals.");
+            throw InvalidAmount(lineNumber);
         return amount;
     }
 

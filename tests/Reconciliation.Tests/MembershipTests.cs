@@ -28,7 +28,7 @@ public sealed class MembershipTests(ApiFixture fixture)
         using var client = await fixture.LoginAsync(user.Email, company);
         using var denied = await client.PostAsJsonAsync($"/companies/{company}/members", new { userId = added.Id, role = "viewer" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM membership WHERE company_id = @company AND user_id = @Id", new { company, added.Id }, cancellationToken: TestContext.Current.CancellationToken)));
         await owner.ExecuteAsync(new CommandDefinition("UPDATE membership SET role = 'administrator' WHERE company_id = @company AND user_id = @Id", new { company, user.Id }, cancellationToken: TestContext.Current.CancellationToken));
         using var accepted = await client.PostAsJsonAsync($"/companies/{company}/members", new { userId = added.Id, role = "viewer" }, TestContext.Current.CancellationToken);
@@ -64,8 +64,7 @@ public sealed class MembershipTests(ApiFixture fixture)
     [InlineData("00000000-0000-0000-0000-000000000001")]
     public async Task Missing_invalid_or_nonmember_company_context_is_refused(string? selected)
     {
-        var user = await fixture.SeedUserAsync();
-        var a = await fixture.SeedCompanyAsync(user.Id);
+        var (user, a) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email);
         if (selected is not null) client.DefaultRequestHeaders.Add("X-Company-Id", selected);
         using var denied = await client.GetAsync($"/companies/{a}", TestContext.Current.CancellationToken);

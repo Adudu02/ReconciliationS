@@ -33,7 +33,7 @@ public sealed class CompanyManagementTests(ApiFixture fixture)
         Assert.Equal(HttpStatusCode.OK, company.StatusCode);
         using var members = await admin.GetAsync($"/companies/{id}/members", TestContext.Current.CancellationToken);
         Assert.Contains("administrator", await members.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id = @id AND action = 'company.created'", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
         var hash = await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT password_hash FROM app_user WHERE email = @email", new { email }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.NotEqual(ApiFixture.Password, hash);
@@ -45,7 +45,7 @@ public sealed class CompanyManagementTests(ApiFixture fixture)
     {
         var existing = await fixture.SeedUserAsync();
         using var client = await OperatorAsync();
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var before = await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT password_hash FROM app_user WHERE id = @Id", new { existing.Id }, cancellationToken: TestContext.Current.CancellationToken));
         using var attached = await client.PostAsJsonAsync("/companies", new { rfc = "AAA010101AAA", name = "Synthetic existing admin", adminEmail = existing.Email, adminPassword = "ignored" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Created, attached.StatusCode);
@@ -67,7 +67,7 @@ public sealed class CompanyManagementTests(ApiFixture fixture)
     public async Task Invalid_company_input_is_rejected_with_reason_and_no_partial_rows(string rfc, string email, string password, string reason)
     {
         using var client = await OperatorAsync();
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var before = await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM company", cancellationToken: TestContext.Current.CancellationToken));
         using var response = await client.PostAsJsonAsync("/companies", new { rfc, name = "Synthetic invalid", adminEmail = email, adminPassword = password }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -78,8 +78,7 @@ public sealed class CompanyManagementTests(ApiFixture fixture)
     [Fact]
     public async Task Not_an_operator_cannot_create_company()
     {
-        var user = await fixture.SeedUserAsync();
-        var id = await fixture.SeedCompanyAsync(user.Id);
+        var (user, id) = await fixture.SeedCompanyWithAdminAsync();
         using var admin = await fixture.LoginAsync(user.Email, id);
         using var response = await admin.PostAsJsonAsync("/companies", new { rfc = "AAA010101AAA", name = "Synthetic refused", adminEmail = "synthetic@example.invalid", adminPassword = ApiFixture.Password }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -91,7 +90,7 @@ public sealed class CompanyManagementTests(ApiFixture fixture)
         var email = $"bootstrap-{Guid.NewGuid():N}@example.invalid";
         await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, email, ApiFixture.Password, TestContext.Current.CancellationToken);
         await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, email, "different-synthetic-password", TestContext.Current.CancellationToken);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM membership m JOIN app_user u ON u.id = m.user_id WHERE u.email = @email", new { email }, cancellationToken: TestContext.Current.CancellationToken)));
         using var client = await fixture.LoginAsync(email);
         await Assert.ThrowsAsync<ArgumentException>(() => OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, "invalid-email", "short", TestContext.Current.CancellationToken));

@@ -49,8 +49,8 @@ public sealed class IngestionBenchmarks(ApiFixture fixture)
             var report = await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(company, user.Id,
                 [UploadedFile.FromBytes("benchmark.xml", Encoding.UTF8.GetBytes(payment.ToString()))], TestContext.Current.CancellationToken);
             watch.Stop();
-            Assert.Equal("imported", Assert.Single(report.Files).Status);
-            await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+            ImportAssertions.AssertSingleStatus(report, "imported");
+            await using var owner = await fixture.Database.OpenOwnerAsync();
             Assert.Equal(300, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM cfdi_payment_doc WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
             if (sample > 0) paymentTimes.Add(watch.Elapsed.TotalMilliseconds);
         }

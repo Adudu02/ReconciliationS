@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
@@ -5,6 +6,16 @@ namespace Reconciliation.Core.Tenancy;
 
 public sealed partial class TenantContext(NpgsqlDataSource dataSource, ILogger<TenantContext> logger)
 {
+    public Task<IResult> ExecuteResultAsync(Guid? companyId,
+        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<IResult>> work,
+        CancellationToken cancellationToken = default) => ExecuteAsync(companyId, work, cancellationToken);
+
+    public Task<IResult> ExecuteWriteResultAsync(Guid companyId,
+        Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<IResult>> work,
+        CancellationToken cancellationToken = default) => ExecuteWriteAsync(companyId, work, cancellationToken);
+
+    public static IResult OkOrNotFound<T>(T? resource) => resource is null ? Results.NotFound() : Results.Ok(resource);
+
     public Task<T> ExecuteAsync<T>(Guid? companyId,
         Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<T>> work,
         CancellationToken cancellationToken = default) => ExecuteTransactionAsync(companyId, work, false, cancellationToken);

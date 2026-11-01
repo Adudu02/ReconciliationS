@@ -5,7 +5,7 @@ namespace Reconciliation.Migrator.Migrations;
 [Migration(2, "Force tenant row-level security")]
 public sealed class M0002TenantIsolation : Migration
 {
-    public override void Up() => Execute.Sql("""
+    public override void Up() => Execute.Sql($$"""
         DO $$ BEGIN
           IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cfdi_app') THEN
             CREATE ROLE cfdi_app NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
@@ -16,16 +16,16 @@ public sealed class M0002TenantIsolation : Migration
         ALTER TABLE company ENABLE ROW LEVEL SECURITY;
         ALTER TABLE company FORCE ROW LEVEL SECURITY;
         CREATE POLICY company_isolation ON company
-          USING (id = nullif(current_setting('app.company_id', true), '')::uuid)
-          WITH CHECK (id = nullif(current_setting('app.company_id', true), '')::uuid);
+          USING (id = {{TenantSql.CompanyId}})
+          WITH CHECK (id = {{TenantSql.CompanyId}});
         ALTER TABLE membership ENABLE ROW LEVEL SECURITY;
         ALTER TABLE membership FORCE ROW LEVEL SECURITY;
         CREATE POLICY membership_isolation ON membership
-          USING (company_id = nullif(current_setting('app.company_id', true), '')::uuid)
-          WITH CHECK (company_id = nullif(current_setting('app.company_id', true), '')::uuid);
+          USING (company_id = {{TenantSql.CompanyId}})
+          WITH CHECK (company_id = {{TenantSql.CompanyId}});
         """);
 
-    public override void Down() => Execute.Sql("""
+    public override void Down() => Execute.Sql($$"""
         DROP POLICY membership_isolation ON membership;
         ALTER TABLE membership NO FORCE ROW LEVEL SECURITY;
         ALTER TABLE membership DISABLE ROW LEVEL SECURITY;

@@ -14,8 +14,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
     [Fact]
     public async Task Tolerance_changed_is_persisted_and_audits_previous_and_new_values()
     {
-        var user = await fixture.SeedUserAsync();
-        var id = await fixture.SeedCompanyAsync(user.Id);
+        var (user, id) = await fixture.SeedCompanyWithAdminAsync();
         using var admin = await fixture.LoginAsync(user.Email, id);
         using var changed = await admin.PatchAsJsonAsync($"/companies/{id}/settings", new { amountTolerance = 0.02m, dateToleranceDays = 5, complementNextBizDay = true }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
@@ -24,7 +23,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
         Assert.Equal(0.02m, json.GetProperty("amountTolerance").GetDecimal());
         Assert.Equal(5, json.GetProperty("dateToleranceDays").GetInt32());
         Assert.True(json.GetProperty("complementNextBizDay").GetBoolean());
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var entry = await owner.QuerySingleAsync<(Guid Actor, string Old, string New)>(new CommandDefinition("SELECT actor_id, old_values::text, new_values::text FROM audit_entry WHERE company_id = @id AND action = 'company.settings_changed'", new { id }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(user.Id, entry.Actor);
         using var oldValues = JsonDocument.Parse(entry.Old);
@@ -46,7 +45,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
         using var read = await client.GetAsync($"/companies/{id}/settings", TestContext.Current.CancellationToken);
         var json = await read.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         Assert.Equal(0.01m, json.GetProperty("amountTolerance").GetDecimal());
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id = @id", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
@@ -57,8 +56,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
     [InlineData("{\"rfc\":\"BBB010101BBB\"}")]
     public async Task Invalid_settings_and_RFC_changes_are_rejected(string body)
     {
-        var user = await fixture.SeedUserAsync();
-        var id = await fixture.SeedCompanyAsync(user.Id);
+        var (user, id) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, id);
         using var content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
         using var response = await client.PatchAsync($"/companies/{id}/settings", content, TestContext.Current.CancellationToken);
@@ -68,17 +66,15 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
     [Fact]
     public async Task RFC_is_immutable_even_through_direct_database_update()
     {
-        var user = await fixture.SeedUserAsync();
-        var id = await fixture.SeedCompanyAsync(user.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        var (user, id) = await fixture.SeedCompanyWithAdminAsync();
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await Assert.ThrowsAsync<PostgresException>(() => owner.ExecuteAsync(new CommandDefinition("UPDATE company SET rfc = 'BBB010101BBB' WHERE id = @id", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
     [Fact]
     public async Task Archive_keeps_company_memberships_and_audits_and_no_DELETE_route_exists()
     {
-        var user = await fixture.SeedUserAsync();
-        var id = await fixture.SeedCompanyAsync(user.Id);
+        var (user, id) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, id);
         using var archived = await client.PostAsync($"/companies/{id}/archive", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, archived.StatusCode);
@@ -89,7 +85,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
         Assert.Equal(HttpStatusCode.MethodNotAllowed, delete.StatusCode);
         var endpoints = fixture.App.Services.GetRequiredService<EndpointDataSource>().Endpoints;
         Assert.DoesNotContain(endpoints, endpoint => endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods.Contains("DELETE", StringComparer.Ordinal) == true);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM membership WHERE company_id = @id", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id = @id AND action = 'company.archived'", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
     }
@@ -97,10 +93,9 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
     [Fact]
     public async Task Audit_failure_rolls_back_settings_change()
     {
-        var user = await fixture.SeedUserAsync();
-        var id = await fixture.SeedCompanyAsync(user.Id);
+        var (user, id) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("REVOKE INSERT ON audit_entry FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
         try
         {

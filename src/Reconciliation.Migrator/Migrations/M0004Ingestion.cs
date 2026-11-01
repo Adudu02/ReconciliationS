@@ -76,7 +76,7 @@ public sealed class M0004Ingestion : Migration
           FOREACH tenant_table IN ARRAY ARRAY['import_file','cfdi','cfdi_relation','cfdi_payment','cfdi_payment_doc','bank_account','bank_movement'] LOOP
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
             EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
-            EXECUTE format('CREATE POLICY tenant_isolation ON %I USING (company_id = nullif(current_setting(''app.company_id'', true), '''')::uuid) WITH CHECK (company_id = nullif(current_setting(''app.company_id'', true), '''')::uuid)', tenant_table);
+            EXECUTE format('CREATE POLICY tenant_isolation ON %I USING (company_id = {{TenantSql.InDynamicSql}}) WITH CHECK (company_id = {{TenantSql.InDynamicSql}})', tenant_table);
             EXECUTE format('GRANT SELECT, INSERT ON %I TO cfdi_app', tenant_table);
           END LOOP;
         END $$;
@@ -95,7 +95,7 @@ public sealed class M0004Ingestion : Migration
           FOR EACH ROW EXECUTE FUNCTION preserve_import_original();
         """);
 
-    public override void Down() => Execute.Sql("""
+    public override void Down() => Execute.Sql($$"""
         DROP TABLE bank_movement, bank_account, cfdi_payment_doc, cfdi_payment, cfdi_relation, cfdi, import_file;
         DROP FUNCTION preserve_import_original();
         """);

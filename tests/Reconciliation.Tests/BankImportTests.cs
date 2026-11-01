@@ -16,7 +16,7 @@ public sealed class BankImportTests(ApiFixture fixture)
     [Fact]
     public async Task Documented_examples_parse_with_dates_amounts_quoted_descriptions_and_references()
     {
-        var path = Path.GetFullPath("../../../../../docs/reference/bank-csv-reference-format.md", AppContext.BaseDirectory);
+        var path = RepoPaths.Doc("reference/bank-csv-reference-format.md");
         var markdown = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
         var sample = markdown.Split("```csv\n", StringSplitOptions.None)[1].Split("```", StringSplitOptions.None)[0];
         var parser = fixture.App.Services.GetRequiredService<IEnumerable<IBankStatementParser>>().Single();
@@ -35,15 +35,14 @@ public sealed class BankImportTests(ApiFixture fixture)
     [Fact]
     public async Task Valid_statement_and_overlapping_statements_import_only_new_movements()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var importer = fixture.App.Services.GetRequiredService<BankStatementImporter>();
         var first = await importer.ImportAsync(company, user.Id, "reference", "Synthetic-1234", [Csv(Header + First + Second)], TestContext.Current.CancellationToken);
         Assert.Equal(2, Assert.Single(first.Files).ImportedMovements);
         var overlap = await importer.ImportAsync(company, user.Id, "reference", "Synthetic-1234", [Csv(Header + Second + "2026-10-21,NUEVO SINTETICO,10,0,11610.00\n")], TestContext.Current.CancellationToken);
         Assert.Equal(1, Assert.Single(overlap.Files).ImportedMovements);
         Assert.Equal(1, Assert.Single(overlap.Files).DuplicateMovements);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(3, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM bank_movement WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         var original = await owner.QuerySingleAsync<byte[]>(new CommandDefinition("SELECT original FROM import_file WHERE id = @FileId", new { overlap.Files[0].FileId }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(Csv(Header + Second + "2026-10-21,NUEVO SINTETICO,10,0,11610.00\n").Content, original);
@@ -52,8 +51,7 @@ public sealed class BankImportTests(ApiFixture fixture)
     [Fact]
     public async Task Two_legitimate_identical_movements_with_different_balances_are_preserved()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var result = await fixture.App.Services.GetRequiredService<BankStatementImporter>().ImportAsync(company, user.Id, "reference", "Synthetic-1234",
             [Csv(Header + First + First.Replace("0,5800.00", "0,11600.00", StringComparison.Ordinal))], TestContext.Current.CancellationToken);
         Assert.Equal(2, Assert.Single(result.Files).ImportedMovements);
@@ -67,13 +65,12 @@ public sealed class BankImportTests(ApiFixture fixture)
     [InlineData("2026-10-10,\"unterminated,1,0,1", "2")]
     public async Task Malformed_line_rejects_whole_statement_with_line_number_and_no_partial_account_or_movements(string line, string reason)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var report = await fixture.App.Services.GetRequiredService<BankStatementImporter>().ImportAsync(company, user.Id, "reference", "Synthetic-1234", [Csv(Header + line + "\n" + First)], TestContext.Current.CancellationToken);
         var rejected = Assert.Single(report.Files);
         Assert.Equal("rejected", rejected.Status);
         Assert.Contains(reason, rejected.Reason!, StringComparison.Ordinal);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM bank_account WHERE company_id = @company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
@@ -82,8 +79,7 @@ public sealed class BankImportTests(ApiFixture fixture)
     [InlineData("reference", "invalid/account", "accountReference")]
     public async Task Unknown_bank_and_invalid_account_label_are_rejected_with_reason(string bank, string account, string reason)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var result = Assert.Single((await fixture.App.Services.GetRequiredService<BankStatementImporter>().ImportAsync(company, user.Id, bank, account, [Csv(Header + First)], TestContext.Current.CancellationToken)).Files);
         Assert.Equal("rejected", result.Status);
         Assert.Contains(reason, result.Reason!, StringComparison.OrdinalIgnoreCase);

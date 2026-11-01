@@ -9,7 +9,7 @@ public sealed class IsolationTests(ApiFixture fixture)
     [Fact]
     public async Task Every_tenant_table_has_forced_RLS_and_a_policy()
     {
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await TenantIsolationChecks.VerifyTablesAsync(owner);
     }
 
@@ -24,7 +24,7 @@ public sealed class IsolationTests(ApiFixture fixture)
     {
         var user = await fixture.SeedUserAsync();
         await fixture.SeedCompanyAsync(user.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var tables = await TenantIsolationChecks.TenantTablesAsync(owner);
         await using var app = new NpgsqlConnection(fixture.Database.AppConnectionString);
         foreach (var table in tables)

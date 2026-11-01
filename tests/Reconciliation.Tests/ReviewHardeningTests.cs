@@ -24,8 +24,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     [InlineData(null)]
     public async Task Hostile_filename_is_sanitized_and_does_not_lose_an_earlier_file(string? encodedName)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, company);
         using var content = IngestionHttpTests.CfdiBody(SyntheticCfdi.Invoice());
         var hostile = new ByteArrayContent(SyntheticCfdi.Invoice());
@@ -44,10 +43,9 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     [Fact]
     public async Task Mid_upload_database_failure_returns_upload_id_for_already_committed_files()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, company);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("""
             CREATE FUNCTION reject_review_file() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic fault'; END $$;
             CREATE TRIGGER reject_review_file BEFORE INSERT ON import_file FOR EACH ROW
@@ -75,8 +73,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     [Fact]
     public async Task XML_attributes_count_toward_complexity_and_only_reject_the_hostile_file()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var attributes = string.Join(' ', Enumerable.Range(0, 2000).Select(index => $"a{index}=\"x\""));
         var concepts = string.Concat(Enumerable.Repeat($"<node {attributes}/>", 1000));
         var valid = Encoding.UTF8.GetString(SyntheticCfdi.Invoice());
@@ -96,8 +93,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     [Fact]
     public async Task Archived_company_allows_reads_but_refuses_all_data_changes()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, company);
         using var archived = await client.PostAsync($"/companies/{company}/archive", null, TestContext.Current.CancellationToken);
         archived.EnsureSuccessStatusCode();
@@ -118,7 +114,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
         var a = await fixture.SeedUserAsync();
         var b = await fixture.SeedUserAsync();
         var company = await fixture.SeedCompanyAsync(a.Id);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("INSERT INTO membership(company_id,user_id,role) VALUES (@company,@Id,'administrator')", new { company, b.Id }, cancellationToken: TestContext.Current.CancellationToken));
         using var clientA = await fixture.LoginAsync(a.Email, company);
         using var clientB = await fixture.LoginAsync(b.Email, company);
@@ -136,8 +132,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     [Fact]
     public async Task Original_downloads_are_attachments_and_cannot_be_content_sniffed()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         var report = await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(company, user.Id,
             [UploadedFile.FromBytes("synthetic.xml", SyntheticCfdi.Invoice())], TestContext.Current.CancellationToken);
         using var client = await fixture.LoginAsync(user.Email, company);
@@ -154,23 +149,21 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     [InlineData("Ingestion:MaxDescriptionLength", "3", "2026-10-10,TOO LONG,1,0,1\n")]
     public async Task Statement_resource_limits_reject_the_whole_file(string setting, string limit, string csv)
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var app = fixture.App.WithWebHostBuilder(builder => builder.UseSetting(setting, limit));
         var result = await app.Services.GetRequiredService<BankStatementImporter>().ImportAsync(company, user.Id, "reference", "Synthetic-1234",
             [UploadedFile.FromBytes("synthetic.csv", Encoding.UTF8.GetBytes("fecha,concepto,abono,cargo,saldo\n" + csv))], TestContext.Current.CancellationToken);
-        Assert.Equal("rejected", Assert.Single(result.Files).Status);
+        ImportAssertions.AssertSingleStatus(result, "rejected");
     }
 
     [Fact]
     public async Task Date_tolerance_is_bounded_in_the_API_and_database()
     {
-        var user = await fixture.SeedUserAsync();
-        var company = await fixture.SeedCompanyAsync(user.Id);
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, company);
         using var response = await client.PatchAsJsonAsync($"/companies/{company}/settings", new { dateToleranceDays = 367 }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
         var error = await Assert.ThrowsAsync<PostgresException>(() => owner.ExecuteAsync(new CommandDefinition("UPDATE company SET date_tolerance_days=367 WHERE id=@company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(PostgresErrorCodes.CheckViolation, error.SqlState);
     }

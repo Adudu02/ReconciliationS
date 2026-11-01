@@ -65,13 +65,13 @@ public sealed class TenantContextTests(PostgresFixture database) : IClassFixture
         }, TestContext.Current.CancellationToken));
         await using var connection = await source.OpenConnectionAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, await connection.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM company", cancellationToken: TestContext.Current.CancellationToken)));
-        await using var owner = new NpgsqlConnection(database.OwnerConnectionString);
+        await using var owner = await database.OpenOwnerAsync();
         Assert.Equal("committed", await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT name FROM company WHERE id = @a", new { a }, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
     private async Task<Guid> SeedCompanyAsync()
     {
-        await using var owner = new NpgsqlConnection(database.OwnerConnectionString);
+        await using var owner = await database.OpenOwnerAsync();
         return await owner.QuerySingleAsync<Guid>(new CommandDefinition(
             "INSERT INTO company(rfc, name) VALUES ('AAA010101AAA', 'Synthetic company') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
     }
