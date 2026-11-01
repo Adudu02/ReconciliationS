@@ -20,6 +20,7 @@ public static class OperatorBootstrap
             """, connection);
         command.Parameters.AddWithValue("email", email);
         command.Parameters.AddWithValue("hash", hash);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            Console.WriteLine("operator already exists, not modified");
     }
 }

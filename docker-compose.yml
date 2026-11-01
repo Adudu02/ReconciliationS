@@ -35,7 +35,7 @@ services:
   api:
     build: { context: ., target: api }
     environment:
-      Jwt__SigningKey: ${JWT_SIGNING_KEY:-synthetic-local-signing-key-at-least-32-bytes}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random secret of at least 32 bytes}
       ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
     ports:
       - '127.0.0.1:8080:3000'

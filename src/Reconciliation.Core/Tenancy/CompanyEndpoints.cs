@@ -28,13 +28,21 @@ public static class CompanyEndpoints
             .RequireAuthorization("company-member");
 
         routes.MapPost("/companies/{id:guid}/members", (Guid id, MemberRequest request, TenantContext tenant, CancellationToken ct) =>
-            tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+            tenant.ExecuteWriteAsync<IResult>(id, async (connection, transaction, token) =>
             {
                 if (request.Role is not ("administrator" or "accountant" or "viewer"))
                     return Results.BadRequest(new { error = "Role must be administrator, accountant or viewer." });
                 var exists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
                     "SELECT EXISTS(SELECT FROM app_user WHERE id = @UserId)", request, transaction, cancellationToken: token));
                 if (!exists) return Results.BadRequest(new { error = "Unknown user." });
+                if (request.Role != "administrator")
+                {
+                    var lastAdmin = await connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
+                        SELECT EXISTS(SELECT FROM membership WHERE user_id=@UserId AND role='administrator')
+                          AND (SELECT count(*) FROM membership WHERE role='administrator') <= 1
+                        """, request, transaction, cancellationToken: token));
+                    if (lastAdmin) return Results.Conflict(new { error = "The company must retain at least one administrator." });
+                }
                 await connection.ExecuteAsync(new CommandDefinition("""
                     INSERT INTO membership(company_id, user_id, role) VALUES (@id, @UserId, @Role::membership_role)
                     ON CONFLICT (company_id, user_id) DO UPDATE SET role = excluded.role

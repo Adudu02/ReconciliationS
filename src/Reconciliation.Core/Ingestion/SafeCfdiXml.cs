@@ -20,7 +20,7 @@ public sealed class SafeCfdiXml(IngestionOptions options)
         {
             var nodes = 0;
             while (reader.Read())
-                if (++nodes > options.MaxXmlNodes || reader.Depth > options.MaxXmlDepth)
+                if ((nodes += 1 + reader.AttributeCount) > options.MaxXmlNodes || reader.Depth > options.MaxXmlDepth)
                     throw new InvalidDataException("XML exceeds node-count or depth limit.");
         }
         stream.Position = 0;

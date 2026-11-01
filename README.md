@@ -24,7 +24,7 @@ Progress and what each piece is for: [`docs/build-log/BUILD-LOG.md`](docs/build-
 ## Run everything (Docker)
 
 ```bash
-docker compose up --build --wait
+JWT_SIGNING_KEY="$(openssl rand -hex 32)" docker compose up --build --wait
 docker compose ps                        # every service healthy
 docker compose down                      # add -v to drop the database volume
 ```
@@ -48,7 +48,7 @@ dotnet format --verify-no-changes                        # style check
 dotnet test --solution Reconciliation.slnx
 dotnet run --project src/Reconciliation.Migrator -- up   # or `down` to revert one migration
 export ConnectionStrings__Default="Host=localhost;Port=5432;Username=cfdi_app;Password=$APP_DB_PASSWORD;Database=cfdi"
-export Jwt__SigningKey="synthetic-local-signing-key-at-least-32-bytes"
+export Jwt__SigningKey="$(openssl rand -hex 32)"
 dotnet run --project src/Reconciliation.Api
 ```
 

@@ -56,12 +56,25 @@ internal sealed record MultipartUpload(IReadOnlyList<UploadedFile> Files, IReadO
                 if (length > options.MaxFileBytes) oversized = true;
                 if (!oversized) content.Write(buffer, 0, read);
             }
-            files.Add(new UploadedFile(Path.GetFileName(filename.Replace('\\', '/')), oversized ? null : content.ToArray(), hash.GetHashAndReset(),
+            files.Add(new UploadedFile(SafeFileName(filename), oversized ? null : content.ToArray(), hash.GetHashAndReset(),
                 oversized ? "File exceeds MaxFileBytes." : null));
         }
         if (files.Count == 0) throw new BadHttpRequestException("Upload must contain at least one file.");
         return new MultipartUpload(files, fields);
     }
+    private static string SafeFileName(string clientFileName)
+    {
+        var safe = new StringBuilder();
+        foreach (var rune in clientFileName.EnumerateRunes())
+        {
+            if (Rune.IsControl(rune)) continue;
+            if (safe.Length + rune.Utf16SequenceLength > 255) break;
+            safe.Append(rune.ToString());
+        }
+        var name = Path.GetFileName(safe.ToString().Replace('\\', '/'));
+        return name.Length == 0 ? "upload" : name;
+    }
+
 }
 
 // Counts before buffering; the request owns the underlying stream.

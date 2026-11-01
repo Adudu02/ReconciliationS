@@ -39,6 +39,8 @@ jobs:
           dotnet run --no-build -c Release --project src/Reconciliation.Migrator -- up
 
   images:
+    env:
+      JWT_SIGNING_KEY: synthetic-ci-signing-key-never-use-outside-tests
     needs: test
     runs-on: ubuntu-latest
     steps:

@@ -5,7 +5,7 @@ using Microsoft.VisualBasic.FileIO;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed partial class ReferenceBankStatementParser : IBankStatementParser
+public sealed partial class ReferenceBankStatementParser(IngestionOptions options) : IBankStatementParser
 {
     public string Bank => "reference";
 
@@ -26,12 +26,14 @@ public sealed partial class ReferenceBankStatementParser : IBankStatementParser
                 throw new InvalidDataException("Line 1: expected header fecha,concepto,abono,cargo,saldo.");
             while (!csv.EndOfData)
             {
+                if (rows.Count >= options.MaxStatementLines) throw new InvalidDataException("Statement exceeds MaxStatementLines.");
                 var lineNumber = csv.LineNumber;
                 var fields = csv.ReadFields()!;
                 if (fields.Length != 5) throw new InvalidDataException($"Line {lineNumber}: expected five columns.");
                 if (!DateTime.TryParseExact(fields[0], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
                     throw new InvalidDataException($"Line {lineNumber}: invalid date; expected yyyy-MM-dd.");
                 var description = fields[1].Trim();
+                if (description.Length > options.MaxDescriptionLength) throw new InvalidDataException($"Line {lineNumber}: description exceeds {options.MaxDescriptionLength} characters.");
                 var credit = Amount(fields[2], lineNumber, signed: false, emptyZero: true);
                 var debit = Amount(fields[3], lineNumber, signed: false, emptyZero: true);
                 var balance = Amount(fields[4], lineNumber, signed: true, emptyZero: false);

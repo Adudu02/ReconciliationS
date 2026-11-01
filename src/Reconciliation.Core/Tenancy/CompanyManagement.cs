@@ -80,9 +80,9 @@ public static partial class CompanyManagement
     }
 
     private static Task<IResult> ChangeSettingsAsync(Guid id, SettingsChange request, HttpContext http, TenantContext tenant, CancellationToken ct) =>
-        tenant.ExecuteAsync<IResult>(id, async (connection, transaction, token) =>
+        tenant.ExecuteWriteAsync<IResult>(id, async (connection, transaction, token) =>
         {
-            if (request.DateToleranceDays < 0 || request.AmountTolerance < 0 || request.AmountTolerance > 9999999999999999.99m ||
+            if (request.DateToleranceDays is < 0 or > 366 || request.AmountTolerance < 0 || request.AmountTolerance > 9999999999999999.99m ||
                 (request.AmountTolerance is decimal amount && decimal.Round(amount, 2) != amount))
                 return Results.BadRequest(new { error = "Tolerances must be nonnegative; amount must fit numeric(18,2)." });
             var old = await ReadSettingsAsync(connection, transaction, token, forUpdate: true);

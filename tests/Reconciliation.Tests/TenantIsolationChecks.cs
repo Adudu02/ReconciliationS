@@ -56,7 +56,7 @@ internal static class TenantIsolationChecks
         var source = fixture.App.Services.GetRequiredService<EndpointDataSource>();
         var policies = fixture.App.Services.GetRequiredService<IAuthorizationPolicyProvider>();
         var exercised = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var endpoint in source.Endpoints.OfType<RouteEndpoint>())
+        foreach (var endpoint in source.Endpoints.OfType<RouteEndpoint>().OrderBy(endpoint => endpoint.RoutePattern.RawText?.EndsWith("/archive", StringComparison.Ordinal) == true ? 1 : 0))
         {
             var route = endpoint.RoutePattern.RawText!;
             var methods = endpoint.Metadata.GetRequiredMetadata<IHttpMethodMetadata>().HttpMethods;
