@@ -25,6 +25,8 @@ services:
     environment:
       <<: *database
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-synthetic-local-app-password}
+      OPERATOR_EMAIL: ${OPERATOR_EMAIL:-}
+      OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

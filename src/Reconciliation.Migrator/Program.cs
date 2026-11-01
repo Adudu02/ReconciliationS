@@ -1,6 +1,7 @@
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Reconciliation.Migrator;
 
 string[] commands = ["up", "down"];
 if (args.Length != 1 || !commands.Contains(args[0]))
@@ -32,6 +33,10 @@ try
     if (args[0] == "up")
     {
         migrations.MigrateUp();
+        var operatorEmail = Environment.GetEnvironmentVariable("OPERATOR_EMAIL");
+        var operatorPassword = Environment.GetEnvironmentVariable("OPERATOR_PASSWORD");
+        if (!string.IsNullOrEmpty(operatorEmail) || !string.IsNullOrEmpty(operatorPassword))
+            await OperatorBootstrap.SeedAsync(connectionString, operatorEmail ?? "", operatorPassword ?? "");
         var appPassword = Environment.GetEnvironmentVariable("APP_DB_PASSWORD");
         if (!string.IsNullOrEmpty(appPassword))
         {

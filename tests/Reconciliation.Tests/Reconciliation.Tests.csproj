@@ -9,7 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Reconciliation.Migrator\Reconciliation.Migrator.csproj" />
     <ProjectReference Include="..\..\src\Reconciliation.Core\Reconciliation.Core.csproj" />
-    <ProjectReference Include="..\..\src\Reconciliation.Api\Reconciliation.Api.csproj" />
+    <ProjectReference Include="..\..\src\Reconciliation.Api\Reconciliation.Api.csproj" Aliases="global,api" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FsCheck.Xunit.v3" Version="3.6.0" />

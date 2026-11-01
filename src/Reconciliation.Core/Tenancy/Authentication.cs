@@ -48,6 +48,9 @@ public static class Authentication
         });
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         CompanyAuthorization.AddCompanyAuthorization(services);
+        services.AddSingleton<IAuthorizationHandler, PlatformAuthorization>();
+        services.AddAuthorizationBuilder().AddPolicy("platform-operator", policy =>
+            policy.RequireAuthenticatedUser().AddRequirements(new PlatformOperatorRequirement()));
         return services;
     }
 

@@ -12,6 +12,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapAuthentication();
 app.MapCompanies();
+app.MapCompanyManagement();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();
 app.Run();

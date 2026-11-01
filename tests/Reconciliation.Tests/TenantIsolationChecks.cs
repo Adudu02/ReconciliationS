@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Reconciliation.Migrator;
 
 namespace Reconciliation.Tests;
 
@@ -40,6 +41,11 @@ internal static class TenantIsolationChecks
         var b = await fixture.SeedCompanyAsync(other.Id);
         using var client = await fixture.LoginAsync(user.Email, a);
         using var anonymous = fixture.App.CreateClient();
+        var operatorEmail = $"isolation-operator-{Guid.NewGuid():N}@example.invalid";
+        await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, operatorEmail, ApiFixture.Password, TestContext.Current.CancellationToken);
+        using var platform = await fixture.LoginAsync(operatorEmail);
+        await using var owner = new NpgsqlConnection(fixture.Database.OwnerConnectionString);
+        var before = await SnapshotAsync(owner, b);
         var source = fixture.App.Services.GetRequiredService<EndpointDataSource>();
         var policies = fixture.App.Services.GetRequiredService<IAuthorizationPolicyProvider>();
         var exercised = new HashSet<string>(StringComparer.Ordinal);
@@ -60,7 +66,7 @@ internal static class TenantIsolationChecks
             {
                 var key = $"{method} {route}";
                 using var baseline = Request(method, route, a, other.Id);
-                using var success = await client.SendAsync(baseline, TestContext.Current.CancellationToken);
+                using var success = await (route == "/companies" ? platform : client).SendAsync(baseline, TestContext.Current.CancellationToken);
                 Assert.True(success.IsSuccessStatusCode, $"Baseline must exercise real endpoint: {key}, {success.StatusCode}");
                 using var noCredentials = Request(method, route, b, other.Id);
                 using var unauthorized = await anonymous.SendAsync(noCredentials, TestContext.Current.CancellationToken);
@@ -80,9 +86,18 @@ internal static class TenantIsolationChecks
                 exercised.Add(key);
             }
         }
+        Assert.Equal(before, await SnapshotAsync(owner, b));
         Assert.Contains("GET /companies/{id:guid}", exercised);
         Assert.Contains("POST /companies/{id:guid}/members", exercised);
     }
+
+    private static Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company) =>
+        owner.QuerySingleAsync<string>(new CommandDefinition("""
+            SELECT jsonb_build_object(
+              'company', (SELECT to_jsonb(c) FROM company c WHERE id = @company),
+              'members', (SELECT jsonb_agg(to_jsonb(m) ORDER BY user_id) FROM membership m WHERE company_id = @company),
+              'audit', (SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM audit_entry a WHERE company_id = @company))::text
+            """, new { company }, cancellationToken: TestContext.Current.CancellationToken));
 
     private static HttpRequestMessage Request(string method, string route, Guid company, Guid user)
     {
@@ -92,7 +107,15 @@ internal static class TenantIsolationChecks
         {
             case "GET /companies/{id:guid}":
             case "GET /companies/{id:guid}/members":
+            case "GET /companies/{id:guid}/settings":
+            case "POST /companies/{id:guid}/archive":
             case "POST /test/decisions":
+                break;
+            case "POST /companies":
+                request.Content = JsonContent.Create(new { rfc = "AAA010101AAA", name = "Synthetic isolated", adminEmail = $"isolation-admin-{Guid.NewGuid():N}@example.invalid", adminPassword = ApiFixture.Password });
+                break;
+            case "PATCH /companies/{id:guid}/settings":
+                request.Content = JsonContent.Create(new { amountTolerance = 0.02m });
                 break;
             case "POST /companies/{id:guid}/members":
                 request.Content = JsonContent.Create(new { userId = user, role = "viewer" });

@@ -1,12 +1,14 @@
+extern alias api;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reconciliation.Core.Common;
+using ApiProgram = api::Program;
 
 namespace Reconciliation.Tests;
 
-public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthEndpointTests(WebApplicationFactory<ApiProgram> factory) : IClassFixture<WebApplicationFactory<ApiProgram>>
 {
     private sealed class FakeDatabaseHealth(bool reachable) : IDatabaseHealth
     {

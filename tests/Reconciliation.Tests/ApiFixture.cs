@@ -1,3 +1,4 @@
+extern alias api;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using ApiProgram = api::Program;
 
 namespace Reconciliation.Tests;
 
@@ -16,12 +18,12 @@ public sealed class ApiFixture : IAsyncLifetime
 {
     public const string Password = "synthetic-password-123";
     public PostgresFixture Database { get; } = new();
-    public WebApplicationFactory<Program> App { get; private set; } = null!;
+    public WebApplicationFactory<ApiProgram> App { get; private set; } = null!;
 
     public async ValueTask InitializeAsync()
     {
         await Database.InitializeAsync();
-        App = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        App = new WebApplicationFactory<ApiProgram>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:Default", Database.AppConnectionString);
             builder.ConfigureServices(services => services.AddTransient<IStartupFilter, RoleProbeStartup>());
