@@ -11,13 +11,7 @@ internal sealed record MultipartUpload(IReadOnlyList<UploadedFile> Files, IReadO
 {
     public static async Task<MultipartUpload> ReadAsync(HttpRequest request, IngestionOptions options, CancellationToken cancellationToken)
     {
-        var feature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
-        if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = options.MaxUploadBytes;
-        if (request.ContentLength > options.MaxUploadBytes) throw new BadHttpRequestException(UploadErrors.TotalLimit, StatusCodes.Status413PayloadTooLarge);
-        if (!MediaTypeHeaderValue.TryParse(request.ContentType, out var contentType) || !string.Equals(contentType.MediaType.Value, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
-            throw new BadHttpRequestException("Expected multipart/form-data.", StatusCodes.Status415UnsupportedMediaType);
-        var boundary = HeaderUtilities.RemoveQuotes(contentType.Boundary).Value;
-        if (string.IsNullOrEmpty(boundary) || boundary.Length > MultipartLimits.BoundaryLength) throw new BadHttpRequestException("Invalid multipart boundary.");
+        var boundary = ValidateHeaders(request, options);
         using var limitedBody = new UploadReadStream(request.Body, options.MaxUploadBytes);
         var reader = new MultipartReader(boundary, limitedBody);
         var files = new List<UploadedFile>();
@@ -32,36 +26,59 @@ internal sealed record MultipartUpload(IReadOnlyList<UploadedFile> Files, IReadO
             if (clientFileName is null)
             {
                 if (fields.Count >= MultipartLimits.FieldCount || fields.ContainsKey(partName)) throw new BadHttpRequestException("Too many or duplicate multipart fields.");
-                using var fieldBytes = new MemoryStream();
-                int fieldBytesRead;
-                while ((fieldBytesRead = await part.Body.ReadAsync(buffer, cancellationToken)) != 0)
-                {
-                    if (fieldBytes.Length + fieldBytesRead > MultipartLimits.FieldBytes) throw new BadHttpRequestException("Multipart field exceeds 256 bytes.");
-                    fieldBytes.Write(buffer, 0, fieldBytesRead);
-                }
-                fields.Add(partName, Encoding.UTF8.GetString(fieldBytes.ToArray()));
+                fields.Add(partName, await ReadFieldAsync(part, buffer, cancellationToken));
                 continue;
             }
             if (files.Count >= options.MaxFiles) throw new BadHttpRequestException(UploadErrors.FileCount);
             if (partName != "files") throw new BadHttpRequestException("File parts must use the field name files.");
-            using var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            using var fileBytes = new MemoryStream((int)Math.Min(options.MaxFileBytes, Math.Min(request.ContentLength ?? MultipartLimits.BufferBytes, MultipartLimits.InitialFileCapacity)));
-            var oversized = false;
-            long fileLength = 0;
-            int fileBytesRead;
-            while ((fileBytesRead = await part.Body.ReadAsync(buffer, cancellationToken)) != 0)
-            {
-                sha256.AppendData(buffer, 0, fileBytesRead);
-                fileLength += fileBytesRead;
-                if (fileLength > options.MaxFileBytes) oversized = true;
-                if (!oversized) fileBytes.Write(buffer, 0, fileBytesRead);
-            }
-            files.Add(new UploadedFile(SafeFileName(clientFileName), oversized ? null : fileBytes.GetBuffer(), sha256.GetHashAndReset(),
-                oversized ? UploadErrors.FileLimit : null, oversized ? null : (int)fileLength));
+            files.Add(await ReadFileAsync(part, clientFileName, request.ContentLength, options, buffer, cancellationToken));
         }
         if (files.Count == 0) throw new BadHttpRequestException("Upload must contain at least one file.");
         return new MultipartUpload(files, fields);
     }
+    private static string ValidateHeaders(HttpRequest request, IngestionOptions options)
+    {
+        var feature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (feature is { IsReadOnly: false }) feature.MaxRequestBodySize = options.MaxUploadBytes;
+        if (request.ContentLength > options.MaxUploadBytes) throw new BadHttpRequestException(UploadErrors.TotalLimit, StatusCodes.Status413PayloadTooLarge);
+        if (!MediaTypeHeaderValue.TryParse(request.ContentType, out var contentType) || !string.Equals(contentType.MediaType.Value, "multipart/form-data", StringComparison.OrdinalIgnoreCase))
+            throw new BadHttpRequestException("Expected multipart/form-data.", StatusCodes.Status415UnsupportedMediaType);
+        var boundary = HeaderUtilities.RemoveQuotes(contentType.Boundary).Value;
+        if (string.IsNullOrEmpty(boundary) || boundary.Length > MultipartLimits.BoundaryLength) throw new BadHttpRequestException("Invalid multipart boundary.");
+        return boundary;
+    }
+
+    private static async Task<string> ReadFieldAsync(MultipartSection part, byte[] buffer, CancellationToken cancellationToken)
+    {
+        using var fieldBytes = new MemoryStream();
+        int fieldBytesRead;
+        while ((fieldBytesRead = await part.Body.ReadAsync(buffer, cancellationToken)) != 0)
+        {
+            if (fieldBytes.Length + fieldBytesRead > MultipartLimits.FieldBytes) throw new BadHttpRequestException("Multipart field exceeds 256 bytes.");
+            fieldBytes.Write(buffer, 0, fieldBytesRead);
+        }
+        return Encoding.UTF8.GetString(fieldBytes.ToArray());
+    }
+
+    private static async Task<UploadedFile> ReadFileAsync(MultipartSection part, string clientFileName, long? contentLength,
+        IngestionOptions options, byte[] buffer, CancellationToken cancellationToken)
+    {
+        using var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var fileBytes = new MemoryStream((int)Math.Min(options.MaxFileBytes, Math.Min(contentLength ?? MultipartLimits.BufferBytes, MultipartLimits.InitialFileCapacity)));
+        var oversized = false;
+        long fileLength = 0;
+        int fileBytesRead;
+        while ((fileBytesRead = await part.Body.ReadAsync(buffer, cancellationToken)) != 0)
+        {
+            sha256.AppendData(buffer, 0, fileBytesRead);
+            fileLength += fileBytesRead;
+            if (fileLength > options.MaxFileBytes) oversized = true;
+            if (!oversized) fileBytes.Write(buffer, 0, fileBytesRead);
+        }
+        return new UploadedFile(SafeFileName(clientFileName), oversized ? null : fileBytes.GetBuffer(), sha256.GetHashAndReset(),
+            oversized ? UploadErrors.FileLimit : null, oversized ? null : (int)fileLength);
+    }
+
     private static string SafeFileName(string clientFileName)
     {
         var safeNameBuilder = new StringBuilder();

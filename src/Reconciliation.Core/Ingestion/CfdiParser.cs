@@ -7,7 +7,7 @@ namespace Reconciliation.Core.Ingestion;
 internal sealed record CfdiRelation(Guid RelatedUuid, string RelationCode);
 internal sealed record PaymentDocument(Guid InvoiceUuid, int Installment, string Currency, decimal PreviousBalance, decimal Paid, decimal RemainingBalance)
 {
-    public bool InconsistentBalance { get; set; }
+    public bool InconsistentBalance { get; init; } = RemainingBalance != PreviousBalance - Paid;
 }
 internal sealed record CfdiPayment(DateTime PaidAt, string PaymentForm, string Currency, decimal? ExchangeRate,
     decimal Amount, string? OperationNumber, IReadOnlyList<PaymentDocument> Documents);
@@ -28,6 +28,23 @@ internal static class CfdiParser
 
     public static ParsedCfdi Parse(XDocument cfdiXml)
     {
+        var header = ReadHeader(cfdiXml);
+        var (comprobante, complement, stamp, type, issuerRfc, receiverRfc, subtotal, discount) = header;
+        var (transferredTax, retainedTax, localTransferredTax, localRetainedTax, total) = ReadTaxTotals(header);
+        var relations = ReadRelations(comprobante);
+        var payments = ReadPayments(type, complement);
+        var paymentMethod = (string?)comprobante.Attribute("MetodoPago");
+        if (paymentMethod is not (null or "PUE" or "PPD")) throw new InvalidDataException("Invalid payment method.");
+        return new ParsedCfdi(Uuid(stamp, "UUID"), type, issuerRfc, receiverRfc, Date(comprobante, "Fecha"), Date(stamp, "FechaTimbrado"),
+            Required(comprobante, "Moneda"), paymentMethod, subtotal, discount, transferredTax, retainedTax, localTransferredTax, localRetainedTax, total,
+            receiverRfc == CfdiStandards.PublicGeneralRfc || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
+    }
+
+    private sealed record Header(XElement Comprobante, XElement Complement, XElement Stamp, string Type,
+        string IssuerRfc, string ReceiverRfc, decimal Subtotal, decimal Discount);
+
+    private static Header ReadHeader(XDocument cfdiXml)
+    {
         var comprobante = cfdiXml.Root;
         if (comprobante?.Name != Cfdi + "Comprobante") throw new InvalidDataException("File is not a CFDI.");
         if (Required(comprobante, "Version") != CfdiStandards.SupportedVersion) throw new InvalidDataException("Unsupported CFDI version; expected 4.0.");
@@ -40,6 +57,15 @@ internal static class CfdiParser
         var subtotal = RequiredMoney(comprobante, "SubTotal");
         var discount = OptionalMoney(comprobante, "Descuento");
         if (discount > subtotal) throw new InvalidDataException("Discount exceeds subtotal.");
+        return new Header(comprobante, complement, stamp, type, issuerRfc, receiverRfc, subtotal, discount);
+    }
+
+    private static (decimal TransferredTax, decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total) ReadTaxTotals(Header header)
+    {
+        var comprobante = header.Comprobante;
+        var complement = header.Complement;
+        var subtotal = header.Subtotal;
+        var discount = header.Discount;
         var taxesNode = comprobante.Element(Cfdi + "Impuestos");
         var localTaxesNode = complement.Element(LocalTaxes + "ImpuestosLocales");
         var transferredTax = OptionalMoney(taxesNode, "TotalImpuestosTrasladados");
@@ -49,8 +75,18 @@ internal static class CfdiParser
         var total = RequiredMoney(comprobante, "Total");
         if (total != subtotal - discount + transferredTax - retainedTax + localTransferredTax - localRetainedTax)
             throw new InvalidDataException("Inconsistent total from declared header amounts.");
+        return (transferredTax, retainedTax, localTransferredTax, localRetainedTax, total);
+    }
+
+    private static CfdiRelation[] ReadRelations(XElement comprobante)
+    {
         var relations = comprobante.Elements(Cfdi + "CfdiRelacionados").SelectMany(relationGroup =>
             relationGroup.Elements(Cfdi + "CfdiRelacionado").Select(relatedDocument => new CfdiRelation(Uuid(relatedDocument, "UUID"), Required(relationGroup, "TipoRelacion")))).Distinct().ToArray();
+        return relations;
+    }
+
+    private static List<CfdiPayment> ReadPayments(string type, XElement complement)
+    {
         var payments = new List<CfdiPayment>();
         if (type == "P")
         {
@@ -65,7 +101,6 @@ internal static class CfdiParser
                         throw new InvalidDataException("Invalid installment number.");
                     var paidInvoice = new PaymentDocument(Uuid(relatedDocument, "IdDocumento"), installment, Required(relatedDocument, "MonedaDR"),
                         RequiredMoney(relatedDocument, "ImpSaldoAnt"), RequiredMoney(relatedDocument, "ImpPagado"), RequiredMoney(relatedDocument, "ImpSaldoInsoluto"));
-                    paidInvoice.InconsistentBalance = paidInvoice.RemainingBalance != paidInvoice.PreviousBalance - paidInvoice.Paid;
                     return paidInvoice;
                 }).ToArray();
                 if (documents.Length == 0) throw new InvalidDataException("Payment has no related documents.");
@@ -82,11 +117,7 @@ internal static class CfdiParser
             }
             if (payments.Count == 0) throw new InvalidDataException("Payment complement has no payments.");
         }
-        var paymentMethod = (string?)comprobante.Attribute("MetodoPago");
-        if (paymentMethod is not (null or "PUE" or "PPD")) throw new InvalidDataException("Invalid payment method.");
-        return new ParsedCfdi(Uuid(stamp, "UUID"), type, issuerRfc, receiverRfc, Date(comprobante, "Fecha"), Date(stamp, "FechaTimbrado"),
-            Required(comprobante, "Moneda"), paymentMethod, subtotal, discount, transferredTax, retainedTax, localTransferredTax, localRetainedTax, total,
-            receiverRfc == CfdiStandards.PublicGeneralRfc || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
+        return payments;
     }
 
     private static XElement One(XElement xmlNode, XName attributeName)
@@ -103,7 +134,7 @@ internal static class CfdiParser
 
     private static DateTime Date(XElement xmlNode, string attributeName) =>
         DateTime.TryParseExact(Required(xmlNode, attributeName), ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFF"],
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out var amount) ? amount : throw new InvalidDataException($"Invalid local date {attributeName}.");
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out var declaredDate) ? declaredDate : throw new InvalidDataException($"Invalid local date {attributeName}.");
 
     private static decimal OptionalMoney(XElement? xmlNode, string attributeName) =>
         xmlNode?.Attribute(attributeName) is null ? 0 : RequiredMoney(xmlNode, attributeName);
