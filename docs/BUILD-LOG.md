@@ -37,7 +37,7 @@ Regenerate the picture after ticking tasks: `python3 tools/progress_diagram.py` 
 | **Worker host** | Host | Runs background jobs (imports, matching, SAT checks). Today it starts, reports health and idles | `src/Reconciliation.Worker` |
 | **Migrator** | Tool | Applies or reverts database changes (`up`, `down`) | `src/Reconciliation.Migrator` |
 | **SAT stub** | Host | A fake of the SAT status service so development needs no real account. Today only a placeholder | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Database | Stores all data. Identity and tenancy tables plus a minimal `audit_entry`, with forced tenant RLS | `docker-compose.yml`, migration `M0001` |
+| **PostgreSQL 17** | Database | Stores all data. Identity and tenancy tables plus a minimal `audit_entry`, with forced tenant RLS | `docker-compose.yml`, migrations `M0001` to `M0003` |
 | Docker Compose | Pipeline | Starts database, migrator, API, worker and stub with one command and waits until all are healthy | `docker-compose.yml`, `Dockerfile` |
 | CI pipeline | Pipeline | On every push: format check, build, tests, migrations up/down/up, and a full stack start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Short records of big decisions and the alternatives rejected | `docs/adr/` |

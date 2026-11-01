@@ -38,7 +38,7 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
 | **Host del worker** | Host | Ejecuta trabajos en segundo plano (importaciones, conciliación, consultas al SAT). Hoy arranca, reporta su salud y espera | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Una simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos. Identidad, multiempresa y una `audit_entry` mínima con RLS forzado | `docker-compose.yml`, migración `M0001` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos. Identidad, multiempresa y una `audit_entry` mínima con RLS forzado | `docker-compose.yml`, migraciones `M0001` a `M0003` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: revisión de formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Registros breves de las decisiones grandes y de las alternativas descartadas | `docs/adr/` |
