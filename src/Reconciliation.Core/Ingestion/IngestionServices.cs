@@ -12,6 +12,8 @@ public static class IngestionServices
         services.AddSingleton(options);
         services.AddSingleton<SafeCfdiXml>();
         services.AddSingleton<CfdiImporter>();
+        services.AddSingleton<IBankStatementParser, ReferenceBankStatementParser>();
+        services.AddSingleton<BankStatementImporter>();
         return services;
     }
 }
