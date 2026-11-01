@@ -1,4 +1,5 @@
 using Reconciliation.Core.Common;
+using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,7 @@ builder.Services.AddReconciliationDatabase(builder.Configuration);
 
 builder.Services.AddTenancyAuthentication(builder.Configuration);
 builder.Services.AddOpenApi();
+builder.Services.AddIngestion(builder.Configuration);
 
 var app = builder.Build();
 app.UseAuthentication();

@@ -1,0 +1,17 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Reconciliation.Core.Ingestion;
+
+public static class IngestionServices
+{
+    public static IServiceCollection AddIngestion(this IServiceCollection services, IConfiguration configuration)
+    {
+        var options = configuration.GetSection("Ingestion").Get<IngestionOptions>() ?? new IngestionOptions();
+        options.Validate();
+        services.AddSingleton(options);
+        services.AddSingleton<SafeCfdiXml>();
+        services.AddSingleton<CfdiImporter>();
+        return services;
+    }
+}

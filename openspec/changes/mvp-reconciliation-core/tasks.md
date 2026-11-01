@@ -27,10 +27,10 @@
 - [x] 3.2 Create migrations for company (RFC, settings), import_file, cfdi, cfdi_relation, cfdi_payment, cfdi_payment_doc, bank_account, bank_movement and verify uniqueness constraints reject duplicates
 - [x] 3.3 Implement safe CFDI 4.0 XML parsing (DTD and external entities disabled, size and count limits) and verify the hostile-file tests pass
 - [ ] 3.4 Implement CFDI import for income, payment complement and credit note with per-file report, and verify the cfdi-ingestion scenarios pass
-- [ ] 3.4b Parse discount, taxes, retentions and local taxes and verify `samples/synthetic-income-ppd-retention.xml` imports with total 1,939.27, a discount case imports, and an inconsistent total or an excessive discount is rejected
-- [ ] 3.4c Reject a CFDI that does not involve the company RFC, record issued or received direction, and verify both scenarios
-- [ ] 3.4d Store payments and related invoice lines of complement 2.0, flag inconsistent balances and reject other versions, and verify the three complement scenarios pass
-- [ ] 3.4e Store relation codes (01, 03, 04, 07), the global-invoice flag and dates as declared, and verify the substitution, global and midnight scenarios pass
+- [x] 3.4b Parse discount, taxes, retentions and local taxes and verify `samples/synthetic-income-ppd-retention.xml` imports with total 1,939.27, a discount case imports, and an inconsistent total or an excessive discount is rejected
+- [x] 3.4c Reject a CFDI that does not involve the company RFC, record issued or received direction, and verify both scenarios
+- [x] 3.4d Store payments and related invoice lines of complement 2.0, flag inconsistent balances and reject other versions, and verify the three complement scenarios pass
+- [x] 3.4e Store relation codes (01, 03, 04, 07), the global-invoice flag and dates as declared, and verify the substitution, global and midnight scenarios pass
 - [ ] 3.4f Keep original files with their hash and no delete path, and verify the original is returned byte for byte
 - [ ] 3.5 Implement idempotent CFDI import by UUID per company and verify uploading the same file twice creates one record
 - [ ] 3.6 Implement the bank parser interface, the reference-format parser and reference extraction, and verify valid, malformed, unknown-bank and tracking-key scenarios pass
