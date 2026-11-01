@@ -3,6 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -21,6 +24,7 @@ public sealed class ApiFixture : IAsyncLifetime
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:Default", Database.AppConnectionString);
+            builder.ConfigureServices(services => services.AddTransient<IStartupFilter, RoleProbeStartup>());
             builder.UseSetting("Jwt:SigningKey", "synthetic-test-signing-key-at-least-32-bytes");
         });
     }
@@ -35,6 +39,26 @@ public sealed class ApiFixture : IAsyncLifetime
         await owner.ExecuteAsync(new CommandDefinition("INSERT INTO app_user(id, email, password_hash) VALUES (@id, @email, @hash)",
             new { id, email, hash }, cancellationToken: TestContext.Current.CancellationToken));
         return (id, email);
+    }
+
+    public async Task<Guid> SeedCompanyAsync(Guid userId, string role = "administrator")
+    {
+        await using var owner = new NpgsqlConnection(Database.OwnerConnectionString);
+        var id = await owner.QuerySingleAsync<Guid>(new CommandDefinition(
+            "INSERT INTO company(rfc, name) VALUES ('AAA010101AAA', 'Synthetic company') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
+        await owner.ExecuteAsync(new CommandDefinition("INSERT INTO membership(company_id, user_id, role) VALUES (@id, @userId, @role::membership_role)",
+            new { id, userId, role }, cancellationToken: TestContext.Current.CancellationToken));
+        return id;
+    }
+
+    private sealed class RoleProbeStartup : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            next(app);
+            // The real link-decision endpoint arrives in group 8; this exercises its policy only.
+            app.UseEndpoints(routes => routes.MapPost("/test/decisions", () => Results.NoContent()).RequireAuthorization("accountant"));
+        };
     }
 
     public async Task<HttpClient> LoginAsync(string email, Guid? companyId = null)
