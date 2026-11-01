@@ -11,21 +11,26 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Tenancy;
+using Reconciliation.Migrator;
 
 namespace Reconciliation.Tests;
 
 [Collection("tenancy-api")]
 public sealed class ReviewHardeningTests(ApiFixture fixture)
 {
-    [Fact]
-    public async Task Hostile_filename_is_sanitized_and_does_not_lose_an_earlier_file()
+    [Theory]
+    [InlineData("a%00.xml")]
+    [InlineData("lone%ED%A0%80.xml")]
+    [InlineData(null)]
+    public async Task Hostile_filename_is_sanitized_and_does_not_lose_an_earlier_file(string? encodedName)
     {
         var user = await fixture.SeedUserAsync();
         var company = await fixture.SeedCompanyAsync(user.Id);
         using var client = await fixture.LoginAsync(user.Email, company);
         using var content = IngestionHttpTests.CfdiBody(SyntheticCfdi.Invoice());
         var hostile = new ByteArrayContent(SyntheticCfdi.Invoice());
-        hostile.Headers.TryAddWithoutValidation("Content-Disposition", "form-data; name=\"files\"; filename*=UTF-8''a%00.xml");
+        encodedName ??= new string('a', 300) + ".xml";
+        hostile.Headers.TryAddWithoutValidation("Content-Disposition", "form-data; name=\"files\"; filename*=UTF-8''" + encodedName);
         content.Add(hostile);
         using var response = await client.PostAsync($"/companies/{company}/imports/cfdi", content, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -33,6 +38,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
         Assert.Equal(2, report!.Files.Count);
         Assert.All(report.Files, file => Assert.Equal("imported", file.Status));
         Assert.DoesNotContain(report.Files[1].Name, char.IsControl);
+        Assert.InRange(report.Files[1].Name.Length, 1, 255);
     }
 
     [Fact]
@@ -225,6 +231,22 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
         using var client = app.CreateClient();
         using var response = await client.GetAsync("/openapi.json", TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Existing_operator_bootstrap_logs_that_the_account_was_not_modified()
+    {
+        var email = $"operator-log-{Guid.NewGuid():N}@example.invalid";
+        await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, email, ApiFixture.Password, TestContext.Current.CancellationToken);
+        using var output = new StringWriter();
+        var previous = Console.Out;
+        try
+        {
+            Console.SetOut(output);
+            await OperatorBootstrap.SeedAsync(fixture.Database.OwnerConnectionString, email, ApiFixture.Password, TestContext.Current.CancellationToken);
+        }
+        finally { Console.SetOut(previous); }
+        Assert.Contains("operator already exists, not modified", output.ToString(), StringComparison.Ordinal);
     }
 
     private sealed class CountingHasher : IPasswordHasher<string>
