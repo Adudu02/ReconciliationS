@@ -9,7 +9,7 @@ public sealed class SafeCfdiXml(IngestionOptions options)
     {
         ArgumentNullException.ThrowIfNull(xmlBytes);
         var count = length ?? xmlBytes.Length;
-        if (count > options.MaxFileBytes) throw new InvalidDataException("File exceeds MaxFileBytes.");
+        if (count > options.MaxFileBytes) throw new InvalidDataException(UploadErrors.FileLimit);
         var readerSettings = new XmlReaderSettings
         {
             DtdProcessing = DtdProcessing.Prohibit,

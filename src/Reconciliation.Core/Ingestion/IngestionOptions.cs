@@ -2,6 +2,8 @@ namespace Reconciliation.Core.Ingestion;
 
 public sealed class IngestionOptions
 {
+    public const string SectionName = "Ingestion";
+    public const int MinimumRetentionYears = 5;
     public int MaxFileBytes { get; init; } = 10 * 1024 * 1024;
     public long MaxUploadBytes { get; init; } = 20 * 1024 * 1024;
     public int MaxFiles { get; init; } = 20;
@@ -13,7 +15,7 @@ public sealed class IngestionOptions
 
     public void Validate()
     {
-        if (MaxFileBytes <= 0 || MaxUploadBytes <= 0 || MaxFiles <= 0 || MaxXmlNodes <= 0 || MaxXmlDepth <= 0 || MaxStatementLines <= 0 || MaxDescriptionLength <= 0 || RetentionYears is < 5 or > 100)
-            throw new InvalidOperationException("Ingestion limits must be positive and RetentionYears must be between 5 and 100.");
+        if (MaxFileBytes <= 0 || MaxUploadBytes <= 0 || MaxFiles <= 0 || MaxXmlNodes <= 0 || MaxXmlDepth <= 0 || MaxStatementLines <= 0 || MaxDescriptionLength <= 0 || RetentionYears is < MinimumRetentionYears or > 100)
+            throw new InvalidOperationException($"Ingestion limits must be positive and RetentionYears must be between {MinimumRetentionYears} and 100.");
     }
 }

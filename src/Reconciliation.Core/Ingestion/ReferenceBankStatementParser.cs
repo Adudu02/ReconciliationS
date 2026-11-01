@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.VisualBasic.FileIO;
+using Reconciliation.Core.Common;
 
 namespace Reconciliation.Core.Ingestion;
 
@@ -53,7 +54,7 @@ public sealed partial class ReferenceBankStatementParser(IngestionOptions option
         if (emptyZero && declaredAmount.Length == 0) return 0;
         if (!NumberFormat().IsMatch(declaredAmount) || (!signed && declaredAmount.StartsWith('-')) ||
             !decimal.TryParse(declaredAmount, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
-            amount is < -9999999999999999.99m or > 9999999999999999.99m)
+            amount is < -Money.MaxAmount or > Money.MaxAmount)
             throw new InvalidDataException($"Line {lineNumber}: invalid amount; use a decimal point and at most two decimals.");
         return amount;
     }

@@ -8,12 +8,12 @@ namespace Reconciliation.Core.Ingestion;
 internal static class ImportStorage
 {
     public static Task<Guid> InsertFileAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid uploadId,
-        UploadedFile uploadedFile, string fileKind, string importStatus, string? rejectionReason, int retentionYears, CancellationToken cancellationToken) =>
+        UploadedFile uploadedFile, ImportFileKind fileKind, ImportStatus importStatus, string? rejectionReason, int retentionYears, CancellationToken cancellationToken) =>
         connection.QuerySingleAsync<Guid>(new CommandDefinition("""
             INSERT INTO import_file(company_id, upload_id, filename, kind, status, reason, original, sha256, retained_until)
             VALUES (@companyId, @uploadId, @Name, @kind, @status, @reason, @original, @Hash,
               CASE WHEN @status = 'imported' THEN now() + make_interval(years => @retentionYears) ELSE NULL END) RETURNING id
-            """, new { companyId, uploadId, uploadedFile.Name, kind = fileKind, status = importStatus, reason = rejectionReason, original = new Bytea(importStatus == "imported" ? uploadedFile.ContentMemory : null), uploadedFile.Hash, retentionYears }, transaction, cancellationToken: cancellationToken));
+            """, new { companyId, uploadId, uploadedFile.Name, kind = fileKind.ToDatabaseValue(), status = importStatus.ToDatabaseValue(), reason = rejectionReason, original = new Bytea(importStatus == ImportStatus.Imported ? uploadedFile.ContentMemory : null), uploadedFile.Hash, retentionYears }, transaction, cancellationToken: cancellationToken));
 
     public static Task<int> FinalizeAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid fileId, UploadedFile uploadedFile,
         int retentionYears, int newMovements, int duplicateMovements, CancellationToken cancellationToken) =>

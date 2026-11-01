@@ -7,7 +7,7 @@ public static class IngestionServices
 {
     public static IServiceCollection AddIngestion(this IServiceCollection services, IConfiguration configuration)
     {
-        var options = configuration.GetSection("Ingestion").Get<IngestionOptions>() ?? new IngestionOptions();
+        var options = configuration.GetSection(IngestionOptions.SectionName).Get<IngestionOptions>() ?? new IngestionOptions();
         options.Validate();
         services.AddMemoryCache();
         services.AddSingleton(options);

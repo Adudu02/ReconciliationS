@@ -1,11 +1,12 @@
 using FluentMigrator;
+using Reconciliation.Core.Ingestion;
 
 namespace Reconciliation.Migrator.Migrations;
 
 [Migration(4, "Tenant ingestion model and retained originals")]
 public sealed class M0004Ingestion : Migration
 {
-    public override void Up() => Execute.Sql("""
+    public override void Up() => Execute.Sql($$"""
         CREATE TABLE import_file (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(), company_id uuid NOT NULL REFERENCES company(id),
           upload_id uuid NOT NULL, filename text NOT NULL, kind text NOT NULL CHECK(kind IN ('cfdi','bank-statement')),
@@ -17,7 +18,7 @@ public sealed class M0004Ingestion : Migration
           FOREIGN KEY(company_id, original_file_id) REFERENCES import_file(company_id, id),
           CHECK(status <> 'rejected' OR original IS NULL),
           CHECK(status <> 'imported' OR (original IS NOT NULL AND sha256 = sha256(original) AND
-            retained_until IS NOT NULL AND retained_until >= created_at + interval '5 years'))
+            retained_until IS NOT NULL AND retained_until >= created_at + interval '{{IngestionOptions.MinimumRetentionYears}} years'))
         );
         CREATE INDEX import_file_upload_idx ON import_file(company_id, upload_id);
         CREATE TABLE cfdi (

@@ -1,6 +1,6 @@
-using System.Net.Mail;
 using Microsoft.AspNetCore.Identity;
 using Npgsql;
+using Reconciliation.Core.Tenancy;
 
 namespace Reconciliation.Migrator;
 
@@ -8,7 +8,7 @@ public static class OperatorBootstrap
 {
     public static async Task SeedAsync(string connectionString, string operatorEmail, string operatorPassword, CancellationToken cancellationToken = default)
     {
-        if (!MailAddress.TryCreate(operatorEmail, out var parsedEmail) || parsedEmail.Address != operatorEmail || operatorPassword.Length < 12)
+        if (!EmailAddressRules.IsValid(operatorEmail) || operatorPassword.Length < PasswordPolicy.MinimumLength)
             throw new ArgumentException("Operator requires a valid email and password of at least 12 characters.");
         var operatorPasswordHash = new PasswordHasher<string>().HashPassword(operatorEmail, operatorPassword);
         await using var connection = new NpgsqlConnection(connectionString);

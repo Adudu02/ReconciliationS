@@ -40,11 +40,11 @@ public static class Authentication
                 ValidateIssuerSigningKey = true,
                 IssuerSigningKey = signingKey,
                 ValidateIssuer = true,
-                ValidIssuer = "reconciliation",
+                ValidIssuer = JwtTokenPolicy.TokenIssuer,
                 ValidateAudience = true,
-                ValidAudience = "reconciliation",
+                ValidAudience = JwtTokenPolicy.TokenAudience,
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromSeconds(30),
+                ClockSkew = JwtTokenPolicy.ClockSkew,
                 ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
                 NameClaimType = JwtRegisteredClaimNames.Sub
             };
@@ -52,7 +52,7 @@ public static class Authentication
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         CompanyAuthorization.AddCompanyAuthorization(services);
         services.AddSingleton<IAuthorizationHandler, PlatformAuthorization>();
-        services.AddAuthorizationBuilder().AddPolicy("platform-operator", policy =>
+        services.AddAuthorizationBuilder().AddPolicy(Policies.PlatformOperator, policy =>
             policy.RequireAuthenticatedUser().AddRequirements(new PlatformOperatorRequirement()));
         return services;
     }
@@ -70,9 +70,9 @@ public static class Authentication
             var hashToCompare = account?.PasswordHash ?? dummyHash.Value;
             var verification = passwordHasher.VerifyHashedPassword(credentials.Email, hashToCompare, credentials.Password);
             if (account is null || verification == PasswordVerificationResult.Failed) return Results.Unauthorized();
-            var accessToken = new JwtSecurityToken("reconciliation", "reconciliation",
+            var accessToken = new JwtSecurityToken(JwtTokenPolicy.TokenIssuer, JwtTokenPolicy.TokenAudience,
                 [new Claim(JwtRegisteredClaimNames.Sub, account.Id.ToString())],
-                notBefore: DateTime.UtcNow, expires: DateTime.UtcNow.AddHours(1),
+                notBefore: DateTime.UtcNow, expires: DateTime.UtcNow.Add(JwtTokenPolicy.TokenLifetime),
                 signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
             return Results.Ok(new TokenResponse(new JwtSecurityTokenHandler().WriteToken(accessToken)));
         }).AllowAnonymous();

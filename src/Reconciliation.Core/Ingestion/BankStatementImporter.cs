@@ -14,7 +14,7 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
     {
         ArgumentNullException.ThrowIfNull(files);
         if (files.Count > options.MaxFiles || files.Sum(uploadedStatement => (long)uploadedStatement.ContentLength) > options.MaxUploadBytes)
-            throw new InvalidDataException("Upload exceeds file-count or total-size limit.");
+            throw new InvalidDataException(UploadErrors.AggregateLimit);
         var uploadId = Guid.NewGuid();
         var fileOutcomes = new List<FileImportResult>();
         try
@@ -25,8 +25,8 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
                 string? rejectionReason = null;
                 try
                 {
-                    if (uploadedStatement.Error is not null || uploadedStatement.Content is null) throw new InvalidDataException(uploadedStatement.Error ?? "Missing file bytes.");
-                    if (uploadedStatement.ContentLength > options.MaxFileBytes) throw new InvalidDataException("File exceeds MaxFileBytes.");
+                    if (uploadedStatement.Error is not null || uploadedStatement.Content is null) throw new InvalidDataException(uploadedStatement.Error ?? UploadErrors.MissingContent);
+                    if (uploadedStatement.ContentLength > options.MaxFileBytes) throw new InvalidDataException(UploadErrors.FileLimit);
                     var statementParser = statementParsers.SingleOrDefault(statementParser => statementParser.Bank == bank)
                         ?? throw new InvalidDataException("Unknown bank; supported banks: " + string.Join(", ", SupportedBanks));
                     if (accountReference is null || !AccountLabel().IsMatch(accountReference) || string.IsNullOrWhiteSpace(accountReference))
@@ -36,8 +36,8 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
                 catch (InvalidDataException error) { rejectionReason = error.Message; }
                 fileOutcomes.Add(await companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
                 {
-                    var importStatus = rejectionReason is null ? "imported" : "rejected";
-                    var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, uploadedStatement, "bank-statement", importStatus == "imported" ? "importing" : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
+                    var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
+                    var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, uploadedStatement, ImportFileKind.BankStatement, importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
                     var newMovements = 0;
                     var duplicateMovements = 0;
                     if (parsedLines is not null)
@@ -71,8 +71,8 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
                         duplicateMovements = parsedLines.Count - newMovements;
                         await ImportStorage.FinalizeAsync(connection, transaction, fileId, uploadedStatement, options.RetentionYears, newMovements, duplicateMovements, transactionCancellationToken);
                     }
-                    await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "bank-statement." + importStatus, fileId, transactionCancellationToken);
-                    return new FileImportResult(fileId, uploadedStatement.Name, importStatus, rejectionReason, ImportedMovements: newMovements, DuplicateMovements: duplicateMovements);
+                    await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.BankStatement.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
+                    return new FileImportResult(fileId, uploadedStatement.Name, importStatus.ToDatabaseValue(), rejectionReason, ImportedMovements: newMovements, DuplicateMovements: duplicateMovements);
                 }, cancellationToken));
             }
         }

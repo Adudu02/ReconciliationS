@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Xml.Linq;
+using MoneyRules = Reconciliation.Core.Common.Money;
 
 namespace Reconciliation.Core.Ingestion;
 
@@ -29,7 +30,7 @@ internal static class CfdiParser
     {
         var comprobante = cfdiXml.Root;
         if (comprobante?.Name != Cfdi + "Comprobante") throw new InvalidDataException("File is not a CFDI.");
-        if (Required(comprobante, "Version") != "4.0") throw new InvalidDataException("Unsupported CFDI version; expected 4.0.");
+        if (Required(comprobante, "Version") != CfdiStandards.SupportedVersion) throw new InvalidDataException("Unsupported CFDI version; expected 4.0.");
         var type = Required(comprobante, "TipoDeComprobante");
         if (type is not ("I" or "P" or "E")) throw new InvalidDataException("Unsupported CFDI type.");
         var issuerRfc = Required(One(comprobante, Cfdi + "Emisor"), "Rfc");
@@ -54,7 +55,7 @@ internal static class CfdiParser
         if (type == "P")
         {
             var paymentGroups = complement.Elements().Where(xmlNode => xmlNode.Name.LocalName == "Pagos").ToArray();
-            if (paymentGroups.Length != 1 || paymentGroups[0].Name != Payments + "Pagos" || Required(paymentGroups[0], "Version") != "2.0")
+            if (paymentGroups.Length != 1 || paymentGroups[0].Name != Payments + "Pagos" || Required(paymentGroups[0], "Version") != CfdiStandards.PaymentComplementVersion)
                 throw new InvalidDataException("Unsupported payment complement version; expected 2.0.");
             foreach (var payment in paymentGroups[0].Elements(Payments + "Pago"))
             {
@@ -85,7 +86,7 @@ internal static class CfdiParser
         if (paymentMethod is not (null or "PUE" or "PPD")) throw new InvalidDataException("Invalid payment method.");
         return new ParsedCfdi(Uuid(stamp, "UUID"), type, issuerRfc, receiverRfc, Date(comprobante, "Fecha"), Date(stamp, "FechaTimbrado"),
             Required(comprobante, "Moneda"), paymentMethod, subtotal, discount, transferredTax, retainedTax, localTransferredTax, localRetainedTax, total,
-            receiverRfc == "XAXX010101000" || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
+            receiverRfc == CfdiStandards.PublicGeneralRfc || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
     }
 
     private static XElement One(XElement xmlNode, XName attributeName)
@@ -108,9 +109,8 @@ internal static class CfdiParser
     {
         var declaredAmount = (string?)xmlNode?.Attribute(attributeName);
         if (declaredAmount is null && optional) return 0;
-        var decimalPoint = declaredAmount?.IndexOf('.') ?? -1;
-        if (declaredAmount is null || (decimalPoint >= 0 && declaredAmount.Length - decimalPoint - 1 > 2) || !decimal.TryParse(declaredAmount, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
-            amount < 0 || amount > 9999999999999999.99m || decimal.Round(amount, 2) != amount)
+        if (declaredAmount is null || !MoneyRules.HasAtMostTwoDecimals(declaredAmount) || !decimal.TryParse(declaredAmount, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var amount) ||
+            amount < 0 || amount > MoneyRules.MaxAmount || !MoneyRules.HasAtMostTwoDecimals(amount))
             throw new InvalidDataException($"Invalid {attributeName}: monetary values require at most two decimals and must fit numeric(18,2).");
         return amount;
     }

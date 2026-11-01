@@ -16,7 +16,7 @@ public sealed class CompanyAuthorization(TenantContext companyScope) : Authoriza
     private async Task AuthorizeCompanyAsync(AuthorizationHandlerContext authorizationContext, CompanyRoleRequirement requirement)
     {
         if (authorizationContext.Resource is not HttpContext httpContext ||
-            !Guid.TryParse(httpContext.Request.Headers["X-Company-Id"], out var companyId) ||
+            !Guid.TryParse(httpContext.Request.Headers[CompanyHeader.Name], out var companyId) ||
             !Guid.TryParse(authorizationContext.User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var memberUserId)) return;
         if (httpContext.Request.RouteValues.TryGetValue("companyId", out var routeId) &&
             (!Guid.TryParse(routeId?.ToString(), out var routeCompanyId) || routeCompanyId != companyId)) return;
@@ -30,9 +30,9 @@ public sealed class CompanyAuthorization(TenantContext companyScope) : Authoriza
     {
         services.AddSingleton<IAuthorizationHandler, CompanyAuthorization>();
         services.AddAuthorizationBuilder()
-            .AddPolicy("company-member", policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement(["administrator", "accountant", "viewer"])))
-            .AddPolicy("administrator", policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement(["administrator"])))
-            .AddPolicy("accountant", policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement(["administrator", "accountant"])));
+            .AddPolicy(Policies.CompanyMember, policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement([MembershipRoles.Administrator, MembershipRoles.Accountant, MembershipRoles.Viewer])))
+            .AddPolicy(Policies.Administrator, policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement([MembershipRoles.Administrator])))
+            .AddPolicy(Policies.Accountant, policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement([MembershipRoles.Administrator, MembershipRoles.Accountant])));
         return services;
     }
 }

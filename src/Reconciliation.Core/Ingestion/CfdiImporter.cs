@@ -13,7 +13,7 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
     {
         ArgumentNullException.ThrowIfNull(files);
         if (files.Count > options.MaxFiles || files.Sum(uploadedFile => (long)uploadedFile.ContentLength) > options.MaxUploadBytes)
-            throw new InvalidDataException("Upload exceeds file-count or total-size limit.");
+            throw new InvalidDataException(UploadErrors.AggregateLimit);
         var companyRfc = await companyRfcs.GetOrCreateAsync("company-rfc:" + companyId, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
@@ -26,7 +26,7 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
         {
             try
             {
-                if (uploadedFile.Error is not null || uploadedFile.Content is null) throw new InvalidDataException(uploadedFile.Error ?? "Missing file bytes.");
+                if (uploadedFile.Error is not null || uploadedFile.Content is null) throw new InvalidDataException(uploadedFile.Error ?? UploadErrors.MissingContent);
                 var parsedCfdi = CfdiParser.Parse(xml.Read(uploadedFile.Content, uploadedFile.ContentLength));
                 parsed.Add(parsedCfdi.IssuerRfc != companyRfc && parsedCfdi.ReceiverRfc != companyRfc
                     ? (uploadedFile, null, "does not involve this company") : (uploadedFile, parsedCfdi, null));
@@ -56,12 +56,12 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
                 {
                     var rejectionReason = upload.Error;
                     var parsedCfdi = upload.Cfdi;
-                    var importStatus = rejectionReason is null ? "imported" : "rejected";
+                    var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
                     rejectionReason ??= parsedCfdi?.ReviewReason;
-                    var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, upload.File, "cfdi",
-                        importStatus == "imported" ? "importing" : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
+                    var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, upload.File, ImportFileKind.Cfdi,
+                        importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
                     Guid? cfdiId = null;
-                    if (importStatus == "imported" && parsedCfdi is not null)
+                    if (importStatus == ImportStatus.Imported && parsedCfdi is not null)
                     {
                         cfdiId = await connection.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition("""
                         INSERT INTO cfdi(company_id, import_file_id, uuid, type, direction, issuer_rfc, receiver_rfc, issued_at, stamped_at,
@@ -98,8 +98,8 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
                                 "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid=@Uuid", parsedCfdi, transaction, cancellationToken: transactionCancellationToken));
                             await connection.ExecuteAsync(new CommandDefinition("UPDATE import_file SET status='already_imported', reason=NULL, original_file_id=@ImportFileId WHERE id=@fileId",
                                 new { alreadyStored.ImportFileId, fileId }, transaction, cancellationToken: transactionCancellationToken));
-                            await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "cfdi.already_imported", fileId, transactionCancellationToken);
-                            return new FileImportResult(fileId, upload.File.Name, "already_imported", null, alreadyStored.Id);
+                            await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + ImportStatus.AlreadyImported.ToDatabaseValue(), fileId, transactionCancellationToken);
+                            return new FileImportResult(fileId, upload.File.Name, ImportStatus.AlreadyImported.ToDatabaseValue(), null, alreadyStored.Id);
                         }
                         if (parsedCfdi.Relations.Count > 0)
                             await connection.ExecuteAsync(new CommandDefinition("""
@@ -146,8 +146,8 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
                         }
                         await ImportStorage.FinalizeAsync(connection, transaction, fileId, upload.File, options.RetentionYears, 0, 0, transactionCancellationToken);
                     }
-                    await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, "cfdi." + importStatus, fileId, transactionCancellationToken);
-                    return new FileImportResult(fileId, upload.File.Name, importStatus, rejectionReason ?? parsedCfdi?.ReviewReason, cfdiId);
+                    await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
+                    return new FileImportResult(fileId, upload.File.Name, importStatus.ToDatabaseValue(), rejectionReason ?? parsedCfdi?.ReviewReason, cfdiId);
                 }, cancellationToken));
             }
         }

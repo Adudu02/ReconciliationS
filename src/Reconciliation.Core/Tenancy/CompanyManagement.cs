@@ -1,5 +1,4 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Net.Mail;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Npgsql;
+using Reconciliation.Core.Common;
 
 namespace Reconciliation.Core.Tenancy;
 
@@ -25,14 +25,14 @@ public static partial class CompanyManagement
 
     public static IEndpointRouteBuilder MapCompanyManagement(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/companies", CreateAsync).RequireAuthorization("platform-operator");
+        routes.MapPost("/companies", CreateAsync).RequireAuthorization(Policies.PlatformOperator);
         routes.MapGet("/companies/{companyId:guid}/settings", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 var companySettings = await ReadSettingsAsync(connection, transaction, transactionCancellationToken);
                 return companySettings is null ? Results.NotFound() : Results.Ok(companySettings);
-            }, cancellationToken)).RequireAuthorization("company-member");
-        routes.MapPatch("/companies/{companyId:guid}/settings", ChangeSettingsAsync).RequireAuthorization("administrator");
+            }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
+        routes.MapPatch("/companies/{companyId:guid}/settings", ChangeSettingsAsync).RequireAuthorization(Policies.Administrator);
         routes.MapPost("/companies/{companyId:guid}/archive", (Guid companyId, HttpContext httpContext, TenantContext companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
@@ -40,7 +40,7 @@ public static partial class CompanyManagement
                     "UPDATE company SET archived_at = now() WHERE archived_at IS NULL", transaction: transaction, cancellationToken: transactionCancellationToken));
                 if (rowsInserted > 0) await AuditAsync(connection, transaction, companyId, httpContext, "company.archived", null, new { archived = true }, transactionCancellationToken);
                 return Results.NoContent();
-            }, cancellationToken)).RequireAuthorization("administrator");
+            }, cancellationToken)).RequireAuthorization(Policies.Administrator);
         return routes;
     }
 
@@ -49,7 +49,7 @@ public static partial class CompanyManagement
     {
         if (companyToCreate.Rfc is null || !RfcFormat().IsMatch(companyToCreate.Rfc))
             return Task.FromResult<IResult>(Results.BadRequest(new { error = "RFC has an invalid format." }));
-        if (string.IsNullOrWhiteSpace(companyToCreate.Name) || !MailAddress.TryCreate(companyToCreate.AdminEmail, out var parsedEmail) || parsedEmail.Address != companyToCreate.AdminEmail)
+        if (string.IsNullOrWhiteSpace(companyToCreate.Name) || !EmailAddressRules.IsValid(companyToCreate.AdminEmail))
             return Task.FromResult<IResult>(Results.BadRequest(new { error = "Name and valid administrator email are required." }));
         var companyId = Guid.NewGuid();
         return companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
@@ -58,7 +58,7 @@ public static partial class CompanyManagement
                 "SELECT id FROM app_user WHERE lower(email) = lower(@AdminEmail)", companyToCreate, transaction, cancellationToken: transactionCancellationToken));
             if (adminUserId is null)
             {
-                if (companyToCreate.AdminPassword is null || companyToCreate.AdminPassword.Length < 12)
+                if (companyToCreate.AdminPassword is null || companyToCreate.AdminPassword.Length < PasswordPolicy.MinimumLength)
                     return Results.BadRequest(new { error = "Administrator password requires at least 12 characters." });
                 var adminPasswordHash = passwordHasher.HashPassword(companyToCreate.AdminEmail, companyToCreate.AdminPassword);
                 // Concurrent creation may have inserted the email; attach without changing that password.
@@ -82,8 +82,8 @@ public static partial class CompanyManagement
     private static Task<IResult> ChangeSettingsAsync(Guid companyId, SettingsChange settingsChange, HttpContext httpContext, TenantContext companyScope, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
-            if (settingsChange.DateToleranceDays is < 0 or > 366 || settingsChange.AmountTolerance < 0 || settingsChange.AmountTolerance > 9999999999999999.99m ||
-                (settingsChange.AmountTolerance is decimal amount && decimal.Round(amount, 2) != amount))
+            if (settingsChange.DateToleranceDays is < 0 or > 366 || settingsChange.AmountTolerance < 0 || settingsChange.AmountTolerance > Money.MaxAmount ||
+                (settingsChange.AmountTolerance is decimal amount && !Money.HasAtMostTwoDecimals(amount)))
                 return Results.BadRequest(new { error = "Tolerances must be nonnegative; amount must fit numeric(18,2)." });
             var before = await ReadSettingsAsync(connection, transaction, transactionCancellationToken, forUpdate: true);
             if (before is null) return Results.NotFound();

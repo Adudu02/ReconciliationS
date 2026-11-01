@@ -19,23 +19,23 @@ public static class CompanyEndpoints
                 var workspace = await connection.QuerySingleOrDefaultAsync<CompanyResponse>(new CommandDefinition(
                     "SELECT id, rfc, name, archived_at AS ArchivedAt FROM company", transaction: transaction, cancellationToken: transactionCancellationToken));
                 return workspace is null ? Results.NotFound() : Results.Ok(workspace);
-            }, cancellationToken)).RequireAuthorization("company-member");
+            }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
 
         routes.MapGet("/companies/{companyId:guid}/members", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
                 Results.Ok(await connection.QueryAsync<MemberResponse>(new CommandDefinition(
                     "SELECT user_id AS UserId, role::text AS Role FROM membership", transaction: transaction, cancellationToken: transactionCancellationToken))), cancellationToken))
-            .RequireAuthorization("company-member");
+            .RequireAuthorization(Policies.CompanyMember);
 
         routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, TenantContext companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteWriteAsync<IResult>(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                if (membershipChange.Role is not ("administrator" or "accountant" or "viewer"))
+                if (membershipChange.Role is not (MembershipRoles.Administrator or MembershipRoles.Accountant or MembershipRoles.Viewer))
                     return Results.BadRequest(new { error = "Role must be administrator, accountant or viewer." });
                 var userExists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
                     "SELECT EXISTS(SELECT FROM app_user WHERE id = @UserId)", membershipChange, transaction, cancellationToken: transactionCancellationToken));
                 if (!userExists) return Results.BadRequest(new { error = "Unknown user." });
-                if (membershipChange.Role != "administrator")
+                if (membershipChange.Role != MembershipRoles.Administrator)
                 {
                     var wouldRemoveLastAdministrator = await connection.ExecuteScalarAsync<bool>(new CommandDefinition("""
                         SELECT EXISTS(SELECT FROM membership WHERE user_id=@UserId AND role='administrator')
@@ -48,7 +48,7 @@ public static class CompanyEndpoints
                     ON CONFLICT (company_id, user_id) DO UPDATE SET role = excluded.role
                     """, new { id = companyId, membershipChange.UserId, membershipChange.Role }, transaction, cancellationToken: transactionCancellationToken));
                 return Results.NoContent();
-            }, cancellationToken)).RequireAuthorization("administrator");
+            }, cancellationToken)).RequireAuthorization(Policies.Administrator);
         return routes;
     }
 }
