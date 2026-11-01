@@ -101,7 +101,7 @@ internal static class CfdiParser
         Guid.TryParse(Required(element, name), out var id) && id != Guid.Empty ? id : throw new InvalidDataException($"Invalid {name} UUID.");
 
     private static DateTime Date(XElement element, string name) =>
-        DateTime.TryParseExact(Required(element, name), ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF"],
+        DateTime.TryParseExact(Required(element, name), ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFF"],
             CultureInfo.InvariantCulture, DateTimeStyles.None, out var value) ? value : throw new InvalidDataException($"Invalid local date {name}.");
 
     private static decimal Money(XElement? element, string name, bool optional = false)

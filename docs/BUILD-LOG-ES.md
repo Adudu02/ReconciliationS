@@ -43,7 +43,7 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
 | Pipeline de CI | Pipeline | En cada push: revisión de formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Registros breves de las decisiones grandes y de las alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS (inglés y español), diagramas y el cambio de OpenSpec que define el trabajo | `docs/`, `openspec/` |
-| Pruebas | Pruebas | 103 casos xUnit: 100 aprobados, 3 pendientes explícitos; PostgreSQL real para multiempresa e ingesta | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 104 casos xUnit: 101 aprobados, 3 pendientes explícitos; PostgreSQL real para multiempresa e ingesta | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 3. Registro de pull requests
@@ -55,7 +55,7 @@ Primero el más reciente. Cada entrada dice qué cambió, por qué y qué puedes
 **Para qué:** convertir CFDI sintéticos y CSV bancario de referencia en registros aislados, exactos y conservados.
 **Cómo:** cada implementación sigue a su commit de pruebas rojas. La persistencia usa PostgreSQL real mediante
 Testcontainers y el migrador real; los parsers también se prueban directamente con entradas inválidas y hostiles.
-**Verificado:** compilación sin advertencias/errores, `dotnet test --solution Reconciliation.slnx` con 100 aprobados
+**Verificado:** compilación sin advertencias/errores, `dotnet test --solution Reconciliation.slnx` con 101 aprobados
  y 3 omitidos, revisión de formato, Compose compilado y sano, migraciones subir/bajar/subir en una base desechable
  y ambos mapas regenerados. No se hizo push.
 

@@ -42,7 +42,7 @@ Regenerate the picture after ticking tasks: `python3 tools/progress_diagram.py` 
 | CI pipeline | Pipeline | On every push: format check, build, tests, migrations up/down/up, and a full stack start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Short records of big decisions and the alternatives rejected | `docs/adr/` |
 | Requirements and plan | Docs | BRS, SRS (English and Spanish), diagrams, and the OpenSpec change that defines the work | `docs/`, `openspec/` |
-| Tests | Tests | 103 xUnit cases: 100 passing, 3 explicitly pending; real PostgreSQL tenancy and ingestion tests | `tests/Reconciliation.Tests` |
+| Tests | Tests | 104 xUnit cases: 101 passing, 3 explicitly pending; real PostgreSQL tenancy and ingestion tests | `tests/Reconciliation.Tests` |
 | Progress map | Tool | Draws the status picture from `tasks.md` | `tools/progress_diagram.py` |
 
 ## 3. Pull request log
@@ -54,7 +54,7 @@ Newest first. Each entry says what changed, why, and what you can learn from it.
 **Purpose:** turn synthetic CFDI and reference bank CSV into isolated, exact, retained accounting records.
 **How:** red-test commits precede implementation commits; all persistence scenarios use the real PostgreSQL
 Testcontainers fixture and actual migrator. Parsers are also tested directly for malformed and hostile input.
-**Verified:** build with zero warnings/errors, `dotnet test --solution Reconciliation.slnx` (100 passed, 3 skipped),
+**Verified:** build with zero warnings/errors, `dotnet test --solution Reconciliation.slnx` (101 passed, 3 skipped),
 format verification, Compose build/start with all services healthy, and migrations up/down/up on a disposable
 PostgreSQL database. Both progress maps were regenerated. No push was performed.
 
