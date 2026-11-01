@@ -108,7 +108,8 @@ internal static class CfdiParser
     {
         var text = (string?)element?.Attribute(name);
         if (text is null && optional) return 0;
-        if (text is null || !decimal.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) ||
+        var decimalPoint = text?.IndexOf('.') ?? -1;
+        if (text is null || (decimalPoint >= 0 && text.Length - decimalPoint - 1 > 2) || !decimal.TryParse(text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var value) ||
             value < 0 || value > 9999999999999999.99m || decimal.Round(value, 2) != value)
             throw new InvalidDataException($"Invalid {name}: monetary values require at most two decimals and must fit numeric(18,2).");
         return value;

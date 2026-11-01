@@ -12,6 +12,8 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
         ArgumentNullException.ThrowIfNull(files);
         if (files.Count > options.MaxFiles || files.Sum(file => (long)(file.Content?.Length ?? 0)) > options.MaxUploadBytes)
             throw new InvalidDataException("Upload exceeds file-count or total-size limit.");
+        var rfc = await tenant.ExecuteAsync(companyId, (connection, transaction, ct) =>
+            connection.QuerySingleAsync<string>(new CommandDefinition("SELECT rfc FROM company", transaction: transaction, cancellationToken: ct)), cancellationToken);
         var uploadId = Guid.NewGuid();
         var parsed = new List<(UploadedFile File, ParsedCfdi? Cfdi, string? Error)>();
         foreach (var file in files)
@@ -19,7 +21,9 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
             try
             {
                 if (file.Error is not null || file.Content is null) throw new InvalidDataException(file.Error ?? "Missing file bytes.");
-                parsed.Add((file, CfdiParser.Parse(xml.Read(file.Content)), null));
+                var doc = CfdiParser.Parse(xml.Read(file.Content));
+                parsed.Add(doc.IssuerRfc != rfc && doc.ReceiverRfc != rfc
+                    ? (file, null, "does not involve this company") : (file, doc, null));
             }
             catch (Exception error) when (error is XmlException or InvalidDataException)
             {
@@ -42,10 +46,8 @@ public sealed class CfdiImporter(TenantContext tenant, SafeCfdiXml xml, Ingestio
         {
             results.Add(await tenant.ExecuteAsync(companyId, async (connection, transaction, ct) =>
             {
-                var rfc = await connection.QuerySingleAsync<string>(new CommandDefinition("SELECT rfc FROM company", transaction: transaction, cancellationToken: ct));
                 var reason = item.Error;
                 var doc = item.Cfdi;
-                if (doc is not null && doc.IssuerRfc != rfc && doc.ReceiverRfc != rfc) reason = "does not involve this company";
                 var status = reason is null ? "imported" : "rejected";
                 if (status == "imported" && doc is not null)
                 {
