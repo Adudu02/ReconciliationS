@@ -5,9 +5,9 @@ using Reconciliation.Core.Tenancy;
 
 namespace Reconciliation.Tests;
 
-public sealed class TenantContextTests(PostgresFixture database) : IClassFixture<PostgresFixture>
+public sealed class CompanyScopeTests(PostgresFixture database) : IClassFixture<PostgresFixture>
 {
-    private sealed class ContextLog : ILogger<TenantContext>
+    private sealed class ContextLog : ILogger<CompanyScope>
     {
         public int Warnings { get; private set; }
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
@@ -25,7 +25,7 @@ public sealed class TenantContextTests(PostgresFixture database) : IClassFixture
         var a = await SeedCompanyAsync();
         await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
         var log = new ContextLog();
-        var context = new TenantContext(source, log);
+        var context = new CompanyScope(source, log);
         var rows = await context.ExecuteAsync(null, (connection, transaction, transactionCancellationToken) =>
             connection.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM company", transaction: transaction, cancellationToken: transactionCancellationToken)), TestContext.Current.CancellationToken);
         Assert.Empty(rows);
@@ -39,7 +39,7 @@ public sealed class TenantContextTests(PostgresFixture database) : IClassFixture
         var a = await SeedCompanyAsync();
         var b = await SeedCompanyAsync();
         await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
-        var context = new TenantContext(source, new ContextLog());
+        var context = new CompanyScope(source, new ContextLog());
         var rows = await context.ExecuteAsync(a, (connection, transaction, transactionCancellationToken) =>
             connection.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM company", transaction: transaction, cancellationToken: transactionCancellationToken)), TestContext.Current.CancellationToken);
         Assert.Equal([a], rows);
@@ -55,7 +55,7 @@ public sealed class TenantContextTests(PostgresFixture database) : IClassFixture
     {
         var a = await SeedCompanyAsync();
         await using var source = NpgsqlDataSource.Create(database.AppConnectionString + ";Maximum Pool Size=1");
-        var context = new TenantContext(source, new ContextLog());
+        var context = new CompanyScope(source, new ContextLog());
         await context.ExecuteAsync(a, (connection, transaction, transactionCancellationToken) => connection.ExecuteAsync(new CommandDefinition(
             "UPDATE company SET name = 'committed'", transaction: transaction, cancellationToken: transactionCancellationToken)), TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.ExecuteAsync<int>(a, async (connection, transaction, transactionCancellationToken) =>

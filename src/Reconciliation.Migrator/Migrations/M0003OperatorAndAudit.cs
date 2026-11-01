@@ -3,7 +3,7 @@ using FluentMigrator;
 namespace Reconciliation.Migrator.Migrations;
 
 [Migration(3, "Operator provisioning and minimal tenancy audit")]
-public sealed class M0003CompanyManagement : Migration
+public sealed class M0003OperatorAndAudit : Migration
 {
     public override void Up() => Execute.Sql($$"""
         ALTER TABLE app_user ADD COLUMN is_operator boolean NOT NULL DEFAULT false;

@@ -3,7 +3,7 @@ using System.Xml.Linq;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed class SafeCfdiXml(IngestionOptions options)
+public sealed class SafeCfdiXmlReader(IngestionOptions options)
 {
     public XDocument Read(byte[] xmlBytes, int? length = null)
     {

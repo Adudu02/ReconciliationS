@@ -17,7 +17,7 @@ public sealed record CompanySettings(int DateToleranceDays, decimal AmountTolera
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record SettingsChange(int? DateToleranceDays, decimal? AmountTolerance, bool? ComplementNextBizDay);
 
-public static partial class CompanyManagement
+public static partial class CompanyAdminEndpoints
 {
     [GeneratedRegex(@"\A[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}\z", RegexOptions.CultureInvariant)]
     private static partial Regex RfcFormat();
@@ -25,14 +25,14 @@ public static partial class CompanyManagement
     public static IEndpointRouteBuilder MapCompanyManagement(this IEndpointRouteBuilder routes)
     {
         routes.MapPost("/companies", CreateAsync).RequireAuthorization(Policies.PlatformOperator);
-        routes.MapGet("/companies/{companyId:guid}/settings", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}/settings", (Guid companyId, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 var companySettings = await ReadSettingsAsync(connection, transaction, transactionCancellationToken);
-                return TenantContext.OkOrNotFound(companySettings);
+                return CompanyScope.OkOrNotFound(companySettings);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
         routes.MapPatch("/companies/{companyId:guid}/settings", ChangeSettingsAsync).RequireAuthorization(Policies.Administrator);
-        routes.MapPost("/companies/{companyId:guid}/archive", (Guid companyId, HttpContext httpContext, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapPost("/companies/{companyId:guid}/archive", (Guid companyId, HttpContext httpContext, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 var rowsInserted = await connection.ExecuteAsync(Command(
@@ -43,7 +43,7 @@ public static partial class CompanyManagement
         return routes;
     }
 
-    private static Task<IResult> CreateAsync(CreateCompanyRequest companyToCreate, HttpContext httpContext, TenantContext companyScope,
+    private static Task<IResult> CreateAsync(CreateCompanyRequest companyToCreate, HttpContext httpContext, CompanyScope companyScope,
         IPasswordHasher<string> passwordHasher, CancellationToken cancellationToken)
     {
         if (companyToCreate.Rfc is null || !RfcFormat().IsMatch(companyToCreate.Rfc))
@@ -78,7 +78,7 @@ public static partial class CompanyManagement
         }, cancellationToken);
     }
 
-    private static Task<IResult> ChangeSettingsAsync(Guid companyId, SettingsChange settingsChange, HttpContext httpContext, TenantContext companyScope, CancellationToken cancellationToken) =>
+    private static Task<IResult> ChangeSettingsAsync(Guid companyId, SettingsChange settingsChange, HttpContext httpContext, CompanyScope companyScope, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
             if (settingsChange.DateToleranceDays is < 0 or > 366 || settingsChange.AmountTolerance < 0 || settingsChange.AmountTolerance > Money.MaxAmount ||

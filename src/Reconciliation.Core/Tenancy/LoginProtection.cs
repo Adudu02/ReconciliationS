@@ -49,7 +49,7 @@ public static class LoginProtection
                 httpContext.Request.EnableBuffering(8192, 8192);
                 try
                 {
-                    var credentials = await httpContext.Request.ReadFromJsonAsync<LoginRequest>(httpContext.RequestAborted);
+                    var credentials = await httpContext.Request.ReadFromJsonAsync<TokenRequest>(httpContext.RequestAborted);
                     httpContext.Items["LoginEmail"] = credentials?.Email?.Trim().ToUpperInvariant() ?? "";
                 }
                 catch (JsonException) { httpContext.Response.StatusCode = StatusCodes.Status400BadRequest; return; }

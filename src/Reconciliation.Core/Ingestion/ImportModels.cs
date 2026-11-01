@@ -9,6 +9,6 @@ public sealed record UploadedFile(string Name, byte[]? Content, byte[] Hash, str
     public byte[] RequireContent() => Error is null && Content is not null ? Content : throw new InvalidDataException(Error ?? UploadErrors.MissingContent);
     public static UploadedFile FromBytes(string name, byte[] bytes) => new(name, bytes, SHA256.HashData(bytes));
 }
-public sealed record FileImportResult(Guid FileId, string Name, string Status, string? Reason, Guid? CfdiId = null,
+public sealed record FileImportOutcome(Guid FileId, string Name, string Status, string? Reason, Guid? CfdiId = null,
     int ImportedMovements = 0, int DuplicateMovements = 0);
-public sealed record ImportReport(Guid UploadId, IReadOnlyList<FileImportResult> Files);
+public sealed record ImportReport(Guid UploadId, IReadOnlyList<FileImportOutcome> Files);

@@ -60,7 +60,7 @@ Regenerate the image after ticking tasks: `python3 tools/progress_diagram.py` (a
               | Reconciliation.Core           |   Tenancy | Ingestion | Audit
               | (seven modules, no Main)      |   Matching | Review | Sat | Jobs
               +---------------+---------------+   (the last four are placeholders)
-                              | SQL via Npgsql + Dapper, always inside TenantContext
+                              | SQL via Npgsql + Dapper, always inside CompanyScope
                               v
               +-------------------------------+        +----------------------+
               | PostgreSQL 17                 |        | Migrator (runs once) |
@@ -101,10 +101,10 @@ Example: an accountant uploads an invoice with `POST /companies/{id}/imports/cfd
    The token carries only the user id, in the `sub` claim.
 2. **Request.** The client sends the file with `Authorization: Bearer <token>` and `X-Company-Id: <uuid>`.
 3. **Authentication.** ASP.NET validates signature, issuer, audience and expiry. If that fails the answer is 401.
-4. **Per-company authorisation.** `CompanyAuthorization` requires `X-Company-Id` to match the route `{id}`, opens a
+4. **Per-company authorisation.** `CompanyRoleHandler` requires `X-Company-Id` to match the route `{id}`, opens a
    transaction with that context and reads the user's role from `membership`. The `accountant` policy accepts
    administrator and accountant; a `viewer` gets 403.
-5. **Company context.** `TenantContext.ExecuteAsync` opens a connection, starts a transaction and runs
+5. **Company context.** `CompanyScope.ExecuteAsync` opens a connection, starts a transaction and runs
    `set_config('app.company_id', <uuid>, true)`; the `true` makes it last only for that transaction.
 6. **Work.** The importer reads and validates the file and inserts rows; every query goes through the RLS policies.
 7. **Close.** If everything worked, `COMMIT`; if anything fails, `ROLLBACK` and nothing is left half done. The response
@@ -115,12 +115,12 @@ Example: an accountant uploads an invoice with `POST /companies/{id}/imports/cfd
 | Layer | What it stops | Where it lives | How it is tested |
 |---|---|---|---|
 | JWT authentication | Anonymous requests | `Authentication.cs`, fallback policy | `AuthenticationTests` |
-| Membership and role per company | Using a company where you have no role, or an action the role cannot do | `CompanyAuthorization.cs` | `MembershipTests`, `IsolationTests` |
-| Transaction with context | Queries with no company assigned | `TenantContext.cs` | `TenantContextTests` |
+| Membership and role per company | Using a company where you have no role, or an action the role cannot do | `CompanyRoleHandler.cs` | `MembershipTests`, `IsolationTests` |
+| Transaction with context | Queries with no company assigned | `CompanyScope.cs` | `TenantContextTests` |
 | Forced RLS in PostgreSQL | Seeing or writing another company's rows even if a `WHERE` is missing | Migrations `M0002` and `M0004` | Isolation guard over every table and route |
 | Composite foreign keys | A row pointing at another company's record | `FOREIGN KEY (company_id, x_id)` | `IngestionDatabaseTests` |
 | Unprivileged role | Bypassing RLS, deleting data | `cfdi_app`: no superuser, no `BYPASSRLS`, no `DELETE` | Tests that use the real role |
-| Safe XML reading | XXE attacks and "bomb" files | `SafeCfdiXml.cs` | `SafeXmlTests` |
+| Safe XML reading | XXE attacks and "bomb" files | `SafeCfdiXmlReader.cs` | `SafeXmlTests` |
 
 Why several layers: each covers a different failure. A 403 does not prove the RLS policy exists, and an RLS policy does
 not identify the user; both are needed, and each needs tests.
@@ -130,7 +130,7 @@ not identify the user; both are needed, and each needs tests.
 ```
  multipart (files, bank, accountReference)
    -> MultipartUpload: counts bytes while reading (413/400 past the limits)
-   -> for each file:   SafeCfdiXml -> CfdiParser -> does it involve the company? -> repeated UUID?
+   -> for each file:   SafeCfdiXmlReader -> CfdiParser -> does it involve the company? -> repeated UUID?
    -> for each file, ITS OWN transaction:
         import_file (original, sha256, retained_until) -> cfdi/payments/movements -> audit
    -> ImportReport { upload_id, files[ status, reason, ids ] }
@@ -220,12 +220,12 @@ program from starting, instead of failing later in the middle of an import.
 | `actorId` | UUID of the user performing the action; comes from the `sub` claim and is stored in the audit |
 | `uploadId` | UUID generated for each upload (`Guid.NewGuid()`) |
 | `UploadedFile(Name, Content, Hash, Error)` | A file in memory with its SHA-256 fingerprint; `Error` carries the reason if it could not be read |
-| `FileImportResult` | Result for one file: status, reason, ids and movement counts |
+| `FileImportOutcome` | Result for one file: status, reason, ids and movement counts |
 | `ImportReport(UploadId, Files)` | What the API returns: all results of one upload |
-| `ParsedCfdi`, `PaymentDocument` | Already-read representation of a CFDI and of each payment line |
+| `ParsedCfdi`, `PaidInvoice` | Already-read representation of a CFDI and of each payment line |
 | `InconsistentBalance` | Mark on a payment line whose balance does not fit; it does not reject, it sends to review |
 | `IBankStatementParser` | Contract for reading one bank's CSV; one implementation per bank |
-| `TenantContext` | Service that runs code inside a transaction with the company assigned |
+| `CompanyScope` | Service that runs code inside a transaction with the company assigned |
 
 ## 4. What exists today
 
@@ -238,12 +238,12 @@ program from starting, instead of failing later in the middle of an import.
 | **Worker host** | Host | Runs background jobs. Today it starts, reports health and waits | `src/Reconciliation.Worker` |
 | **Migrator** | Tool | Applies or reverts database changes (`up`, `down`) and creates the first operator | `src/Reconciliation.Migrator` |
 | **SAT stub** | Host | A simulation of the SAT status service to develop without a real account. Today only a placeholder | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Database | Stores all data with forced RLS per company | `docker-compose.yml`, migrations `M0001` to `M0004` |
+| **PostgreSQL 17** | Database | Stores all data with forced RLS per company | `docker-compose.yml`, migrations `M0001` to `M0005` |
 | Docker Compose | Pipeline | Starts database, migrator, API, worker and stub with one command and waits for all to be healthy | `docker-compose.yml`, `Dockerfile` |
 | CI pipeline | Pipeline | On every push: format, build, tests, migrations up/down/up and a full system start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Big decisions and the alternatives that were rejected | `docs/adr/` |
 | Requirements and plan | Docs | BRS, SRS, diagrams and the OpenSpec change that defines the work | `docs/requirements/`, `docs/diagrams/`, `openspec/` |
-| Tests | Tests | 104 xUnit cases: 101 passing, 3 explicitly pending; real PostgreSQL for tenancy and ingestion | `tests/Reconciliation.Tests` |
+| Tests | Tests | 126 xUnit cases: 122 passing, 3 pending scenarios and 1 opt-in benchmark; real PostgreSQL for tenancy and ingestion | `tests/Reconciliation.Tests` |
 | Progress map | Tool | Draws the status image from `tasks.md` | `tools/progress_diagram.py` |
 
 ## 5. Pull request log
@@ -251,6 +251,47 @@ program from starting, instead of failing later in the middle of an import.
 Most recent first. Each entry answers six questions: **What it is** (the piece), **How it works** (step by step),
 **Names and variables** (what each new term means), **Why this way** (decision and rejected alternative), **What you
 learn** (C#, SQL or tooling idea) and **Verified** (how it was checked).
+
+### PR-5: Naming and de-duplication
+
+**Purpose:** make the implementation read in the project's domain language while preserving routes, JSON fields,
+SQL table/column names, report statuses and migration versions.
+**What changed:** B1 renamed locals and parameters; B2 named policies, roles, money/password/JWT/upload limits and
+mapped status/kind enums explicitly to existing database strings; B3 shared audit writes, Dapper commands, claims,
+transaction results, upload validation/error mapping and fixture/document helpers; B4 split parsing/persistence and
+made payment flags immutable; B5 renamed types and source files with both language guides updated together.
+
+**What I learned:** a local rename can change an inferred anonymous-object property used by Dapper. Explicit aliases
+preserve SQL parameter names. Likewise a C# type name can change without changing its JSON member names. Transaction
+callbacks retain `transactionCancellationToken`; endpoint/method parameters use `cancellationToken`. Framework override
+parameter names stay aligned with their base signatures to keep the analyzers clean. The temporary Roslyn tool stays
+outside the repository. Existing tests bracketed each refactor; no domain task was ticked for cleanup.
+
+**RENAME MAP**
+
+| Old name | New name | Why |
+|---|---|---|
+| `TenantContext` | `CompanyScope` | Transaction scope belongs to one company |
+| `CompanyManagement` | `CompanyAdminEndpoints` | Company administration routes |
+| `ImportStorage` | `ImportFileStore` | Stores retained upload files |
+| `CompanyAuthorization` | `CompanyRoleHandler` | Authorizes the request company role |
+| `PlatformAuthorization` | `PlatformOperatorHandler` | Authorizes the platform operator |
+| `IngestionServices` | `IngestionServiceCollectionExtensions` | Describes DI registrations |
+| `SafeCfdiXml` | `SafeCfdiXmlReader` | Reads XML with safety limits |
+| `PaymentDocument` | `PaidInvoice` | One invoice paid by a complement |
+| `InvoiceResponse` | `CfdiResponse` | Uses CFDI domain terminology |
+| `ExistingInvoice` | `StoredCfdi` | Names the stored idempotency result |
+| `FileImportResult` | `FileImportOutcome` | One uploaded file outcome |
+| `LoginRequest` | `TokenRequest` | Token endpoint input |
+| `LoginUser` | `LoginAccount` | Account used for login |
+| `M0003CompanyManagement` | `M0003OperatorAndAudit` | Names operator/audit schema; version 3 unchanged |
+| `M0004Ingestion` | `M0004IngestionTables` | Names ingestion schema; version 4 unchanged |
+
+**Naming/duplication review:** generic locals now use domain names; constants and shared helpers remove repetition;
+long methods have named stages; the seven planned modules remain as the module map with a planned comment. Type
+visibility and XML/SAT terms stay as designed.
+**Verified:** 126 cases: 122 pass and 4 skip (three future scenarios and the opt-in benchmark); format clean for every
+refactor commit. The progress map retains the same completed tasks.
 
 ### PR-4: Hardening and performance
 
@@ -310,7 +351,7 @@ skipped, format check, Compose built and healthy, migrations up/down/up on a dis
 regenerated. Nothing was pushed.
 
 #### Model, exact money and RLS (3.2, 3.8)
-- **What it is:** migration `M0004Ingestion` and the seven new tables: `import_file`, `cfdi`, `cfdi_relation`,
+- **What it is:** migration `M0004IngestionTables` and the seven new tables: `import_file`, `cfdi`, `cfdi_relation`,
   `cfdi_payment`, `cfdi_payment_doc`, `bank_account` and `bank_movement` (see section 2.5).
 - **How it works:** all carry `company_id`, enabled and forced RLS and a `tenant_isolation` policy. Foreign keys are
   composite, for example `(company_id, cfdi_id)`, so a row of company A cannot point at company B's invoice even by
@@ -327,7 +368,7 @@ regenerated. Nothing was pushed.
   specific columns only; `ON CONFLICT` for idempotent operations.
 
 #### Safe XML and declared fiscal values (3.3, 3.4, 3.4b–3.4e)
-- **What it is:** `SafeCfdiXml` (safe reading) and `CfdiParser` (interpreting CFDI 4.0 and payment complement 2.0).
+- **What it is:** `SafeCfdiXmlReader` (safe reading) and `CfdiParser` (interpreting CFDI 4.0 and payment complement 2.0).
 - **How it works:** first a bounded pass counts nodes and depth (`MaxXmlNodes`, `MaxXmlDepth`) with
   `DtdProcessing.Prohibit` and `XmlResolver = null`, which prevents declaring external entities (XXE) and expanding
   entities (billion laughs). Only if it passes is the document loaded. Then the parser validates:
@@ -352,7 +393,7 @@ regenerated. Nothing was pushed.
   `LINQ to XML` (`XDocument`) and `XmlReaderSettings` are the safe way to read XML in .NET.
 
 #### Reports, originals and limits (3.4f, 3.5)
-- **What it is:** `CfdiImporter`, `ImportStorage` and `MultipartUpload`: they store each file with its outcome and read
+- **What it is:** `CfdiImporter`, `ImportFileStore` and `MultipartUpload`: they store each file with its outcome and read
   the upload with limits.
 - **How it works:** each file has one `import_file` row, grouped by `upload_id`, with no batch table. Status, reason and
   SHA-256 are stored; a rejected file keeps its hash, not its bytes. A repeated UUID points to the original
@@ -415,8 +456,8 @@ and 5 explicitly skipped cases, `dotnet format --verify-no-changes`, Compose hea
 up/down/up on a separate disposable database. Reverting to zero and re-applying everything also worked.
 
 #### Transactions and forced RLS (2.1, 2.2)
-- **What it is:** `TenantContext` and migration `M0002TenantIsolation`.
-- **How it works:** `TenantContext.ExecuteAsync(companyId, action)` opens a connection and transaction, runs
+- **What it is:** `CompanyScope` and migration `M0002TenantIsolation`.
+- **How it works:** `CompanyScope.ExecuteAsync(companyId, action)` opens a connection and transaction, runs
   `set_config('app.company_id', ..., true)` and hands that connection to the action. In PostgreSQL, `company`,
   `membership` and `audit_entry` have `ENABLE` and `FORCE ROW LEVEL SECURITY` with a policy comparing `company_id` with
   `current_setting('app.company_id', true)`. With no context the variable is empty, `nullif(..., '')` yields NULL and no
@@ -425,12 +466,12 @@ up/down/up on a separate disposable database. Reverting to zero and re-applying 
 - **Names and variables:** `app.company_id` is the session variable; `USING` filters what can be read or modified and
   `WITH CHECK` filters what can be inserted; `FORCE` makes even the table owner obey the policy.
 - **Why this way:** it was compared with a schema per company and a database per company (ADR-003): RLS keeps one schema
-  and simple migrations, in exchange for requiring discipline in setting the context, which `TenantContext` centralises.
+  and simple migrations, in exchange for requiring discipline in setting the context, which `CompanyScope` centralises.
 - **What you learn:** `SET LOCAL` (or `set_config(..., true)`) ends with the transaction and avoids carrying context over
   when pooled connections are reused. RLS and the authenticated membership check solve different parts; both are needed.
 
 #### Credentials and roles per company (2.3; 2.4 pending)
-- **What it is:** `Authentication.cs`, `CompanyAuthorization.cs`, `CompanyEndpoints.cs`.
+- **What it is:** `Authentication.cs`, `CompanyRoleHandler.cs`, `CompanyEndpoints.cs`.
 - **How it works:** see the cycle in section 2.2. Identity's `PasswordHasher` produces PBKDF2 hashes with a random salt.
   If the email does not exist, login still does a slow verification against a synthetic hash so response time does not
   reveal which emails exist. The fallback policy requires authentication; only health, OpenAPI and login are anonymous.
@@ -445,7 +486,7 @@ up/down/up on a separate disposable database. Reverting to zero and re-applying 
   policy without publishing fake domain endpoints.
 
 #### Creation, settings and archive (2.7, 2.8; 2.9 completed in PR-3)
-- **What it is:** `CompanyManagement`, `PlatformAuthorization`, `OperatorBootstrap` and migration `M0003`.
+- **What it is:** `CompanyAdminEndpoints`, `PlatformOperatorHandler`, `OperatorBootstrap` and migration `M0003`.
 - **How it works:** the migrator optionally creates an operator from `OPERATOR_EMAIL` / `OPERATOR_PASSWORD`. Only that
   operator can create a company and its first administrator (`POST /companies`). The RFC is validated with a regular
   expression and a trigger (`company_rfc_immutable`) prevents changing it. A new account requires a 12-character

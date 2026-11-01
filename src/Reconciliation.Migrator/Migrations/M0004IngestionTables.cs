@@ -4,7 +4,7 @@ using Reconciliation.Core.Ingestion;
 namespace Reconciliation.Migrator.Migrations;
 
 [Migration(4, "Tenant ingestion model and retained originals")]
-public sealed class M0004Ingestion : Migration
+public sealed class M0004IngestionTables : Migration
 {
     public override void Up() => Execute.Sql($$"""
         CREATE TABLE import_file (

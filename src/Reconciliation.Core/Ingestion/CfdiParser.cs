@@ -5,12 +5,12 @@ using MoneyRules = Reconciliation.Core.Common.Money;
 namespace Reconciliation.Core.Ingestion;
 
 internal sealed record CfdiRelation(Guid RelatedUuid, string RelationCode);
-internal sealed record PaymentDocument(Guid InvoiceUuid, int Installment, string Currency, decimal PreviousBalance, decimal Paid, decimal RemainingBalance)
+internal sealed record PaidInvoice(Guid InvoiceUuid, int Installment, string Currency, decimal PreviousBalance, decimal Paid, decimal RemainingBalance)
 {
     public bool InconsistentBalance { get; init; } = RemainingBalance != PreviousBalance - Paid;
 }
 internal sealed record CfdiPayment(DateTime PaidAt, string PaymentForm, string Currency, decimal? ExchangeRate,
-    decimal Amount, string? OperationNumber, IReadOnlyList<PaymentDocument> Documents);
+    decimal Amount, string? OperationNumber, IReadOnlyList<PaidInvoice> Documents);
 internal sealed record ParsedCfdi(Guid Uuid, string Type, string IssuerRfc, string ReceiverRfc, DateTime IssuedAt,
     DateTime StampedAt, string Currency, string? PaymentMethod, decimal Subtotal, decimal Discount, decimal TransferredTax,
     decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal,
@@ -99,7 +99,7 @@ internal static class CfdiParser
                 {
                     if (!int.TryParse(Required(relatedDocument, "NumParcialidad"), NumberStyles.None, CultureInfo.InvariantCulture, out var installment) || installment <= 0)
                         throw new InvalidDataException("Invalid installment number.");
-                    var paidInvoice = new PaymentDocument(Uuid(relatedDocument, "IdDocumento"), installment, Required(relatedDocument, "MonedaDR"),
+                    var paidInvoice = new PaidInvoice(Uuid(relatedDocument, "IdDocumento"), installment, Required(relatedDocument, "MonedaDR"),
                         RequiredMoney(relatedDocument, "ImpSaldoAnt"), RequiredMoney(relatedDocument, "ImpPagado"), RequiredMoney(relatedDocument, "ImpSaldoInsoluto"));
                     return paidInvoice;
                 }).ToArray();

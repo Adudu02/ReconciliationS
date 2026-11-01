@@ -7,10 +7,10 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, IngestionOptions options, IMemoryCache companyRfcs)
+public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xml, IngestionOptions options, IMemoryCache companyRfcs)
 {
     private sealed record ParsedUpload(UploadedFile File, ParsedCfdi? Cfdi, string? Error);
-    private sealed record ExistingInvoice(Guid Id, Guid ImportFileId);
+    private sealed record StoredCfdi(Guid Id, Guid ImportFileId);
     public async Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default)
     {
         options.EnsureWithinLimits(files);
@@ -22,7 +22,7 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
         });
         var uploadId = Guid.NewGuid();
         var parsed = FlagBrokenInstallmentChains(ParseUploads(files, companyRfc));
-        var fileOutcomes = new List<FileImportResult>();
+        var fileOutcomes = new List<FileImportOutcome>();
         try
         {
             foreach (var upload in parsed)
@@ -59,11 +59,11 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
 
     private static ParsedUpload[] FlagBrokenInstallmentChains(ParsedUpload[] parsed)
     {
-        var brokenChains = new HashSet<PaymentDocument>(ReferenceEqualityComparer.Instance);
+        var brokenChains = new HashSet<PaidInvoice>(ReferenceEqualityComparer.Instance);
         foreach (var paymentsByInvoiceUuid in parsed.Where(upload => upload.Cfdi is not null).SelectMany(upload => upload.Cfdi!.Payments)
             .SelectMany(payment => payment.Documents).GroupBy(parsedCfdi => parsedCfdi.InvoiceUuid))
         {
-            PaymentDocument? previousInstallment = null;
+            PaidInvoice? previousInstallment = null;
             foreach (var paidInvoice in paymentsByInvoiceUuid.OrderBy(parsedCfdi => parsedCfdi.Installment))
             {
                 if (previousInstallment is not null && paidInvoice.Installment == previousInstallment.Installment + 1 && paidInvoice.PreviousBalance != previousInstallment.RemainingBalance)
@@ -85,14 +85,14 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
         }).ToArray();
     }
 
-    private Task<FileImportResult> PersistCfdiAsync(Guid companyId, Guid actorId, Guid uploadId, string? companyRfc, ParsedUpload upload, CancellationToken cancellationToken) =>
+    private Task<FileImportOutcome> PersistCfdiAsync(Guid companyId, Guid actorId, Guid uploadId, string? companyRfc, ParsedUpload upload, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
             var rejectionReason = upload.Error;
             var parsedCfdi = upload.Cfdi;
             var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
             rejectionReason ??= parsedCfdi?.ReviewReason;
-            var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, upload.File, ImportFileKind.Cfdi,
+            var fileId = await ImportFileStore.InsertFileAsync(connection, transaction, companyId, uploadId, upload.File, ImportFileKind.Cfdi,
                 importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
             Guid? cfdiId = null;
             if (importStatus == ImportStatus.Imported && parsedCfdi is not null)
@@ -155,21 +155,21 @@ public sealed class CfdiImporter(TenantContext companyScope, SafeCfdiXml xml, In
                         inconsistent = documents.Select(paidInvoice => paidInvoice.Line.InconsistentBalance).ToArray()
                     }, transaction, cancellationToken: transactionCancellationToken));
                 }
-                await ImportStorage.FinalizeAsync(connection, transaction, fileId, upload.File, options.RetentionYears, 0, 0, transactionCancellationToken);
+                await ImportFileStore.FinalizeAsync(connection, transaction, fileId, upload.File, options.RetentionYears, 0, 0, transactionCancellationToken);
             }
-            await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
-            return new FileImportResult(fileId, upload.File.Name, importStatus.ToDatabaseValue(), rejectionReason ?? parsedCfdi?.ReviewReason, cfdiId);
+            await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
+            return new FileImportOutcome(fileId, upload.File.Name, importStatus.ToDatabaseValue(), rejectionReason ?? parsedCfdi?.ReviewReason, cfdiId);
         }, cancellationToken);
 
-    private static async Task<FileImportResult> RecordDuplicateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
+    private static async Task<FileImportOutcome> RecordDuplicateAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         Guid companyId, Guid actorId, Guid fileId, UploadedFile file, ParsedCfdi parsedCfdi, CancellationToken cancellationToken)
     {
-        var alreadyStored = await connection.QuerySingleAsync<ExistingInvoice>(Command(
+        var alreadyStored = await connection.QuerySingleAsync<StoredCfdi>(Command(
             "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid=@Uuid", parsedCfdi, transaction, cancellationToken: cancellationToken));
         await connection.ExecuteAsync(Command("UPDATE import_file SET status='already_imported', reason=NULL, original_file_id=@ImportFileId WHERE id=@fileId",
             new { alreadyStored.ImportFileId, fileId }, transaction, cancellationToken: cancellationToken));
-        await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + ImportStatus.AlreadyImported.ToDatabaseValue(), fileId, cancellationToken);
-        return new FileImportResult(fileId, file.Name, ImportStatus.AlreadyImported.ToDatabaseValue(), null, alreadyStored.Id);
+        await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + ImportStatus.AlreadyImported.ToDatabaseValue(), fileId, cancellationToken);
+        return new FileImportOutcome(fileId, file.Name, ImportStatus.AlreadyImported.ToDatabaseValue(), null, alreadyStored.Id);
     }
 
     private sealed record CfdiInsertRow(Guid CompanyId, Guid FileId, Guid Uuid, string Type, string Direction, string IssuerRfc,

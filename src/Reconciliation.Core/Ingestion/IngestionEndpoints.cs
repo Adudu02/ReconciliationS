@@ -10,7 +10,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed record InvoiceResponse(Guid Id, Guid Uuid, string Type, string Direction, string IssuerRfc, string ReceiverRfc,
+public sealed record CfdiResponse(Guid Id, Guid Uuid, string Type, string Direction, string IssuerRfc, string ReceiverRfc,
     DateTime IssuedAt, DateTime StampedAt, string Currency, string? PaymentMethod, decimal Subtotal, decimal Discount,
     decimal TransferredTax, decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal, string? ReviewReason);
 
@@ -27,10 +27,10 @@ public static class IngestionEndpoints
             .RequireAuthorization(Policies.Accountant);
         routes.MapGet("/companies/{companyId:guid}/banks", (BankStatementImporter statementImporter) => Results.Ok(statementImporter.SupportedBanks))
             .RequireAuthorization(Policies.CompanyMember);
-        routes.MapGet("/companies/{companyId:guid}/imports/{uploadId:guid}", (Guid companyId, Guid uploadId, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}/imports/{uploadId:guid}", (Guid companyId, Guid uploadId, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                var fileOutcomes = (await connection.QueryAsync<FileImportResult>(Command("""
+                var fileOutcomes = (await connection.QueryAsync<FileImportOutcome>(Command("""
                     SELECT f.id AS FileId, f.filename AS Name, f.status, f.reason, c.id AS CfdiId,
                       f.imported_movements AS ImportedMovements, f.duplicate_movements AS DuplicateMovements
                     FROM import_file f LEFT JOIN cfdi c ON c.import_file_id = coalesce(f.original_file_id, f.id)
@@ -38,23 +38,23 @@ public static class IngestionEndpoints
                     """, new { uploadId }, transaction, cancellationToken: transactionCancellationToken))).ToArray();
                 return fileOutcomes.Length == 0 ? Results.NotFound() : Results.Ok(new ImportReport(uploadId, fileOutcomes));
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
-        routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
-                var storedCfdi = await connection.QuerySingleOrDefaultAsync<InvoiceResponse>(Command("""
+                var storedCfdi = await connection.QuerySingleOrDefaultAsync<CfdiResponse>(Command("""
                     SELECT id, uuid, type, direction, issuer_rfc AS IssuerRfc, receiver_rfc AS ReceiverRfc,
                       issued_at AS IssuedAt, stamped_at AS StampedAt, currency, payment_method AS PaymentMethod,
                       subtotal, discount, transferred_tax AS TransferredTax, retained_tax AS RetainedTax,
                       local_transferred_tax AS LocalTransferredTax, local_retained_tax AS LocalRetainedTax,
                       total, is_global AS IsGlobal, review_reason AS ReviewReason FROM cfdi WHERE id = @invoiceId
                     """, new { invoiceId = cfdiId }, transaction, cancellationToken: transactionCancellationToken));
-                return TenantContext.OkOrNotFound(storedCfdi);
+                return CompanyScope.OkOrNotFound(storedCfdi);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
-        routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}/xml", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, TenantContext companyScope) =>
+        routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}/xml", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, CompanyScope companyScope) =>
             (IResult)new StoredOriginalResult(companyScope, companyId, cfdiId,
                 "SELECT f.original FROM import_file f JOIN cfdi c ON c.import_file_id=f.id WHERE c.id=@resourceId", "application/xml", "original.xml"))
             .RequireAuthorization(Policies.CompanyMember);
-        routes.MapGet("/companies/{companyId:guid}/imports/files/{fileId:guid}/original", (Guid companyId, Guid fileId, TenantContext companyScope) =>
+        routes.MapGet("/companies/{companyId:guid}/imports/files/{fileId:guid}/original", (Guid companyId, Guid fileId, CompanyScope companyScope) =>
             (IResult)new StoredOriginalResult(companyScope, companyId, fileId, """
                 SELECT original.original FROM import_file requested
                 JOIN import_file original ON original.id=coalesce(requested.original_file_id,requested.id)

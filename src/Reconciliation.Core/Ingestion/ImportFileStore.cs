@@ -7,7 +7,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Ingestion;
 
-internal static class ImportStorage
+internal static class ImportFileStore
 {
     public static Task<Guid> InsertFileAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid uploadId,
         UploadedFile uploadedFile, ImportFileKind fileKind, ImportStatus importStatus, string? rejectionReason, int retentionYears, CancellationToken cancellationToken) =>

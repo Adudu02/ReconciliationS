@@ -4,7 +4,7 @@ using Npgsql;
 
 namespace Reconciliation.Core.Tenancy;
 
-public sealed partial class TenantContext(NpgsqlDataSource dataSource, ILogger<TenantContext> logger)
+public sealed partial class CompanyScope(NpgsqlDataSource dataSource, ILogger<CompanyScope> logger)
 {
     public Task<IResult> ExecuteResultAsync(Guid? companyId,
         Func<NpgsqlConnection, NpgsqlTransaction, CancellationToken, Task<IResult>> work,

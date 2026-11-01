@@ -10,7 +10,7 @@ namespace Reconciliation.Core.Tenancy;
 
 public sealed record PlatformOperatorRequirement : IAuthorizationRequirement;
 
-public sealed class PlatformAuthorization(NpgsqlDataSource dataSource) : AuthorizationHandler<PlatformOperatorRequirement>
+public sealed class PlatformOperatorHandler(NpgsqlDataSource dataSource) : AuthorizationHandler<PlatformOperatorRequirement>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PlatformOperatorRequirement requirement) => AuthorizeOperatorAsync(context, requirement);
 

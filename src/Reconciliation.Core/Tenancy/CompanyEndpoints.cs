@@ -14,21 +14,21 @@ public static class CompanyEndpoints
 {
     public static IEndpointRouteBuilder MapCompanies(this IEndpointRouteBuilder routes)
     {
-        routes.MapGet("/companies/{companyId:guid}", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}", (Guid companyId, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 var workspace = await connection.QuerySingleOrDefaultAsync<CompanyResponse>(Command(
                     "SELECT id, rfc, name, archived_at AS ArchivedAt FROM company", transaction: transaction, cancellationToken: transactionCancellationToken));
-                return TenantContext.OkOrNotFound(workspace);
+                return CompanyScope.OkOrNotFound(workspace);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
 
-        routes.MapGet("/companies/{companyId:guid}/members", (Guid companyId, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}/members", (Guid companyId, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
                 Results.Ok(await connection.QueryAsync<MemberResponse>(Command(
                     "SELECT user_id AS UserId, role::text AS Role FROM membership", transaction: transaction, cancellationToken: transactionCancellationToken))), cancellationToken))
             .RequireAuthorization(Policies.CompanyMember);
 
-        routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, TenantContext companyScope, CancellationToken cancellationToken) =>
+        routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteWriteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 if (membershipChange.Role is not (MembershipRoles.Administrator or MembershipRoles.Accountant or MembershipRoles.Viewer))

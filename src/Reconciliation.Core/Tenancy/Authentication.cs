@@ -16,9 +16,9 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
 
-public sealed record LoginRequest(string Email, string Password);
+public sealed record TokenRequest(string Email, string Password);
 public sealed record TokenResponse(string AccessToken);
-public sealed record LoginUser(Guid Id, string Email, string PasswordHash);
+public sealed record LoginAccount(Guid Id, string Email, string PasswordHash);
 
 public static class Authentication
 {
@@ -51,8 +51,8 @@ public static class Authentication
             };
         });
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
-        CompanyAuthorization.AddCompanyAuthorization(services);
-        services.AddSingleton<IAuthorizationHandler, PlatformAuthorization>();
+        CompanyRoleHandler.AddCompanyAuthorization(services);
+        services.AddSingleton<IAuthorizationHandler, PlatformOperatorHandler>();
         services.AddAuthorizationBuilder().AddPolicy(Policies.PlatformOperator, policy =>
             policy.RequireAuthenticatedUser().AddRequirements(new PlatformOperatorRequirement()));
         return services;
@@ -60,12 +60,12 @@ public static class Authentication
 
     public static IEndpointRouteBuilder MapAuthentication(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/auth/tokens", async (LoginRequest credentials, NpgsqlDataSource dataSource,
+        routes.MapPost("/auth/tokens", async (TokenRequest credentials, NpgsqlDataSource dataSource,
             IPasswordHasher<string> passwordHasher, DummyPasswordHash dummyHash, SymmetricSecurityKey signingKey, CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(credentials.Email) || string.IsNullOrEmpty(credentials.Password)) return Results.Unauthorized();
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-            var account = await connection.QuerySingleOrDefaultAsync<LoginUser>(Command(
+            var account = await connection.QuerySingleOrDefaultAsync<LoginAccount>(Command(
                 "SELECT id, email, password_hash AS PasswordHash FROM app_user WHERE lower(email) = lower(@Email)", credentials, cancellationToken: cancellationToken));
             // Perform the slow verification even for an unknown email.
             var hashToCompare = account?.PasswordHash ?? dummyHash.Value;

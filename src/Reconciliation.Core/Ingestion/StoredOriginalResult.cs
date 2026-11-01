@@ -5,11 +5,11 @@ using Reconciliation.Core.Tenancy;
 
 namespace Reconciliation.Core.Ingestion;
 
-internal sealed class StoredOriginalResult(TenantContext tenant, Guid companyId, Guid resourceId, string sql, string contentType, string fileName) : IResult
+internal sealed class StoredOriginalResult(CompanyScope companyScope, Guid companyId, Guid resourceId, string sql, string contentType, string fileName) : IResult
 {
     public async Task ExecuteAsync(HttpContext httpContext)
     {
-        await tenant.ExecuteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
+        await companyScope.ExecuteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
             await using var command = new NpgsqlCommand(sql, connection, transaction);
             command.Parameters.AddWithValue("resourceId", resourceId);

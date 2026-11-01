@@ -6,7 +6,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed partial class BankStatementImporter(TenantContext companyScope, IEnumerable<IBankStatementParser> statementParsers, IngestionOptions options)
+public sealed partial class BankStatementImporter(CompanyScope companyScope, IEnumerable<IBankStatementParser> statementParsers, IngestionOptions options)
 {
     public IReadOnlyList<string> SupportedBanks => statementParsers.Select(statementParser => statementParser.Bank).Order(StringComparer.Ordinal).ToArray();
 
@@ -19,7 +19,7 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
             : accountReference is null || !AccountLabel().IsMatch(accountReference) || string.IsNullOrWhiteSpace(accountReference)
                 ? "accountReference must be a synthetic label of 1-40 letters, digits, spaces, hyphens or underscores." : null;
         var uploadId = Guid.NewGuid();
-        var fileOutcomes = new List<FileImportResult>();
+        var fileOutcomes = new List<FileImportOutcome>();
         try
         {
             foreach (var uploadedStatement in files)
@@ -51,12 +51,12 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
         return (parsedLines, rejectionReason);
     }
 
-    private Task<FileImportResult> PersistStatementAsync(Guid companyId, Guid actorId, Guid uploadId, string bank, string? accountReference,
+    private Task<FileImportOutcome> PersistStatementAsync(Guid companyId, Guid actorId, Guid uploadId, string bank, string? accountReference,
         UploadedFile uploadedStatement, IReadOnlyList<BankStatementLine>? parsedLines, string? rejectionReason, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
             var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
-            var fileId = await ImportStorage.InsertFileAsync(connection, transaction, companyId, uploadId, uploadedStatement, ImportFileKind.BankStatement, importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
+            var fileId = await ImportFileStore.InsertFileAsync(connection, transaction, companyId, uploadId, uploadedStatement, ImportFileKind.BankStatement, importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
             var newMovements = 0;
             var duplicateMovements = 0;
             if (parsedLines is not null)
@@ -88,10 +88,10 @@ public sealed partial class BankStatementImporter(TenantContext companyScope, IE
                     }, transaction, cancellationToken: transactionCancellationToken));
                 }
                 duplicateMovements = parsedLines.Count - newMovements;
-                await ImportStorage.FinalizeAsync(connection, transaction, fileId, uploadedStatement, options.RetentionYears, newMovements, duplicateMovements, transactionCancellationToken);
+                await ImportFileStore.FinalizeAsync(connection, transaction, fileId, uploadedStatement, options.RetentionYears, newMovements, duplicateMovements, transactionCancellationToken);
             }
-            await ImportStorage.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.BankStatement.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
-            return new FileImportResult(fileId, uploadedStatement.Name, importStatus.ToDatabaseValue(), rejectionReason, ImportedMovements: newMovements, DuplicateMovements: duplicateMovements);
+            await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.BankStatement.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
+            return new FileImportOutcome(fileId, uploadedStatement.Name, importStatus.ToDatabaseValue(), rejectionReason, ImportedMovements: newMovements, DuplicateMovements: duplicateMovements);
         }, cancellationToken);
 
     [GeneratedRegex(@"\A[A-Za-z0-9 _-]{1,40}\z", RegexOptions.CultureInvariant)]

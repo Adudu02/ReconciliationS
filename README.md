@@ -77,6 +77,10 @@ and delete-retention checks now pass, completing 2.6 and 2.9.
 Compose uses synthetic local credentials; replace them and use invite/reset links for a production deployment.
 See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
 
+The implementation uses `CompanyScope` for company transactions, `CompanyRoleHandler` for membership policies,
+`CompanyAdminEndpoints` for administration, and `ImportFileStore` for retained uploads. The bilingual build logs
+include the PR-5 rename map so earlier code names remain traceable.
+
 ## Ingestion API
 
 Accountants/administrators can upload `multipart/form-data` with file parts named `files` to

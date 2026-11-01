@@ -18,7 +18,7 @@ account provisioning access that identity store; there is no public user-list en
   as this restricted role. Migrations run with the privileged owner connection.
 - Every tenant table enables and uses `FORCE ROW LEVEL SECURITY`, with both `USING` and `WITH CHECK` matching
   the current company. Policies apply to reads, inserts and updates. No application DELETE privilege is granted.
-- `TenantContext.ExecuteAsync` opens a transaction and calls parameterized `set_config('app.company_id', value,
+- `CompanyScope.ExecuteAsync` opens a transaction and calls parameterized `set_config('app.company_id', value,
   true)`, equivalent to `SET LOCAL`. Commit, rollback and disposal discard that context before connection reuse.
   Absent context yields no visible rows and the wrapper logs the attempt. Jobs will use the same wrapper.
 - Each company request supplies `X-Company-Id`. Authorization checks the authenticated user's current membership

@@ -4,7 +4,7 @@ namespace Reconciliation.Tests;
 
 internal static class ImportAssertions
 {
-    public static FileImportResult AssertSingleStatus(ImportReport report, string expectedStatus)
+    public static FileImportOutcome AssertSingleStatus(ImportReport report, string expectedStatus)
     {
         var outcome = Assert.Single(report.Files);
         Assert.Equal(expectedStatus, outcome.Status);

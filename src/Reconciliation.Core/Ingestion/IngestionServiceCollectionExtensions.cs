@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Reconciliation.Core.Ingestion;
 
-public static class IngestionServices
+public static class IngestionServiceCollectionExtensions
 {
     public static IServiceCollection AddIngestion(this IServiceCollection services, IConfiguration configuration)
     {
@@ -11,7 +11,7 @@ public static class IngestionServices
         options.Validate();
         services.AddMemoryCache();
         services.AddSingleton(options);
-        services.AddSingleton<SafeCfdiXml>();
+        services.AddSingleton<SafeCfdiXmlReader>();
         services.AddSingleton<CfdiImporter>();
         services.AddSingleton<IBankStatementParser, ReferenceBankStatementParser>();
         services.AddSingleton<BankStatementImporter>();

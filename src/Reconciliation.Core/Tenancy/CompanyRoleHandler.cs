@@ -10,7 +10,7 @@ namespace Reconciliation.Core.Tenancy;
 
 public sealed record CompanyRoleRequirement(string[] Roles) : IAuthorizationRequirement;
 
-public sealed class CompanyAuthorization(TenantContext companyScope) : AuthorizationHandler<CompanyRoleRequirement>
+public sealed class CompanyRoleHandler(CompanyScope companyScope) : AuthorizationHandler<CompanyRoleRequirement>
 {
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, CompanyRoleRequirement requirement) => AuthorizeCompanyAsync(context, requirement);
 
@@ -29,7 +29,7 @@ public sealed class CompanyAuthorization(TenantContext companyScope) : Authoriza
 
     public static IServiceCollection AddCompanyAuthorization(IServiceCollection services)
     {
-        services.AddSingleton<IAuthorizationHandler, CompanyAuthorization>();
+        services.AddSingleton<IAuthorizationHandler, CompanyRoleHandler>();
         services.AddAuthorizationBuilder()
             .AddPolicy(Policies.CompanyMember, policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement([MembershipRoles.Administrator, MembershipRoles.Accountant, MembershipRoles.Viewer])))
             .AddPolicy(Policies.Administrator, policy => policy.RequireAuthenticatedUser().AddRequirements(new CompanyRoleRequirement([MembershipRoles.Administrator])))
