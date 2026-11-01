@@ -23,7 +23,7 @@ ENV ASPNETCORE_URLS=http://+:3001
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Reconciliation.Worker.dll"]
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine AS migrator
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS migrator
 WORKDIR /app
 COPY --from=build /out/migrator ./
 USER $APP_UID
