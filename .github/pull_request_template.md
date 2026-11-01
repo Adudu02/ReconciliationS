@@ -30,5 +30,5 @@
 
 - [ ] Tasks ticked in `tasks.md`
 - [ ] `python3 tools/progress_diagram.py` run and the new status map committed
-- [ ] Entry added to `docs/BUILD-LOG.md`
+- [ ] Entry added to `docs/build-log/BUILD-LOG.md`
 - [ ] No real fiscal data in the change (RFCs, UUIDs, names, certificates)

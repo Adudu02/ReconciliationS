@@ -5,8 +5,8 @@ proposes which bank movement pays which invoice, sends doubtful matches to human
 tamper-evident audit log. Results have **no fiscal or legal validity**; use anonymised or synthetic data only.
 
 Stack: C# on .NET 10, ASP.NET Core, PostgreSQL 17 (see `docs/adr/ADR-002-stack-choice.md`).
-Planning documents: `docs/` (BRS, SRS, diagrams, ADRs) and `openspec/changes/mvp-reconciliation-core/` (source of truth).
-Progress and what each piece is for: [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md) (English) and [`docs/BUILD-LOG-ES.md`](docs/BUILD-LOG-ES.md) (Español); status map: `docs/progress/status-map.png`.
+Planning documents: `docs/` (index in `docs/README.md`: build log, ADRs, requirements, references, diagrams) and `openspec/changes/mvp-reconciliation-core/` (source of truth).
+Progress and what each piece is for: [`docs/build-log/BUILD-LOG.md`](docs/build-log/BUILD-LOG.md) (English) and [`docs/build-log/BUILD-LOG-ES.md`](docs/build-log/BUILD-LOG-ES.md) (Español); status map: `docs/diagrams/progress/status-map.png`.
 
 ## Layout
 
@@ -19,7 +19,7 @@ Progress and what each piece is for: [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md) (E
 | `src/Reconciliation.SatStub`      | Local SAT status stub (its own container)                                 |
 | `tests/Reconciliation.Tests`      | xUnit tests                                                               |
 | `tools`                           | Test-data tooling (anonymiser, generators, leak scan)                     |
-| `docs`                            | BRS, SRS, diagrams and architecture decision records                      |
+| `docs`                            | Documentation index: build log, ADRs, requirements, references, diagrams  |
 
 ## Run everything (Docker)
 
@@ -82,7 +82,7 @@ See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
 Accountants/administrators can upload `multipart/form-data` with file parts named `files` to
 `POST /companies/{id}/imports/cfdi`. Bank statements use `POST /companies/{id}/imports/bank-statement`,
 with `bank=reference` and an `accountReference` synthetic label (for example `Synthetic-1234`).
-See [the CSV reference](docs/bank-csv-reference-format.md) for the header and tested synthetic examples.
+See [the CSV reference](docs/reference/bank-csv-reference-format.md) for the header and tested synthetic examples.
 
 Uploads return `{uploadId, files}` with each file's `fileId`, `status`, `reason`, `cfdiId` where applicable,
 and new/duplicate statement movement counts. Any member can read:

@@ -2,11 +2,11 @@
 """Draw the build status map from the task list.
 
 Reads openspec/changes/mvp-reconciliation-core/tasks.md (the `- [x]` / `- [ ]` checkboxes) and writes
-docs/progress/status-map.svg (and a PNG when ImageMagick is installed). A component's status is derived
+docs/diagrams/progress/status-map.svg (and a PNG when ImageMagick is installed). A component's status is derived
 from the tasks that deliver it, so ticking a task in tasks.md and re-running this script is all it takes.
 
-    python3 tools/progress_diagram.py            # English: docs/progress/status-map.{svg,png}
-    python3 tools/progress_diagram.py --lang es  # Spanish: docs/progress/status-map-es.{svg,png}
+    python3 tools/progress_diagram.py            # English: docs/diagrams/progress/status-map.{svg,png}
+    python3 tools/progress_diagram.py --lang es  # Spanish: docs/diagrams/progress/status-map-es.{svg,png}
 """
 import argparse
 import datetime
@@ -18,7 +18,7 @@ from xml.sax.saxutils import escape
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TASKS = ROOT / 'openspec/changes/mvp-reconciliation-core/tasks.md'
-OUT = ROOT / 'docs/progress'
+OUT = ROOT / 'docs/diagrams/progress'
 
 GROUP_NAMES = {1: 'Foundations', 2: 'Tenancy', 3: 'Ingestion', 4: 'Jobs', 5: 'Audit', 6: 'Matching', 7: 'SAT status',
                8: 'Review + API', 9: 'Test data', 10: 'Observability', 11: 'Delivery'}

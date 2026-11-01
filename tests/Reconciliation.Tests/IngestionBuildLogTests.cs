@@ -7,7 +7,7 @@ public sealed class IngestionBuildLogTests
     [InlineData("BUILD-LOG-ES.md")]
     public async Task PR_3_records_ingestion_decisions_and_limits_in_each_language(string file)
     {
-        var path = Path.GetFullPath("../../../../../docs/" + file, AppContext.BaseDirectory);
+        var path = Path.GetFullPath("../../../../../docs/build-log/" + file, AppContext.BaseDirectory);
         var text = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
         foreach (var required in new[] { "PR-3:", "upload_id", "MaxFileBytes", "MaxUploadBytes", "MaxFiles", "MaxXmlNodes", "MaxXmlDepth", "RetentionYears", "accountReference", "numeric(20,10)" })
             Assert.Contains(required, text, StringComparison.Ordinal);

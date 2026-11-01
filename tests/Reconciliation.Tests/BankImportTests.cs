@@ -16,7 +16,7 @@ public sealed class BankImportTests(ApiFixture fixture)
     [Fact]
     public async Task Documented_examples_parse_with_dates_amounts_quoted_descriptions_and_references()
     {
-        var path = Path.GetFullPath("../../../../../docs/bank-csv-reference-format.md", AppContext.BaseDirectory);
+        var path = Path.GetFullPath("../../../../../docs/reference/bank-csv-reference-format.md", AppContext.BaseDirectory);
         var markdown = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
         var sample = markdown.Split("```csv\n", StringSplitOptions.None)[1].Split("```", StringSplitOptions.None)[0];
         var parser = fixture.App.Services.GetRequiredService<IEnumerable<IBankStatementParser>>().Single();
