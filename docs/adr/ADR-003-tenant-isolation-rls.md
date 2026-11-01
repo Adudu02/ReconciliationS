@@ -68,7 +68,7 @@ Testcontainers runs the real migrations against PostgreSQL. Tests prove absent-c
 write refusal, role restrictions, pooled connection cleanup, credential handling and transactional audit rollback.
 Deliberately dropping `membership_isolation` made the suite fail; restoring the policy returned it to green.
 
-Tasks 2.4, 2.6 and 2.9 remain open. Five tests retain the exact spec scenario names with explicit pending reasons:
-real invoice isolation and imported-CFDI retention (group 3), settings used by the next run (group 6), and real
-link decisions with viewer/different-role behavior (group 8). The accountant policy probe lives only in the test
-host. No placeholder invoice, link or reconciliation endpoints ship with this change.
+Group 3 now supplies real invoice reads and retained imported originals: tasks 2.6 and 2.9 are complete and their
+scenario tests are active. Task 2.4 remains open for real link decisions in group 8; the settings/run scenario awaits
+group 6. The accountant policy probe still lives only in the test host. Ingestion endpoints and M0004 tenant tables
+are covered by the route/table guards; no placeholder link or reconciliation endpoints ship.

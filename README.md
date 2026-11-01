@@ -72,9 +72,33 @@ must have 12 characters for a new account; an existing account keeps its passwor
 `{userId, role}` to the members route, patch settings, and `POST /companies/{id}/archive`. There are no DELETE routes.
 
 The initial audit table records company creation, settings and archival atomically. Group 5 adds the full audit
-contract. Five domain-dependent tenancy scenarios remain explicitly skipped; tasks 2.4, 2.6 and 2.9 stay open.
+contract. Three domain-dependent tenancy scenarios remain explicitly skipped; task 2.4 stays open. Real invoice isolation
+and delete-retention checks now pass, completing 2.6 and 2.9.
 Compose uses synthetic local credentials; replace them and use invite/reset links for a production deployment.
 See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
+
+## Ingestion API
+
+Accountants/administrators can upload `multipart/form-data` with file parts named `files` to
+`POST /companies/{id}/imports/cfdi`. Bank statements use `POST /companies/{id}/imports/bank-statement`,
+with `bank=reference` and an `accountReference` synthetic label (for example `Synthetic-1234`).
+See [the CSV reference](docs/bank-csv-reference-format.md) for the header and tested synthetic examples.
+
+Uploads return `{uploadId, files}` with each file's `fileId`, `status`, `reason`, `cfdiId` where applicable,
+and new/duplicate statement movement counts. Any member can read:
+
+- `GET /companies/{id}/imports/{uploadId}` — persisted per-file report.
+- `GET /companies/{id}/cfdi/{invoiceId}` — declared invoice header (invoiceId is the stored record id).
+- `GET /companies/{id}/cfdi/{invoiceId}/xml` — unchanged original XML.
+- `GET /companies/{id}/imports/files/{fileId}/original` — unchanged original file, including a statement.
+- `GET /companies/{id}/banks` — supported parser identifiers.
+
+Use the same bearer token and matching `X-Company-Id` header as the tenancy API. An invalid file gets a rejected
+report without blocking valid files. Aggregate upload size/count breaches reject the request before persistence.
+Defaults: 10 MiB per file, 20 MiB aggregate including multipart overhead, 20 files, 100000 XML nodes, depth 64,
+and ten years of original retention. Configure via `Ingestion__MaxFileBytes`, `Ingestion__MaxUploadBytes`,
+`Ingestion__MaxFiles`, `Ingestion__MaxXmlNodes`, `Ingestion__MaxXmlDepth`, `Ingestion__RetentionYears` (minimum five).
+Imports are synchronous until group 4. No DELETE endpoint exists for imported records or originals.
 
 ## Decisions
 

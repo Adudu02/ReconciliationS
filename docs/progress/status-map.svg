@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1410" height="1056" viewBox="0 0 1410 1056" font-family="Liberation Sans, Arial, sans-serif">
 <rect width="1410" height="1056" fill="#fff"/>
 <text x="30" y="40" font-size="22" font-weight="bold" fill="#111">Build status map</text>
-<text x="30" y="64" font-size="13.5" fill="#444">11 of 85 tasks done (12%) · updated 2026-10-31 · source: openspec/changes/mvp-reconciliation-core/tasks.md</text>
+<text x="30" y="64" font-size="13.5" fill="#444">26 of 85 tasks done (30%) · updated 2026-10-31 · source: openspec/changes/mvp-reconciliation-core/tasks.md</text>
 <rect x="30" y="74" width="16" height="12" rx="3" fill="#d8f0d8" stroke="#2e7d32"/><text x="52" y="85" font-size="12" fill="#333">done</text>
 <rect x="120" y="74" width="16" height="12" rx="3" fill="#fff1cc" stroke="#c77c00"/><text x="142" y="85" font-size="12" fill="#333">in progress</text>
 <rect x="235" y="74" width="16" height="12" rx="3" fill="#eeeeee" stroke="#8a8a8a"/><text x="257" y="85" font-size="12" fill="#333">not started</text>
@@ -15,14 +15,14 @@
 <rect x="154" y="136" width="118" height="74" rx="8" fill="#fff1cc" stroke-width="3" stroke="#1565c0"/>
 <text x="162" y="156" font-size="11.5" font-weight="bold" fill="#111">2. Tenancy</text>
 <rect x="162" y="168" width="102" height="8" rx="4" fill="#ffffff" stroke="#bbb"/>
-<rect x="162" y="168" width="68.0" height="8" rx="4" fill="#c77c00"/>
-<text x="162" y="194" font-size="12" fill="#333">6 of 9</text>
+<rect x="162" y="168" width="90.7" height="8" rx="4" fill="#c77c00"/>
+<text x="162" y="194" font-size="12" fill="#333">8 of 9</text>
 <text x="264" y="194" text-anchor="end" font-size="11" font-weight="bold" fill="#1565c0">NEXT</text>
-<rect x="278" y="136" width="118" height="74" rx="8" fill="#eeeeee" stroke-width="1.5" stroke="#8a8a8a"/>
+<rect x="278" y="136" width="118" height="74" rx="8" fill="#d8f0d8" stroke-width="1.5" stroke="#2e7d32"/>
 <text x="286" y="156" font-size="11.5" font-weight="bold" fill="#111">3. Ingestion</text>
 <rect x="286" y="168" width="102" height="8" rx="4" fill="#ffffff" stroke="#bbb"/>
-<rect x="286" y="168" width="0.0" height="8" rx="4" fill="#8a8a8a"/>
-<text x="286" y="194" font-size="12" fill="#333">0 of 13</text>
+<rect x="286" y="168" width="102.0" height="8" rx="4" fill="#2e7d32"/>
+<text x="286" y="194" font-size="12" fill="#333">13 of 13</text>
 <rect x="402" y="136" width="118" height="74" rx="8" fill="#eeeeee" stroke-width="1.5" stroke="#8a8a8a"/>
 <text x="410" y="156" font-size="11.5" font-weight="bold" fill="#111">4. Jobs</text>
 <rect x="410" y="168" width="102" height="8" rx="4" fill="#ffffff" stroke="#bbb"/>
@@ -89,13 +89,13 @@
 <rect x="30" y="382" width="8" height="78" rx="3" fill="#c77c00"/>
 <text x="48" y="404" font-size="13.5" font-weight="bold" fill="#111">Tenancy</text>
 <text x="48" y="422" font-size="10.5" font-weight="bold" fill="#555">MODULE</text>
-<text x="48" y="442" font-size="11.5" fill="#333">in progress: 5 of 8 tasks</text>
+<text x="48" y="442" font-size="11.5" fill="#333">in progress: 7 of 8 tasks</text>
 <text x="220" y="422" text-anchor="end" font-size="11" font-weight="bold" fill="#1565c0">NEXT</text>
-<rect x="242" y="382" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
-<rect x="242" y="382" width="8" height="78" rx="3" fill="#8a8a8a"/>
+<rect x="242" y="382" width="200" height="78" rx="8" fill="#d8f0d8" stroke="#2e7d32" stroke-width="1.5"/>
+<rect x="242" y="382" width="8" height="78" rx="3" fill="#2e7d32"/>
 <text x="260" y="404" font-size="13.5" font-weight="bold" fill="#111">Ingestion</text>
 <text x="260" y="422" font-size="10.5" font-weight="bold" fill="#555">MODULE</text>
-<text x="260" y="442" font-size="11.5" fill="#333">not started (11 tasks)</text>
+<text x="260" y="442" font-size="11.5" fill="#333">done (11 of 11 tasks)</text>
 <rect x="454" y="382" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
 <rect x="454" y="382" width="8" height="78" rx="3" fill="#8a8a8a"/>
 <text x="472" y="404" font-size="13.5" font-weight="bold" fill="#111">Jobs</text>
@@ -127,17 +127,16 @@
 <text x="48" y="618" font-size="13.5" font-weight="bold" fill="#111">Identity tables</text>
 <text x="48" y="636" font-size="10.5" font-weight="bold" fill="#555">DATABASE</text>
 <text x="48" y="656" font-size="11.5" fill="#333">done (1 of 1 task)</text>
-<rect x="242" y="596" width="200" height="78" rx="8" fill="#fff1cc" stroke="#1565c0" stroke-width="3" stroke-dasharray="7 4"/>
-<rect x="242" y="596" width="8" height="78" rx="3" fill="#c77c00"/>
+<rect x="242" y="596" width="200" height="78" rx="8" fill="#d8f0d8" stroke="#2e7d32" stroke-width="1.5"/>
+<rect x="242" y="596" width="8" height="78" rx="3" fill="#2e7d32"/>
 <text x="260" y="618" font-size="13.5" font-weight="bold" fill="#111">Tenant isolation (RLS)</text>
 <text x="260" y="636" font-size="10.5" font-weight="bold" fill="#555">DATABASE</text>
-<text x="260" y="656" font-size="11.5" fill="#333">in progress: 2 of 3 tasks</text>
-<text x="432" y="636" text-anchor="end" font-size="11" font-weight="bold" fill="#1565c0">NEXT</text>
-<rect x="454" y="596" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
-<rect x="454" y="596" width="8" height="78" rx="3" fill="#8a8a8a"/>
+<text x="260" y="656" font-size="11.5" fill="#333">done (3 of 3 tasks)</text>
+<rect x="454" y="596" width="200" height="78" rx="8" fill="#d8f0d8" stroke="#2e7d32" stroke-width="1.5"/>
+<rect x="454" y="596" width="8" height="78" rx="3" fill="#2e7d32"/>
 <text x="472" y="618" font-size="13.5" font-weight="bold" fill="#111">Ingestion tables</text>
 <text x="472" y="636" font-size="10.5" font-weight="bold" fill="#555">DATABASE</text>
-<text x="472" y="656" font-size="11.5" fill="#333">not started (4 tasks)</text>
+<text x="472" y="656" font-size="11.5" fill="#333">done (4 of 4 tasks)</text>
 <rect x="666" y="596" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
 <rect x="666" y="596" width="8" height="78" rx="3" fill="#8a8a8a"/>
 <text x="684" y="618" font-size="13.5" font-weight="bold" fill="#111">Job queue table</text>

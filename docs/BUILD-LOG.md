@@ -12,7 +12,7 @@ This log explains them; the status map below is generated from them.
 
 ![Build status map](progress/status-map.png)
 
-**11 of 85 tasks done. Group 2: 6 of 9 complete; 2.4, 2.6 and 2.9 await domain scenarios in later groups.**
+**26 of 85 tasks done. Group 3 is complete; group 2 has only 2.4 pending for real link decisions in group 8.**
 Regenerate the picture after ticking tasks: `python3 tools/progress_diagram.py` (add `--lang es` for the Spanish map).
 
 ### What the types mean
@@ -37,17 +37,96 @@ Regenerate the picture after ticking tasks: `python3 tools/progress_diagram.py` 
 | **Worker host** | Host | Runs background jobs (imports, matching, SAT checks). Today it starts, reports health and idles | `src/Reconciliation.Worker` |
 | **Migrator** | Tool | Applies or reverts database changes (`up`, `down`) | `src/Reconciliation.Migrator` |
 | **SAT stub** | Host | A fake of the SAT status service so development needs no real account. Today only a placeholder | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Database | Stores all data. Identity and tenancy tables plus a minimal `audit_entry`, with forced tenant RLS | `docker-compose.yml`, migrations `M0001` to `M0003` |
+| **PostgreSQL 17** | Database | Stores all data. Identity and tenancy tables plus a minimal `audit_entry`, with forced tenant RLS | `docker-compose.yml`, migrations `M0001` to `M0004` |
 | Docker Compose | Pipeline | Starts database, migrator, API, worker and stub with one command and waits until all are healthy | `docker-compose.yml`, `Dockerfile` |
 | CI pipeline | Pipeline | On every push: format check, build, tests, migrations up/down/up, and a full stack start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Short records of big decisions and the alternatives rejected | `docs/adr/` |
 | Requirements and plan | Docs | BRS, SRS (English and Spanish), diagrams, and the OpenSpec change that defines the work | `docs/`, `openspec/` |
-| Tests | Tests | 45 xUnit cases: 40 passing, 5 explicitly pending; real PostgreSQL tenancy tests | `tests/Reconciliation.Tests` |
+| Tests | Tests | 103 xUnit cases: 100 passing, 3 explicitly pending; real PostgreSQL tenancy and ingestion tests | `tests/Reconciliation.Tests` |
 | Progress map | Tool | Draws the status picture from `tasks.md` | `tools/progress_diagram.py` |
 
 ## 3. Pull request log
 
 Newest first. Each entry says what changed, why, and what you can learn from it.
+
+### PR-3: Domain model and ingestion (tasks 3.1–3.8, including 3.4b–3.4f)
+
+**Purpose:** turn synthetic CFDI and reference bank CSV into isolated, exact, retained accounting records.
+**How:** red-test commits precede implementation commits; all persistence scenarios use the real PostgreSQL
+Testcontainers fixture and actual migrator. Parsers are also tested directly for malformed and hostile input.
+**Verified:** build with zero warnings/errors, `dotnet test --solution Reconciliation.slnx` (100 passed, 3 skipped),
+format verification, Compose build/start with all services healthy, and migrations up/down/up on a disposable
+PostgreSQL database. Both progress maps were regenerated. No push was performed.
+
+#### Model, exact money and RLS (3.2, 3.8)
+- **Purpose:** keep rows isolated, amounts exact, and imports free from duplicates.
+- **How:** M0004 adds `import_file`, `cfdi`, `cfdi_relation`, `cfdi_payment`, `cfdi_payment_doc`, `bank_account` and
+  `bank_movement`. Each has company_id, forced RLS and a policy. Composite foreign keys prevent a child pointing
+  to another tenant. UUID uniqueness is per company; movement uniqueness includes account, date, description,
+  credit/debit and balance. Money uses decimal / numeric(18,2); exchange rates use numeric(20,10).
+- **What I learned:** database constraints are the final guard for duplicate and cross-tenant relationships.
+  Both C# and PostgreSQL sum 0.10 + 0.20 to exactly 0.30.
+
+#### Safe parsing and declared fiscal values (3.3, 3.4, 3.4b–3.4e)
+- **Purpose:** accept income, credit notes and payment complement 2.0 without reading external resources or
+  silently changing the declared accounting values.
+- **How:** XML prohibits DTDs and external resolution, with a bounded scan before building a document. Header
+  totals are checked exactly, including discounts and federal/local transfers and retentions; taxes are not
+  recomputed from rates. The synthetic retention sample imports at 1,939.27. Concept amounts with six decimals
+  remain accepted and are not recomputed or separately stored. Header/payment money with more than two declared
+  decimal places is rejected, even for trailing zeroes; the MVP treats other currencies as two decimals too.
+  Unsupported complement versions are rejected. Each related line checks previous - paid = remaining; continuity
+  is checked between consecutive installments present within the upload. Inconsistency is a stored review flag,
+  never a rejection. Earlier missing installments and pre-imported invoices are not required. Rejected/unrelated
+  files cannot influence valid files' continuity checks. SAT relation codes (including unknown ones), global
+  information/generic RFC flags, issue and stamp times are retained. Unknown relation codes are stored for later
+  interpretation; ingestion never applies them to payable amounts.
+- **What I learned:** validation of declared values differs from recomputing fiscal rules. Local timestamps must
+  have no timezone and at most six fractional digits; finer precision is rejected so PostgreSQL cannot silently
+  change it. A deliberately inconsistent concept value is accepted when the declared header arithmetic is valid.
+
+#### Reports, originals and upload limits (3.4f, 3.5)
+- **Purpose:** explain each file's outcome and return accepted originals byte for byte.
+- **How:** one import_file row per file shares an upload_id; there is no batch table. Each row stores status,
+  reason and SHA-256; rejected files keep the hash but no bytes. Duplicate UUID reports refer to the original
+  file and never replace its data. A transaction advisory lock makes concurrent UUID uploads idempotent, backed
+  by the unique constraint. Accepted originals have a database immutability trigger and no DELETE privilege/path.
+  RetentionYears defaults to 10, is validated at startup (minimum 5, conservative maximum 100), and sets retained_until.
+- **Limits decided with Claude:** MaxFileBytes=10 MiB, MaxUploadBytes=20 MiB, MaxFiles=20, MaxXmlNodes=100000 and
+  MaxXmlDepth=64. All are configurable under Ingestion. Aggregate byte/file-count limits reject the whole upload
+  before persistence (413/400). A per-file size breach or invalid/hostile XML rejects only that file. Multipart
+  parsing counts bytes while reading, including requests without Content-Length; oversized file bytes are drained
+  into a hash without retaining the payload. Accepted buffering stays within the aggregate bound. The aggregate
+  limit counts multipart overhead too. Request cancellation flows through reads and database operations.
+- **What I learned:** a mixed upload needs a per-file transaction; a failed file must not roll back valid files.
+  The full hash can be retained without keeping rejected content. Full audit hash chaining remains group 5 work.
+
+#### Reference statements (3.1, 3.6, 3.7)
+- **Purpose:** provide one documented bank format and a seam for later real-bank parsers.
+- **How:** docs/bank-csv-reference-format.md defines the exact header, UTF-8, ISO dates, cent precision, quoting
+  and synthetic examples; those examples run through IBankStatementParser. The platform CSV reader handles quoted
+  commas and CRLF. Malformed lines reject the entire statement with a line number and create no partial account
+  or movements. Unknown banks list the supported identifier, reference. bank=reference plus accountReference
+  creates/reuses an account by company/bank/label; there is no account CRUD endpoint. accountReference is an ASCII
+  label of 1–40 letters/digits/spaces/-/_, never a full real account number (use a suitable label/last four digits).
+  RASTREO takes precedence over REF; absent tokens are null. Overlapping statements count new and duplicate lines,
+  while equal lines with different balances remain distinct. Original statement bytes/hashes are retained too.
+- **What I learned:** an existing platform CSV parser avoids hand-written quote handling. The conservative empty
+  statement behavior is rejection; there must be at least one movement and exactly one positive credit/debit per line.
+
+#### HTTP and closure of tenancy scenarios
+- **Purpose:** expose real ingestion with accountant imports and viewer reads.
+- **How:** all routes below require current membership and X-Company-Id; only administrators/accountants import:
+  POST /companies/{id}/imports/cfdi and /imports/bank-statement; GET /companies/{id}/imports/{uploadId},
+  /cfdi/{invoiceId}, /cfdi/{invoiceId}/xml, /imports/files/{fileId}/original and /banks. File parts are named files.
+  Reports preserve per-file status, reason, resource ids and statement counts. The isolation guard discovers all
+  routes, seeds real positive baselines, tries B's resource ids under A's valid context, and compares all B tenant
+  tables before/after attempts. “Cross-company attempt in the test suite” now proves 404 for a real B invoice;
+  “Delete attempt” proves 405 and unchanged invoice/original. Tasks 2.6 and 2.9 are therefore complete.
+- **What I learned:** a 404 only proves isolation when a successful owner request first proves the resource exists.
+
+**Still skipped:** “Viewer cannot decide” and “Different roles” need real links in group 8; “Tolerance changed”
+needs a reconciliation run in group 6. Task 2.4 stays unticked. Imports are synchronous until group 4 jobs.
 
 ### PR-2: Tenancy and access (group 2; six tasks complete, three pending)
 
@@ -192,11 +271,11 @@ up/down/up on a real database, and the GitHub Actions run `41122200072` succeede
   fix was to pin a patched version (`System.Security.Cryptography.Pkcs` 10.0.14) instead of silencing the warning.
 - The first scaffold was TypeScript. It was discarded when the stack changed to C#; nothing depended on it.
 
-## 4. Next work: group 3, with three tenancy tasks still pending
+## 4. Next work: group 4, Jobs
 
-Group 3 adds the domain model and real imports. Replace the pending invoice-isolation and retention tests when
-those endpoints exist. Group 6 replaces the settings/run scenario; group 8 replaces the link-decision scenarios.
-The generated map intentionally keeps Tenancy and Tenant isolation in progress until those checks are real.
+Move the synchronous ingestion services behind the PostgreSQL job queue, preserving their tenant transaction,
+per-file results and idempotency. Task 2.4 remains pending for real link decisions in group 8; the settings/run
+check remains pending for group 6. The progress map intentionally keeps group 2 in progress.
 
 ## 5. The rest of the road
 

@@ -12,7 +12,7 @@ Fuente de verdad de los elementos de trabajo: `openspec/changes/mvp-reconciliati
 
 ![Mapa de estado de la construcción](progress/status-map-es.png)
 
-**11 de 85 tareas completas. Grupo 2: 6 de 9; 2.4, 2.6 y 2.9 esperan escenarios de grupos posteriores.**
+**26 de 85 tareas completas. Grupo 3 completo; del grupo 2 solo queda 2.4 para decisiones reales del grupo 8.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -38,17 +38,91 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
 | **Host del worker** | Host | Ejecuta trabajos en segundo plano (importaciones, conciliación, consultas al SAT). Hoy arranca, reporta su salud y espera | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Una simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos. Identidad, multiempresa y una `audit_entry` mínima con RLS forzado | `docker-compose.yml`, migraciones `M0001` a `M0003` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos. Identidad, multiempresa y una `audit_entry` mínima con RLS forzado | `docker-compose.yml`, migraciones `M0001` a `M0004` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: revisión de formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Registros breves de las decisiones grandes y de las alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS (inglés y español), diagramas y el cambio de OpenSpec que define el trabajo | `docs/`, `openspec/` |
-| Pruebas | Pruebas | 45 casos xUnit: 40 aprobados, 5 pendientes explícitos; PostgreSQL real para multiempresa | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 103 casos xUnit: 100 aprobados, 3 pendientes explícitos; PostgreSQL real para multiempresa e ingesta | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 3. Registro de pull requests
 
 Primero el más reciente. Cada entrada dice qué cambió, por qué y qué puedes aprender de ello.
+
+### PR-3: Modelo de dominio e ingesta (3.1–3.8, incluidas 3.4b–3.4f)
+
+**Para qué:** convertir CFDI sintéticos y CSV bancario de referencia en registros aislados, exactos y conservados.
+**Cómo:** cada implementación sigue a su commit de pruebas rojas. La persistencia usa PostgreSQL real mediante
+Testcontainers y el migrador real; los parsers también se prueban directamente con entradas inválidas y hostiles.
+**Verificado:** compilación sin advertencias/errores, `dotnet test --solution Reconciliation.slnx` con 100 aprobados
+ y 3 omitidos, revisión de formato, Compose compilado y sano, migraciones subir/bajar/subir en una base desechable
+ y ambos mapas regenerados. No se hizo push.
+
+#### Modelo, dinero exacto y RLS (3.2, 3.8)
+- **Para qué:** aislar filas, conservar importes exactos y evitar duplicados.
+- **Cómo:** M0004 agrega import_file, cfdi, cfdi_relation, cfdi_payment, cfdi_payment_doc, bank_account y bank_movement.
+  Todas llevan company_id, RLS forzado y política. Claves foráneas compuestas impiden referencias a otra empresa.
+  UUID es único por empresa; la identidad del movimiento incluye cuenta, fecha, descripción, abono/cargo y saldo.
+  Dinero usa decimal / numeric(18,2), y tipos de cambio numeric(20,10).
+- **Qué aprendí:** restricciones SQL protegen también contra errores del código. Tanto C# como PostgreSQL suman
+  0.10 + 0.20 exactamente a 0.30.
+
+#### XML seguro y valores fiscales declarados (3.3, 3.4, 3.4b–3.4e)
+- **Para qué:** aceptar ingresos, egresos y complemento de pago 2.0 sin leer recursos externos ni alterar valores.
+- **Cómo:** DTD y resolución externa están prohibidos; un recorrido acotado limita tamaño, nodos y profundidad.
+  La aritmética de cabecera incluye descuentos, traslados y retenciones federales/locales, sin recalcular tasas.
+  La muestra sintética importa con 1,939.27. Importes de conceptos con seis decimales se aceptan sin recalcularlos
+  ni guardarlos por separado. Cabecera, pagos y saldos con más de dos decimales declarados se rechazan, incluidos
+  ceros adicionales; el MVP trata otras monedas con dos decimales. Versiones antiguas del complemento se rechazan.
+  Cada línea comprueba saldo anterior - pagado = restante y la continuidad entre parcialidades consecutivas presentes
+  en la carga. Una inconsistencia se guarda marcada para revisión, sin rechazar el complemento. No se infieren
+  parcialidades ausentes ni se exige haber importado la factura. Archivos rechazados o ajenos no afectan líneas válidas.
+  Se guardan códigos de relación incluso desconocidos, indicador global/RFC genérico y fechas de emisión/timbrado.
+  Ingesta conserva relaciones; no las aplica a importes pendientes.
+- **Qué aprendí:** verificar valores declarados es distinto de recalcular reglas fiscales. Las fechas locales no
+  llevan zona y admiten hasta seis dígitos fraccionarios; se rechaza más precisión para no cambiarla en PostgreSQL.
+
+#### Reportes, originales y límites (3.4f, 3.5)
+- **Para qué:** explicar el resultado de cada archivo y devolver originales byte por byte.
+- **Cómo:** cada archivo tiene una fila import_file, agrupada por upload_id, sin tabla de lote. Se guarda estado,
+  motivo y SHA-256; un rechazado conserva hash, no bytes. Un UUID repetido apunta al original y no lo reemplaza.
+  Un bloqueo transaccional por empresa/UUID serializa duplicados concurrentes, respaldado por la restricción única.
+  Un trigger impide cambiar originales/hashes o acortar conservación; no hay privilegio ni ruta DELETE.
+  RetentionYears vale 10 por defecto, se valida al arrancar (mínimo 5, máximo conservador 100) y fija retained_until.
+- **Decisiones con Claude:** MaxFileBytes=10 MiB, MaxUploadBytes=20 MiB, MaxFiles=20, MaxXmlNodes=100000 y MaxXmlDepth=64,
+  configurables en Ingestion. Tamaño agregado o cantidad excesiva rechazan toda la carga antes de persistir (413/400).
+  Un archivo demasiado grande o XML inválido/hostil solo rechaza ese archivo. Se cuentan bytes durante la lectura
+  multipart, incluso sin Content-Length. Los bytes de un archivo grande se descartan mientras se calcula su hash;
+  el buffer aceptado queda dentro del máximo agregado, que incluye cabeceras multipart. Lecturas y SQL reciben cancelación.
+- **Qué aprendí:** cada archivo necesita su transacción para que uno inválido no revierta los demás. Se puede conservar
+  el hash completo sin guardar contenido rechazado. El encadenamiento completo de auditoría sigue en el grupo 5.
+
+#### Estados de cuenta de referencia (3.1, 3.6, 3.7)
+- **Para qué:** tener un formato documentado y un punto de extensión para bancos reales.
+- **Cómo:** docs/bank-csv-reference-format.md define cabecera, UTF-8, fechas ISO, centavos, comillas y ejemplos sintéticos
+  que se ejecutan con IBankStatementParser. Se usa el lector CSV de la plataforma. Una línea inválida rechaza todo el
+  archivo con número de línea y no crea cuenta ni movimientos parciales. Un banco desconocido informa reference.
+  bank=reference y accountReference crean/reutilizan la cuenta por empresa/banco/etiqueta; no hay CRUD de cuentas.
+  accountReference admite 1–40 letras/dígitos ASCII, espacios, guiones y guiones bajos; es etiqueta, nunca un número
+  real completo (sugerencia: últimos cuatro dígitos). RASTREO tiene prioridad sobre REF; sin token la referencia es nula.
+  Cargas traslapadas cuentan filas nuevas y repetidas; filas iguales con saldo distinto se conservan. También se guarda
+  el original del estado de cuenta con hash.
+- **Qué aprendí:** reutilizar el parser CSV evita errores con comillas y comas. Como decisión conservadora, se rechaza
+  un archivo sin movimientos y cada línea debe tener exactamente un abono o cargo positivo.
+
+#### API y cierre de escenarios de multiempresa
+- **Para qué:** permitir importaciones a contador/administrador y lecturas al rol consulta.
+- **Cómo:** todas las rutas validan membresía y X-Company-Id: POST /companies/{id}/imports/cfdi y /imports/bank-statement;
+  GET /companies/{id}/imports/{uploadId}, /cfdi/{invoiceId}, /cfdi/{invoiceId}/xml, /imports/files/{fileId}/original y /banks.
+  Los archivos usan el campo multipart files. El reporte conserva estados, motivos, ids y conteos de movimientos.
+  El guardián descubre rutas, prepara casos exitosos, intenta ids de B bajo contexto válido A y compara todas las tablas
+  de B antes/después. “Cross-company attempt in the test suite” ahora comprueba 404 con factura real de B; “Delete attempt”
+  comprueba 405 y factura/original intactos. Se completan 2.6 y 2.9.
+- **Qué aprendí:** un 404 solo demuestra aislamiento después de comprobar que el propietario sí puede leer el recurso.
+
+**Aún omitidos:** “Viewer cannot decide” y “Different roles” esperan vínculos reales del grupo 8; “Tolerance changed”
+espera corrida del grupo 6. La tarea 2.4 sigue sin marcar. Las importaciones son síncronas hasta los trabajos del grupo 4.
 
 ### PR-2: Multiempresa y acceso (grupo 2; seis tareas completas y tres pendientes)
 
@@ -210,11 +284,11 @@ terminó con éxito.
   10.0.14) en lugar de silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 4. Siguiente trabajo: grupo 3, con tres tareas de multiempresa pendientes
+## 4. Siguiente trabajo: grupo 4, Trabajos
 
-El grupo 3 agrega modelo de dominio e importaciones reales. Al existir esos endpoints se reemplazan las pruebas
-pendientes de aislamiento de facturas y conservación. El grupo 6 reemplaza el escenario configuración/corrida y el
-8 los escenarios de decisiones. El mapa conserva Multiempresa y Aislamiento en progreso hasta verificar esos casos.
+Mover los servicios síncronos de ingesta a la cola PostgreSQL conservando transacciones por empresa, resultados
+por archivo e idempotencia. 2.4 espera decisiones reales del grupo 8; la prueba configuración/corrida espera el
+grupo 6. El mapa conserva el grupo 2 en progreso de forma intencional.
 
 ## 5. El resto del camino
 
