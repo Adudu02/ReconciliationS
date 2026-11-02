@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Reconciliation.Core.Common;
 using Reconciliation.Core.Ingestion;
+using Reconciliation.Core.Jobs;
 using Reconciliation.Core.Tenancy;
 using SessionOptions = Reconciliation.Core.Tenancy.SessionOptions;
 
@@ -11,6 +12,7 @@ builder.Services.AddTenancyAuthentication(builder.Configuration);
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddIngestion(builder.Configuration);
+builder.Services.AddJobs(builder.Configuration);
 
 var app = builder.Build();
 _ = app.Services.GetRequiredService<SessionOptions>();
@@ -31,6 +33,7 @@ app.MapAuthentication();
 app.MapCompanies();
 app.MapCompanyManagement();
 app.MapIngestion();
+app.MapJobs();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();
 app.Run();

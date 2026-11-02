@@ -6,7 +6,10 @@ namespace Reconciliation.Core.Jobs;
 
 public sealed record JobRecord(Guid Id, Guid CompanyId, string Type, string State, string Payload, Guid? InputRef,
     int Attempts, int MaxAttempts, DateTime RunAfter, string? LockedBy, DateTime? LockedUntil, int ProgressDone,
-    int ProgressTotal, string? LastError, Guid CreatedBy, DateTime CreatedAt, DateTime? FinishedAt);
+    int ProgressTotal, string? LastError, Guid CreatedBy, DateTime CreatedAt, DateTime? FinishedAt)
+{
+    public IReadOnlyList<JobAttemptRecord> History { get; init; } = [];
+}
 
 public sealed class JobStore(NpgsqlDataSource dataSource, TimeProvider clock)
 {

@@ -38,6 +38,7 @@ public sealed class M0007Jobs : Migration
         GRANT SELECT,INSERT,UPDATE ON job,job_attempt TO cfdi_queue_owner;
         GRANT SELECT,INSERT ON job TO cfdi_app;
         GRANT SELECT ON job_attempt TO cfdi_app;
+        GRANT UPDATE(state,max_attempts,run_after,finished_at,last_error) ON job TO cfdi_app;
         CREATE FUNCTION claim_next_job(worker_id text, lease_seconds integer, p_now timestamptz DEFAULT clock_timestamp())
         RETURNS SETOF job LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
         DECLARE claimed public.job;
