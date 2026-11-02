@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using static Reconciliation.Core.Common.DapperExtensions;
@@ -28,12 +29,20 @@ public static class Authentication
         if (string.IsNullOrWhiteSpace(signingKeyText) || Encoding.UTF8.GetByteCount(signingKeyText) < 32 || signingKeyText == "synthetic-local-signing-key-at-least-32-bytes")
             throw new InvalidOperationException("Set Jwt__SigningKey to at least 32 bytes.");
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKeyText));
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton(provider =>
+        {
+            var options = configuration.GetSection(SessionOptions.SectionName).Get<SessionOptions>() ?? new SessionOptions();
+            options.Validate(provider.GetRequiredService<TimeProvider>());
+            return options;
+        });
         services.AddSingleton(signingKey);
         services.AddSingleton<IPasswordHasher<string>, PasswordHasher<string>>();
         services.AddSingleton(provider => new DummyPasswordHash(provider.GetRequiredService<IPasswordHasher<string>>()
             .HashPassword("unknown@example.invalid", "synthetic-unused-password")));
         services.AddLoginProtection(configuration);
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme).Configure<TimeProvider>((options, timeProvider) =>
         {
             options.MapInboundClaims = false;
             options.TokenValidationParameters = new TokenValidationParameters
@@ -46,6 +55,13 @@ public static class Authentication
                 ValidAudience = JwtTokenPolicy.TokenAudience,
                 ValidateLifetime = true,
                 ClockSkew = JwtTokenPolicy.ClockSkew,
+                LifetimeValidator = (notBefore, expires, securityToken, validationParameters) =>
+                {
+                    var now = timeProvider.GetUtcNow().UtcDateTime;
+                    return expires.HasValue && (notBefore is null || notBefore <= expires) &&
+                        (notBefore is null || notBefore <= now.Add(validationParameters.ClockSkew)) &&
+                        expires > now.Subtract(validationParameters.ClockSkew);
+                },
                 ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
                 NameClaimType = JwtRegisteredClaimNames.Sub
             };
@@ -61,7 +77,7 @@ public static class Authentication
     public static IEndpointRouteBuilder MapAuthentication(this IEndpointRouteBuilder routes)
     {
         routes.MapPost("/auth/tokens", async (TokenRequest credentials, NpgsqlDataSource dataSource,
-            IPasswordHasher<string> passwordHasher, DummyPasswordHash dummyHash, SymmetricSecurityKey signingKey, CancellationToken cancellationToken) =>
+            IPasswordHasher<string> passwordHasher, DummyPasswordHash dummyHash, SymmetricSecurityKey signingKey, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(credentials.Email) || string.IsNullOrEmpty(credentials.Password)) return Results.Unauthorized();
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -73,7 +89,7 @@ public static class Authentication
             if (account is null || verification == PasswordVerificationResult.Failed) return Results.Unauthorized();
             var accessToken = new JwtSecurityToken(JwtTokenPolicy.TokenIssuer, JwtTokenPolicy.TokenAudience,
                 [new Claim(JwtRegisteredClaimNames.Sub, account.Id.ToString())],
-                notBefore: DateTime.UtcNow, expires: DateTime.UtcNow.Add(JwtTokenPolicy.TokenLifetime),
+                notBefore: timeProvider.GetUtcNow().UtcDateTime, expires: timeProvider.GetUtcNow().UtcDateTime.Add(JwtTokenPolicy.TokenLifetime),
                 signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
             return Results.Ok(new TokenResponse(new JwtSecurityTokenHandler().WriteToken(accessToken)));
         }).AllowAnonymous();

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Reconciliation.Core.Common;
 using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Tenancy;
+using SessionOptions = Reconciliation.Core.Tenancy.SessionOptions;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddReconciliationDatabase(builder.Configuration);
@@ -12,6 +13,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddIngestion(builder.Configuration);
 
 var app = builder.Build();
+_ = app.Services.GetRequiredService<SessionOptions>();
 _ = app.Services.GetRequiredService<DummyPasswordHash>();
 app.UseExceptionHandler(handler => handler.Run(async http =>
 {

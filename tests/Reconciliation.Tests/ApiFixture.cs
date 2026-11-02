@@ -16,6 +16,7 @@ namespace Reconciliation.Tests;
 
 public sealed class ApiFixture : IAsyncLifetime
 {
+    public ManualTimeProvider Clock { get; } = new();
     public const string Password = "synthetic-password-123";
     public PostgresFixture Database { get; } = new();
     public WebApplicationFactory<ApiProgram> App { get; private set; } = null!;
@@ -26,7 +27,11 @@ public sealed class ApiFixture : IAsyncLifetime
         App = new WebApplicationFactory<ApiProgram>().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("ConnectionStrings:Default", Database.AppConnectionString);
-            builder.ConfigureServices(services => services.AddTransient<IStartupFilter, RoleProbeStartup>());
+            builder.ConfigureServices(services =>
+            {
+                services.AddSingleton<TimeProvider>(Clock);
+                services.AddTransient<IStartupFilter, RoleProbeStartup>();
+            });
             builder.UseSetting("LoginRateLimit:IpPermitLimit", "10000");
             builder.UseSetting("LoginRateLimit:EmailPermitLimit", "10000");
             builder.UseSetting("Jwt:SigningKey", "synthetic-test-signing-key-at-least-32-bytes");
