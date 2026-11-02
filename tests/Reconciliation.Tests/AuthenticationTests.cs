@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,8 +38,14 @@ public sealed class AuthenticationTests(ApiFixture fixture)
         Assert.True(BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(5, 4)) >= 100_000);
         Assert.True(BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(9, 4)) >= 16);
         Assert.Equal(PasswordVerificationResult.Success, hasher.VerifyHashedPassword(user.Email, hash, ApiFixture.Password));
-        using var client = await fixture.LoginAsync(user.Email);
-        Assert.Equal(3, client.DefaultRequestHeaders.Authorization!.Parameter!.Split('.').Length);
+        using var client = fixture.App.CreateClient();
+        using var login = await client.PostAsJsonAsync("/auth/tokens", new { email = user.Email, password = ApiFixture.Password }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var pair = await login.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(900, pair.GetProperty("expiresIn").GetInt32());
+        Assert.Equal(43, pair.GetProperty("refreshToken").GetString()!.Length);
+        client.DefaultRequestHeaders.Authorization = new("Bearer", pair.GetProperty("accessToken").GetString());
+        Assert.Equal(3, client.DefaultRequestHeaders.Authorization.Parameter!.Split('.').Length);
         using var response = await client.GetAsync("/companies/00000000-0000-0000-0000-000000000001", TestContext.Current.CancellationToken);
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }

@@ -57,12 +57,12 @@ No SDK on the machine? Run any command inside the official image, for example:
 ```bash
 docker run --rm --network host -e TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1 \
   -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:$PWD" -w "$PWD" \
-  mcr.microsoft.com/dotnet/sdk:10.0 dotnet test --solution Reconciliation.slnx --solution Reconciliation.slnx
+  mcr.microsoft.com/dotnet/sdk:10.0 dotnet test --solution Reconciliation.slnx
 ```
 
 ## Tenancy API
 
-`POST /auth/tokens` accepts `{email, password}` and returns `{accessToken}`. Send that token as
+`POST /auth/tokens` accepts `{email, password}` and returns `{accessToken, refreshToken, expiresIn}`. Send that token as
 `Authorization: Bearer <token>` and choose the company with `X-Company-Id`. The header must match the route id
 and a current membership. Health and `/openapi.json` remain anonymous.
 
@@ -80,6 +80,60 @@ See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
 The implementation uses `CompanyScope` for company transactions, `CompanyRoleHandler` for membership policies,
 `CompanyAdminEndpoints` for administration, and `ImportFileStore` for retained uploads. The bilingual build logs
 include the PR-5 rename map so earlier code names remain traceable.
+
+## Session renewal
+
+Access tokens have a configurable **15-minute** default lifetime (5–30 minutes). Refresh credentials contain 256 random
+bits encoded as base64url; PostgreSQL stores only their SHA-256 digest. JWTs carry `sub`, `sid` and `jti`; roles stay in
+live company membership. Existing Bearer tokens without `sid` keep working on existing routes until their original
+expiry; log in again to obtain a refresh credential.
+
+| Request | Body / authentication | Result |
+|---|---|---|
+| `POST /auth/tokens` | `{email, password}` | `{accessToken, refreshToken, expiresIn}`; default `expiresIn` is 900 seconds |
+| `POST /auth/refresh` | `{refreshToken}`; no access token required | A new access/refresh pair in the same session |
+| `POST /auth/logout` | Bearer access token with `sid`; no body | 204; only that session stops renewing |
+| `POST /auth/password` | Bearer access token; `{currentPassword, newPassword}` | 204; password changes and every session of that user stops renewing; new password must have at least 12 characters |
+
+Rotation is transactional and locks the session row. Reusing a rotated credential through the inclusive 10-second
+grace window returns **409** without changes. Later reuse returns 401 and revokes the whole family. Coordinate renewal
+with **single-flight** behavior: on 409, retry using the token stored by the winning request, never repeatedly replay
+the old one. Unknown, revoked or expired credentials return 401. Renewal never extends the original absolute cap.
+Defaults are 8 hours idle and 30 days absolute. Logout and password change end renewal immediately; already-issued
+access tokens remain valid until their configured expiry. Session events are append-only and contain no credentials.
+
+The following CLI flow uses an existing synthetic account. Supply `AUTH_EMAIL` and `AUTH_PASSWORD` privately in the
+shell environment first. Responses and credentials stay in shell memory; do not print them, put them in URLs or save
+them to files. The last command logs this session out.
+
+<!-- session-cli-start -->
+```bash
+set -euo pipefail
+: "${AUTH_EMAIL:?Set AUTH_EMAIL for an existing synthetic account}"
+: "${AUTH_PASSWORD:?Set AUTH_PASSWORD privately}"
+API_URL="${API_URL:-http://127.0.0.1:8080}"
+SESSION_LOGIN_JSON="$(python3 -c 'import json,os; print(json.dumps({"email":os.environ["AUTH_EMAIL"],"password":os.environ["AUTH_PASSWORD"]}))' | curl -fsS "$API_URL/auth/tokens" -H 'Content-Type: application/json' --data-binary @-)"
+ACCESS_TOKEN="$(printf '%s' "$SESSION_LOGIN_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
+REFRESH_TOKEN="$(printf '%s' "$SESSION_LOGIN_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["refreshToken"])')"
+SESSION_RENEWED_JSON="$(printf '{"refreshToken":"%s"}' "$REFRESH_TOKEN" | curl -fsS "$API_URL/auth/refresh" -H 'Content-Type: application/json' --data-binary @-)"
+ACCESS_TOKEN="$(printf '%s' "$SESSION_RENEWED_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
+curl -fsS -X POST "$API_URL/auth/logout" -H "Authorization: Bearer $ACCESS_TOKEN"
+unset SESSION_LOGIN_JSON SESSION_RENEWED_JSON ACCESS_TOKEN REFRESH_TOKEN
+```
+<!-- session-cli-end -->
+
+Configure `Session__AccessTokenMinutes`, `Session__IdleMinutes`, `Session__AbsoluteDays`, `Session__ReuseGraceSeconds`
+and `RefreshRateLimit__IpPermitLimit` (default 60 requests per `LoginRateLimit__WindowSeconds`, shared by refresh and
+logout per remote IP). Invalid session options fail startup. Shared NATs share that IP budget. The password endpoint
+requires authentication and the current password; the design's session IP policy applies to refresh and logout.
+
+For browser transport set `Session__RefreshCookie=true` and an Origin allow-list, for example
+`Session__AllowedOrigins__0=https://app.example.invalid`. Login and renewal then omit `refreshToken` from JSON and
+send a **HttpOnly**, **Secure**, **SameSite=Strict** browser-session cookie with **Path=/auth**. Cookie renewal requires
+an exact allowed `Origin`; missing or unlisted Origins receive 403 without rotation. A body credential cannot bypass
+cookie mode, and logout clears the cookie. Use HTTPS for browser cookies; the local HTTP Compose CLI demo uses the
+default JSON transport. Every data endpoint continues to use Bearer authorization. See
+[ADR-004](docs/adr/ADR-004-session-renewal.md) for the trade-offs and the production OIDC recommendation.
 
 ## Ingestion API
 
