@@ -18,10 +18,10 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance);
         await Assert.ThrowsAsync<InvalidDataException>(() => scope.ExecuteWriteAsync<int>(seeded.CompanyId, async (connection, transaction, cancellationToken) =>
         {
-            await JobQueue.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 5, clock.GetUtcNow(), cancellationToken);
+            await JobStore.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 5, clock.GetUtcNow(), cancellationToken);
             throw new InvalidDataException("Synthetic rollback");
         }, TestContext.Current.CancellationToken));
-        Assert.Equal(0, await database.ScalarAsync<int>("SELECT count(*) FROM job WHERE company_id=@CompanyId", seeded));
+        Assert.Equal(0, await database.ScalarAsync<int>("SELECT count(*) FROM job WHERE company_id=@CompanyId", new { seeded.CompanyId }));
     }
 
     [Fact(DisplayName = "Two workers")]
@@ -31,12 +31,12 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         var otherCompany = await database.ScalarAsync<Guid>("INSERT INTO company(rfc,name) VALUES('BBB010101BBB','Synthetic second') RETURNING id");
         await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
         var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance);
-        var queue = new JobQueue(source, clock);
+        var queue = new JobStore(source, clock);
         var expected = new List<Guid>();
         foreach (var companyId in new[] { seeded.CompanyId, otherCompany })
             for (var index = 0; index < 12; index++)
                 expected.Add(await scope.ExecuteWriteAsync(companyId, (connection, transaction, cancellationToken) =>
-                    JobQueue.EnqueueAsync(connection, transaction, companyId, seeded.UserId, "status_check", "{}", null, 5, clock.GetUtcNow(), cancellationToken), TestContext.Current.CancellationToken));
+                    JobStore.EnqueueAsync(connection, transaction, companyId, seeded.UserId, "status_check", "{}", null, 5, clock.GetUtcNow(), cancellationToken), TestContext.Current.CancellationToken));
         var claimed = await Task.WhenAll(Enumerable.Range(0, 24).Select(async worker =>
         {
             var job = await queue.ClaimAsync($"synthetic-worker-{worker}", 60, TestContext.Current.CancellationToken);
@@ -60,12 +60,12 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance);
         var now = clock.GetUtcNow();
         var first = await scope.ExecuteWriteAsync(seeded.CompanyId, (connection, transaction, cancellationToken) =>
-            JobQueue.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 5, now, cancellationToken), TestContext.Current.CancellationToken);
+            JobStore.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 5, now, cancellationToken), TestContext.Current.CancellationToken);
         var second = await scope.ExecuteWriteAsync(seeded.CompanyId, (connection, transaction, cancellationToken) =>
-            JobQueue.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 5, now, cancellationToken), TestContext.Current.CancellationToken);
+            JobStore.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 5, now, cancellationToken), TestContext.Current.CancellationToken);
         await using var owner = await database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("UPDATE job SET created_at=@created WHERE id=@first; UPDATE job SET run_after=@future WHERE id=@second", new { first, second, created = now.AddSeconds(-1), future = now.AddMinutes(1) }, cancellationToken: TestContext.Current.CancellationToken));
-        var queue = new JobQueue(source, clock);
+        var queue = new JobStore(source, clock);
         Assert.Equal(first, (await queue.ClaimAsync("synthetic-first", 60, TestContext.Current.CancellationToken))!.Id);
         Assert.Null(await queue.ClaimAsync("synthetic-not-due", 60, TestContext.Current.CancellationToken));
         clock.Advance(TimeSpan.FromMinutes(1));
