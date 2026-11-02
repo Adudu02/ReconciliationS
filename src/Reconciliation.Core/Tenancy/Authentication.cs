@@ -83,9 +83,9 @@ public static class Authentication
             var pair = await sessions.LoginAsync(credentials, cancellationToken);
             return pair is null ? Results.Unauthorized() : Results.Ok(pair);
         }).AllowAnonymous();
-        routes.MapPost("/auth/refresh", async (RefreshRequest request, SessionService sessions, CancellationToken cancellationToken) =>
+        routes.MapPost("/auth/refresh", async (RefreshRequest request, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
         {
-            var renewed = await sessions.RefreshAsync(request.RefreshToken, cancellationToken);
+            var renewed = await sessions.RefreshAsync(request.RefreshToken, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             return renewed.Pair is null ? Results.StatusCode(renewed.StatusCode) : Results.Ok(renewed.Pair);
         }).AllowAnonymous();
         return routes;

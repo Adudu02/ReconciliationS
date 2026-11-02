@@ -43,7 +43,7 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
     private sealed record SessionRow(Guid Id, Guid UserId, DateTime AbsoluteExpiresAt, DateTime? RevokedAt);
     private sealed record RefreshRow(Guid Id, DateTime ExpiresAt, DateTime? RotatedAt);
 
-    public async Task<SessionRenewal> RefreshAsync(string? refreshToken, CancellationToken cancellationToken)
+    public async Task<SessionRenewal> RefreshAsync(string? refreshToken, string? remoteIp, CancellationToken cancellationToken)
     {
         if (refreshToken is null || refreshToken.Length != 43 || refreshToken.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_')))
             return new SessionRenewal(StatusCodes.Status401Unauthorized);
@@ -62,8 +62,20 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
             SELECT id,expires_at AS ExpiresAt,rotated_at AS RotatedAt FROM refresh_token WHERE token_hash=@tokenHash AND session_id=@sessionId
             """, new { tokenHash, sessionId }, transaction, cancellationToken: cancellationToken));
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        if (session is null || session.RevokedAt.HasValue || session.AbsoluteExpiresAt <= now || presented is null || presented.RotatedAt.HasValue || presented.ExpiresAt <= now)
+        if (session is null || session.RevokedAt.HasValue || session.AbsoluteExpiresAt <= now || presented is null)
             return new SessionRenewal(StatusCodes.Status401Unauthorized);
+        if (presented.RotatedAt is DateTime rotatedAt)
+        {
+            if (now - rotatedAt <= TimeSpan.FromSeconds(options.ReuseGraceSeconds))
+                return new SessionRenewal(StatusCodes.Status409Conflict);
+            await connection.ExecuteAsync(Command("""
+                UPDATE auth_session SET revoked_at=@now,revoked_reason='reuse_detected' WHERE id=@sessionId AND revoked_at IS NULL
+                """, new { now, sessionId }, transaction, cancellationToken: cancellationToken));
+            await WriteEventAsync(connection, transaction, session.UserId, session.Id, "reuse_detected", remoteIp, now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return new SessionRenewal(StatusCodes.Status401Unauthorized);
+        }
+        if (presented.ExpiresAt <= now) return new SessionRenewal(StatusCodes.Status401Unauthorized);
         var replacement = await InsertRefreshAsync(connection, transaction, session.Id, now, session.AbsoluteExpiresAt, cancellationToken);
         var rowsRotated = await connection.ExecuteAsync(Command("""
             UPDATE refresh_token SET rotated_at=@now,replaced_by=@replacementId WHERE id=@presentedId AND rotated_at IS NULL
@@ -73,6 +85,12 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
         await transaction.CommitAsync(cancellationToken);
         return new SessionRenewal(StatusCodes.Status200OK, IssuePair(session.UserId, session.Id, replacement.Value, now));
     }
+
+    private static Task<int> WriteEventAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid userId,
+        Guid sessionId, string authEvent, string? remoteIp, DateTime now, CancellationToken cancellationToken) =>
+        connection.ExecuteAsync(Command("""
+            INSERT INTO auth_event(user_id,session_id,event,remote_ip,created_at) VALUES(@userId,@sessionId,@authEvent,@remoteIp::inet,@now)
+            """, new { userId, sessionId, authEvent, remoteIp, now }, transaction, cancellationToken: cancellationToken));
 
     private async Task<(Guid Id, string Value)> InsertRefreshAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         Guid sessionId, DateTime now, DateTime absoluteExpiresAt, CancellationToken cancellationToken)
