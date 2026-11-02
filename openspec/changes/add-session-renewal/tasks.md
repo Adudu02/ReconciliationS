@@ -26,7 +26,7 @@
 
 ## 5. Hardening and documentation
 
-- [ ] 5.1 Extend the isolation guard so every new `/auth` route is covered (anonymous, wrong user, rate limit) and verify the suite fails if a route lacks its case
+- [x] 5.1 Extend the isolation guard so every new `/auth` route is covered (anonymous, wrong user, rate limit) and verify the suite fails if a route lacks its case
 - [ ] 5.2 Update the existing authentication tests and README (new response fields, 15-minute lifetime, refresh and logout examples, cookie option) and `.env.example`, and verify the documented commands work against a running stack
 - [ ] 5.3 Update both build logs (architecture, dictionary, new PR entry in the six-question format) and regenerate the Word and PDF exports; verify the log tests pass and the exports open
 - [ ] 5.4 Run the full suite, `dotnet format --verify-no-changes`, Compose start and migrations up/down/up, and verify everything is green before marking the change complete

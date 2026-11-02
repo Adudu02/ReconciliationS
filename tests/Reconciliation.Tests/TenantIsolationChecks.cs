@@ -39,6 +39,7 @@ internal static class TenantIsolationChecks
 
     public static async Task VerifyRoutesAsync(ApiFixture fixture)
     {
+        await AuthIsolationChecks.VerifyAsync(fixture);
         var user = await fixture.SeedUserAsync();
         var other = await fixture.SeedUserAsync();
         var a = await fixture.SeedCompanyAsync(user.Id);
@@ -60,7 +61,8 @@ internal static class TenantIsolationChecks
         {
             var route = endpoint.RoutePattern.RawText!;
             var methods = endpoint.Metadata.GetRequiredMetadata<IHttpMethodMetadata>().HttpMethods;
-            if (route is "/health" or "/openapi.json" or "/auth/tokens" or "/auth/refresh")
+            if (AuthIsolationChecks.IsAuthenticationRoute(route)) continue;
+            if (route is "/health" or "/openapi.json")
             {
                 Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
                 continue;
@@ -69,13 +71,6 @@ internal static class TenantIsolationChecks
             var policy = await AuthorizationPolicy.CombineAsync(policies, endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>());
             Assert.NotNull(policy);
             Assert.Contains(policy.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
-            if (route is "/auth/logout" or "/auth/password")
-            {
-                using var request = new HttpRequestMessage(HttpMethod.Post, route);
-                using var denied = await anonymous.SendAsync(request, TestContext.Current.CancellationToken);
-                Assert.Equal(HttpStatusCode.Unauthorized, denied.StatusCode);
-                continue;
-            }
             foreach (var method in methods)
             {
                 var key = $"{method} {route}";
