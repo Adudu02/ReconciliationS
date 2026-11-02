@@ -42,6 +42,17 @@ public sealed class JobWorkerTests(PostgresFixture database) : IClassFixture<Pos
     }
 
     [Fact]
+    public async Task Wrapped_import_database_timeout_remains_transient()
+    {
+        var handler = new SyntheticHandler((_, _, _, _) => throw new UploadFailedException(Guid.NewGuid(), new TimeoutException("Synthetic wrapped timeout")));
+        await using var services = CreateServices(handler);
+        var jobId = await EnqueueAsync(services);
+        Assert.True(await services.GetRequiredService<JobDispatcher>().RunOneAsync("synthetic-wrapped", TestContext.Current.CancellationToken));
+        Assert.Equal("queued", await database.ScalarAsync<string>("SELECT state FROM job WHERE id=@jobId", new { jobId }));
+        Assert.Equal("transient", await database.ScalarAsync<string>("SELECT error_kind FROM job_attempt WHERE job_id=@jobId", new { jobId }));
+    }
+
+    [Fact]
     public async Task Dispatcher_heartbeats_while_handler_is_running()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
