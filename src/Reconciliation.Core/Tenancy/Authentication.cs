@@ -18,7 +18,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 namespace Reconciliation.Core.Tenancy;
 
 public sealed record TokenRequest(string Email, string Password);
-public sealed record TokenResponse(string AccessToken);
+public sealed record TokenResponse(string AccessToken, string? RefreshToken, int ExpiresIn);
 public sealed record LoginAccount(Guid Id, string Email, string PasswordHash);
 
 public static class Authentication
@@ -37,6 +37,7 @@ public static class Authentication
             return options;
         });
         services.AddSingleton(signingKey);
+        services.AddSingleton<SessionService>();
         services.AddSingleton<IPasswordHasher<string>, PasswordHasher<string>>();
         services.AddSingleton(provider => new DummyPasswordHash(provider.GetRequiredService<IPasswordHasher<string>>()
             .HashPassword("unknown@example.invalid", "synthetic-unused-password")));
@@ -76,22 +77,10 @@ public static class Authentication
 
     public static IEndpointRouteBuilder MapAuthentication(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/auth/tokens", async (TokenRequest credentials, NpgsqlDataSource dataSource,
-            IPasswordHasher<string> passwordHasher, DummyPasswordHash dummyHash, SymmetricSecurityKey signingKey, TimeProvider timeProvider, CancellationToken cancellationToken) =>
+        routes.MapPost("/auth/tokens", async (TokenRequest credentials, SessionService sessions, CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(credentials.Email) || string.IsNullOrEmpty(credentials.Password)) return Results.Unauthorized();
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-            var account = await connection.QuerySingleOrDefaultAsync<LoginAccount>(Command(
-                "SELECT id, email, password_hash AS PasswordHash FROM app_user WHERE lower(email) = lower(@Email)", credentials, cancellationToken: cancellationToken));
-            // Perform the slow verification even for an unknown email.
-            var hashToCompare = account?.PasswordHash ?? dummyHash.Value;
-            var verification = passwordHasher.VerifyHashedPassword(credentials.Email, hashToCompare, credentials.Password);
-            if (account is null || verification == PasswordVerificationResult.Failed) return Results.Unauthorized();
-            var accessToken = new JwtSecurityToken(JwtTokenPolicy.TokenIssuer, JwtTokenPolicy.TokenAudience,
-                [new Claim(JwtRegisteredClaimNames.Sub, account.Id.ToString())],
-                notBefore: timeProvider.GetUtcNow().UtcDateTime, expires: timeProvider.GetUtcNow().UtcDateTime.Add(JwtTokenPolicy.TokenLifetime),
-                signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256));
-            return Results.Ok(new TokenResponse(new JwtSecurityTokenHandler().WriteToken(accessToken)));
+            var pair = await sessions.LoginAsync(credentials, cancellationToken);
+            return pair is null ? Results.Unauthorized() : Results.Ok(pair);
         }).AllowAnonymous();
         return routes;
     }

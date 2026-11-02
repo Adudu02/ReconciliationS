@@ -6,7 +6,7 @@
 
 ## 2. Login and rotation (tests first, then implementation)
 
-- [ ] 2.1 Write red tests for short access lifetime, refresh token returned at login with only its digest stored, and failed login creating nothing; then implement and verify they pass
+- [x] 2.1 Write red tests for short access lifetime, refresh token returned at login with only its digest stored, and failed login creating nothing; then implement and verify they pass
 - [ ] 2.2 Write red tests for rotation (new pair issued, old token dead, unknown token refused) and implement `POST /auth/refresh`; verify they pass
 - [ ] 2.3 Write red tests for reuse detection outside the grace window (session revoked, event recorded) and the 409 inside it; then implement and verify they pass
 - [ ] 2.4 Write a concurrency test where many parallel requests present one refresh token and implement the row-lock rotation; verify exactly one new token is issued and the session stays active
