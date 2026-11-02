@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Reconciliation.Core.Common;
+using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Jobs;
 using Reconciliation.Core.Tenancy;
 
@@ -103,7 +104,7 @@ public sealed class JobWorkerTests(PostgresFixture database) : IClassFixture<Pos
             ["ConnectionStrings:Default"] = database.AppConnectionString,
             ["Jobs:LeaseSeconds"] = "9"
         }).Build();
-        var services = new ServiceCollection().AddLogging().AddReconciliationDatabase(configuration).AddJobs(configuration);
+        var services = new ServiceCollection().AddLogging().AddReconciliationDatabase(configuration).AddIngestion(configuration).AddJobs(configuration);
         services.AddSingleton<TimeProvider>(clock);
         services.AddSingleton(new JobBackoff(new JobOptions(), _ => 0));
         services.AddSingleton(handler);

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Reconciliation.Core.Ingestion;
 
 namespace Reconciliation.Core.Jobs;
 
@@ -15,6 +16,9 @@ public static class JobServiceCollectionExtensions
         services.AddSingleton(options);
         services.AddSingleton<JobStore>();
         services.AddSingleton<JobDispatcher>();
+        services.AddSingleton<ImportJobService>();
+        services.AddSingleton<IJobHandler, CfdiImportJobHandler>();
+        services.AddSingleton<IJobHandler, StatementImportJobHandler>();
         services.AddSingleton(new JobBackoff(options, RandomNumberGenerator.GetInt32));
         return services;
     }

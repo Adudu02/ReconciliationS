@@ -22,10 +22,10 @@ public sealed class JobStore(NpgsqlDataSource dataSource, TimeProvider clock)
 
     public static Task<Guid> EnqueueAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         Guid companyId, Guid actorId, string jobType, string payload, Guid? inputRef, int maxAttempts,
-        DateTimeOffset now, CancellationToken cancellationToken) => connection.QuerySingleAsync<Guid>(Command("""
-            INSERT INTO job(company_id,type,payload,input_ref,max_attempts,created_by,created_at,run_after)
-            VALUES(@companyId,@jobType,@payload::jsonb,@inputRef,@maxAttempts,@actorId,@now,@now) RETURNING id
-            """, new { companyId, jobType, payload, inputRef, maxAttempts, actorId, now }, transaction, cancellationToken: cancellationToken));
+        DateTimeOffset now, CancellationToken cancellationToken, int progressTotal = 0) => connection.QuerySingleAsync<Guid>(Command("""
+            INSERT INTO job(company_id,type,payload,input_ref,max_attempts,created_by,created_at,run_after,progress_total)
+            VALUES(@companyId,@jobType,@payload::jsonb,@inputRef,@maxAttempts,@actorId,@now,@now,@progressTotal) RETURNING id
+            """, new { companyId, jobType, payload, inputRef, maxAttempts, actorId, now, progressTotal }, transaction, cancellationToken: cancellationToken));
 
     public async Task<JobRecord?> ClaimAsync(string workerId, int leaseSeconds, CancellationToken cancellationToken)
     {

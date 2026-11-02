@@ -10,15 +10,19 @@ public sealed partial class BankStatementImporter(CompanyScope companyScope, IEn
 {
     public IReadOnlyList<string> SupportedBanks => statementParsers.Select(statementParser => statementParser.Bank).Order(StringComparer.Ordinal).ToArray();
 
+    public Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, string bank, string accountReference,
+        IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default) =>
+        ImportAsync(companyId, actorId, bank, accountReference, files, null, null, cancellationToken);
+
     public async Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, string bank, string accountReference,
-        IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default)
+        IReadOnlyList<UploadedFile> files, Guid? queuedUploadId, Func<int, Task>? progress, CancellationToken cancellationToken)
     {
         options.EnsureWithinLimits(files);
         var statementParser = statementParsers.SingleOrDefault(parser => parser.Bank == bank);
         var uploadRejectionReason = statementParser is null ? "Unknown bank; supported banks: " + string.Join(", ", SupportedBanks)
             : accountReference is null || !AccountLabel().IsMatch(accountReference) || string.IsNullOrWhiteSpace(accountReference)
                 ? "accountReference must be a synthetic label of 1-40 letters, digits, spaces, hyphens or underscores." : null;
-        var uploadId = Guid.NewGuid();
+        var uploadId = queuedUploadId ?? Guid.NewGuid();
         var fileOutcomes = new List<FileImportOutcome>();
         try
         {
@@ -26,6 +30,7 @@ public sealed partial class BankStatementImporter(CompanyScope companyScope, IEn
             {
                 var (parsedLines, rejectionReason) = ParseStatement(uploadedStatement, statementParser, uploadRejectionReason);
                 fileOutcomes.Add(await PersistStatementAsync(companyId, actorId, uploadId, bank, accountReference, uploadedStatement, parsedLines, rejectionReason, cancellationToken));
+                if (progress is not null) await progress(fileOutcomes.Count);
             }
         }
         catch (Exception error) when (error is NpgsqlException or CompanyReadOnlyException)
@@ -55,6 +60,8 @@ public sealed partial class BankStatementImporter(CompanyScope companyScope, IEn
         UploadedFile uploadedStatement, IReadOnlyList<BankStatementLine>? parsedLines, string? rejectionReason, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
+            var completed = await ImportFileStore.CompletedAsync(connection, transaction, uploadedStatement, transactionCancellationToken);
+            if (completed is not null) return completed;
             var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
             var fileId = await ImportFileStore.InsertFileAsync(connection, transaction, companyId, uploadId, uploadedStatement, ImportFileKind.BankStatement, importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
             var newMovements = 0;

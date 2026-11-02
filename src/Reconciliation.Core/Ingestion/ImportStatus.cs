@@ -10,7 +10,7 @@ public static class ImportDatabaseValues
         ImportStatus.Imported => "imported",
         ImportStatus.AlreadyImported => "already_imported",
         ImportStatus.Rejected => "rejected",
-        ImportStatus.Importing => "importing",
+        ImportStatus.Importing => "processing",
         _ => throw new ArgumentOutOfRangeException(nameof(status))
     };
     public static string ToDatabaseValue(this ImportFileKind kind) => kind switch

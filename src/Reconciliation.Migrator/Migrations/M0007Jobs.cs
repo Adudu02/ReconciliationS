@@ -6,6 +6,23 @@ namespace Reconciliation.Migrator.Migrations;
 public sealed class M0007Jobs : Migration
 {
     public override void Up() => Execute.Sql($$"""
+        ALTER TABLE import_file ADD COLUMN pending_original bytea, ADD COLUMN file_index integer NOT NULL DEFAULT 0 CHECK(file_index>=0);
+        ALTER TABLE import_file DROP CONSTRAINT import_file_status_check;
+        ALTER TABLE import_file ADD CONSTRAINT import_file_status_check CHECK(status IN ('queued','processing','imported','already_imported','rejected'));
+        ALTER TABLE import_file ADD CONSTRAINT import_file_pending_state CHECK(pending_original IS NULL OR status IN ('queued','processing'));
+        ALTER TABLE import_file ADD CONSTRAINT import_file_pending_hash CHECK(pending_original IS NULL OR sha256=sha256(pending_original));
+        GRANT UPDATE(pending_original) ON import_file TO cfdi_app;
+        CREATE OR REPLACE FUNCTION preserve_import_original() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.original IS DISTINCT FROM OLD.original AND NOT
+            (OLD.status IN ('queued','processing') AND NEW.status='imported' AND OLD.original IS NULL AND NEW.original IS NOT NULL) THEN
+            RAISE EXCEPTION 'Only a queued or processing file may finalize its original';
+          END IF;
+          IF OLD.original IS NOT NULL AND (NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.retained_until IS NULL OR NEW.retained_until<OLD.retained_until) THEN
+            RAISE EXCEPTION 'Accepted hashes are immutable; retention cannot be shortened';
+          END IF;
+          RETURN NEW;
+        END $$;
         CREATE ROLE cfdi_queue_owner NOLOGIN NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
         GRANT USAGE ON SCHEMA public TO cfdi_queue_owner;
         CREATE TABLE job (
@@ -38,7 +55,7 @@ public sealed class M0007Jobs : Migration
         GRANT SELECT,INSERT,UPDATE ON job,job_attempt TO cfdi_queue_owner;
         GRANT SELECT,INSERT ON job TO cfdi_app;
         GRANT SELECT ON job_attempt TO cfdi_app;
-        GRANT UPDATE(state,max_attempts,run_after,finished_at,last_error) ON job TO cfdi_app;
+        GRANT UPDATE(state,max_attempts,run_after,finished_at,last_error,progress_done,progress_total) ON job TO cfdi_app;
         CREATE FUNCTION claim_next_job(worker_id text, lease_seconds integer, p_now timestamptz DEFAULT clock_timestamp())
         RETURNS SETOF job LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
         DECLARE claimed public.job; expired public.job;
@@ -106,6 +123,26 @@ public sealed class M0007Jobs : Migration
         """);
 
     public override void Down() => Execute.Sql("""
+        DO $$ BEGIN
+          IF EXISTS(SELECT FROM import_file WHERE status IN ('queued','processing')) THEN
+            RAISE EXCEPTION 'Finish or rerun queued imports before reverting M0007; pending input must not be lost';
+          END IF;
+        END $$;
+        ALTER TABLE import_file DROP CONSTRAINT import_file_pending_hash, DROP CONSTRAINT import_file_pending_state;
+        ALTER TABLE import_file DROP COLUMN pending_original, DROP COLUMN file_index;
+        ALTER TABLE import_file DROP CONSTRAINT import_file_status_check;
+        ALTER TABLE import_file ADD CONSTRAINT import_file_status_check CHECK(status IN ('imported','already_imported','rejected','importing'));
+        CREATE OR REPLACE FUNCTION preserve_import_original() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.original IS DISTINCT FROM OLD.original AND NOT
+            (OLD.status='importing' AND NEW.status='imported' AND OLD.original IS NULL AND NEW.original IS NOT NULL) THEN
+            RAISE EXCEPTION 'Only an importing file may finalize its original';
+          END IF;
+          IF OLD.original IS NOT NULL AND (NEW.sha256 IS DISTINCT FROM OLD.sha256 OR NEW.retained_until IS NULL OR NEW.retained_until<OLD.retained_until) THEN
+            RAISE EXCEPTION 'Accepted hashes are immutable; retention cannot be shortened';
+          END IF;
+          RETURN NEW;
+        END $$;
         DROP FUNCTION renew_job(uuid,text,integer,integer,timestamptz);
         DROP FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz);
         DROP FUNCTION claim_next_job(text,integer,timestamptz);
