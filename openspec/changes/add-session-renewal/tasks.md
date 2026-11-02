@@ -2,7 +2,7 @@
 
 - [x] 1.1 Write ADR-004 (session renewal) comparing rotating refresh tokens, sliding renewal, cookie sessions and an OIDC provider, and verify it states why cookie sessions were rejected and why OIDC is the production recommendation
 - [x] 1.2 Add `TimeProvider` to the API and test host, plus `SessionOptions` (access 5 to 30 min, idle, absolute days, grace seconds, cookie flag, allowed origins) validated at start-up, and verify invalid values stop the application with a clear message
-- [ ] 1.3 Add migration `M0006` (`auth_session`, `refresh_token`, `auth_event`, indexes, column-level grants, no DELETE, append-only events) and verify up/down/up succeeds and the application role cannot delete or alter events
+- [x] 1.3 Add migration `M0006` (`auth_session`, `refresh_token`, `auth_event`, indexes, column-level grants, no DELETE, append-only events) and verify up/down/up succeeds and the application role cannot delete or alter events
 
 ## 2. Login and rotation (tests first, then implementation)
 
