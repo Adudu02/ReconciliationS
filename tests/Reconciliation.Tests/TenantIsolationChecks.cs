@@ -60,7 +60,7 @@ internal static class TenantIsolationChecks
         {
             var route = endpoint.RoutePattern.RawText!;
             var methods = endpoint.Metadata.GetRequiredMetadata<IHttpMethodMetadata>().HttpMethods;
-            if (route is "/health" or "/openapi.json" or "/auth/tokens")
+            if (route is "/health" or "/openapi.json" or "/auth/tokens" or "/auth/refresh")
             {
                 Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
                 continue;

@@ -17,6 +17,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
 
+public sealed record RefreshRequest(string? RefreshToken);
 public sealed record TokenRequest(string Email, string Password);
 public sealed record TokenResponse(string AccessToken, string? RefreshToken, int ExpiresIn);
 public sealed record LoginAccount(Guid Id, string Email, string PasswordHash);
@@ -81,6 +82,11 @@ public static class Authentication
         {
             var pair = await sessions.LoginAsync(credentials, cancellationToken);
             return pair is null ? Results.Unauthorized() : Results.Ok(pair);
+        }).AllowAnonymous();
+        routes.MapPost("/auth/refresh", async (RefreshRequest request, SessionService sessions, CancellationToken cancellationToken) =>
+        {
+            var renewed = await sessions.RefreshAsync(request.RefreshToken, cancellationToken);
+            return renewed.Pair is null ? Results.StatusCode(renewed.StatusCode) : Results.Ok(renewed.Pair);
         }).AllowAnonymous();
         return routes;
     }
