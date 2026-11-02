@@ -1,3 +1,5 @@
+extern alias worker;
+using WorkerLoop = worker::Reconciliation.Worker.JobLoop;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -95,6 +97,32 @@ public sealed class JobWorkerTests(PostgresFixture database) : IClassFixture<Pos
         Assert.Equal(jobId, recovered.Id);
     }
 
+    [Fact]
+    public async Task Polling_host_runs_two_handlers_concurrently_and_stops_cleanly()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var active = 0;
+        var handler = new SyntheticHandler(async (_, _, _, cancellationToken) =>
+        {
+            if (Interlocked.Increment(ref active) == 2) started.SetResult();
+            await release.Task.WaitAsync(cancellationToken);
+            return null;
+        });
+        await using var services = CreateServices(handler);
+        var first = await EnqueueAsync(services);
+        var second = await EnqueueAsync(services, false);
+        using var loop = new WorkerLoop(services.GetRequiredService<JobDispatcher>(), services.GetRequiredService<JobOptions>(), clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkerLoop>.Instance);
+        await loop.StartAsync(TestContext.Current.CancellationToken);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        release.SetResult();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!await database.ScalarAsync<bool>("SELECT count(*)=2 FROM job WHERE id=ANY(@ids) AND state='succeeded'", new { ids = new[] { first, second } }))
+        { deadline.Token.ThrowIfCancellationRequested(); await Task.Yield(); }
+        await loop.StopAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, active);
+    }
+
     [Theory]
     [InlineData("PollIntervalMilliseconds", "0")]
     [InlineData("Concurrency", "0")]
@@ -122,10 +150,10 @@ public sealed class JobWorkerTests(PostgresFixture database) : IClassFixture<Pos
         return services.BuildServiceProvider();
     }
 
-    private async Task<Guid> EnqueueAsync(IServiceProvider services)
+    private async Task<Guid> EnqueueAsync(IServiceProvider services, bool resetQueue = true)
     {
         await using var owner = await database.OpenOwnerAsync();
-        await owner.ExecuteAsync(new CommandDefinition("TRUNCATE job_attempt,job", cancellationToken: TestContext.Current.CancellationToken));
+        if (resetQueue) await owner.ExecuteAsync(new CommandDefinition("TRUNCATE job_attempt,job", cancellationToken: TestContext.Current.CancellationToken));
         var companyId = await owner.QuerySingleAsync<Guid>(new CommandDefinition("INSERT INTO company(rfc,name) VALUES('AAA010101AAA','Synthetic worker') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
         var actorId = await owner.QuerySingleAsync<Guid>(new CommandDefinition("INSERT INTO app_user(email,password_hash) VALUES(@email,'synthetic-not-a-login-hash') RETURNING id", new { email = $"worker-{Guid.NewGuid():N}@example.invalid" }, cancellationToken: TestContext.Current.CancellationToken));
         return await services.GetRequiredService<CompanyScope>().ExecuteWriteAsync(companyId, (connection, transaction, cancellationToken) =>
