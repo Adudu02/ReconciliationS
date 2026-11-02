@@ -86,6 +86,25 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
         return new SessionRenewal(StatusCodes.Status200OK, IssuePair(session.UserId, session.Id, replacement.Value, now));
     }
 
+    public async Task<int> LogoutAsync(Guid userId, Guid sessionId, string? remoteIp, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var session = await connection.QuerySingleOrDefaultAsync<SessionRow>(Command("""
+            SELECT id,user_id AS UserId,absolute_expires_at AS AbsoluteExpiresAt,revoked_at AS RevokedAt
+            FROM auth_session WHERE id=@sessionId AND user_id=@userId FOR UPDATE
+            """, new { sessionId, userId }, transaction, cancellationToken: cancellationToken));
+        if (session is null) return StatusCodes.Status403Forbidden;
+        if (!session.RevokedAt.HasValue)
+        {
+            var now = timeProvider.GetUtcNow().UtcDateTime;
+            await connection.ExecuteAsync(Command("UPDATE auth_session SET revoked_at=@now,revoked_reason='logout' WHERE id=@sessionId", new { now, sessionId }, transaction, cancellationToken: cancellationToken));
+            await WriteEventAsync(connection, transaction, userId, sessionId, "logout", remoteIp, now, cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return StatusCodes.Status204NoContent;
+    }
+
     private static Task<int> WriteEventAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid userId,
         Guid sessionId, string authEvent, string? remoteIp, DateTime now, CancellationToken cancellationToken) =>
         connection.ExecuteAsync(Command("""

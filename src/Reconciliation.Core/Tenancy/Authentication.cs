@@ -88,6 +88,11 @@ public static class Authentication
             var renewed = await sessions.RefreshAsync(request.RefreshToken, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             return renewed.Pair is null ? Results.StatusCode(renewed.StatusCode) : Results.Ok(renewed.Pair);
         }).AllowAnonymous();
+        routes.MapPost("/auth/logout", async (HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
+        {
+            if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
+            return Results.StatusCode(await sessions.LogoutAsync(userId, sessionId, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+        }).RequireAuthorization();
         return routes;
     }
 }
