@@ -42,4 +42,11 @@ public sealed class JobStore(NpgsqlDataSource dataSource, TimeProvider clock)
             new { id = job.Id, workerId, attempt = job.Attempts, errorKind, error, retryAt = now + retryDelay, now }, cancellationToken: cancellationToken));
     }
 
+    public async Task<bool> RenewAsync(JobRecord job, string workerId, int leaseSeconds, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        return await connection.QuerySingleAsync<bool>(Command("SELECT renew_job(@id,@workerId,@attempt,@leaseSeconds,@now)",
+            new { id = job.Id, workerId, attempt = job.Attempts, leaseSeconds, now = clock.GetUtcNow() }, cancellationToken: cancellationToken));
+    }
+
 }

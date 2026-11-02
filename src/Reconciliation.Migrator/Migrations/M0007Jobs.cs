@@ -41,11 +41,19 @@ public sealed class M0007Jobs : Migration
         GRANT UPDATE(state,max_attempts,run_after,finished_at,last_error) ON job TO cfdi_app;
         CREATE FUNCTION claim_next_job(worker_id text, lease_seconds integer, p_now timestamptz DEFAULT clock_timestamp())
         RETURNS SETOF job LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-        DECLARE claimed public.job;
+        DECLARE claimed public.job; expired public.job;
         BEGIN
-          IF worker_id IS NULL OR length(worker_id)=0 OR lease_seconds < 1 OR lease_seconds > 86400 THEN
+          IF worker_id IS NULL OR length(worker_id)=0 OR lease_seconds IS NULL OR lease_seconds < 1 OR lease_seconds > 86400 THEN
             RAISE EXCEPTION 'Invalid worker or lease';
           END IF;
+          FOR expired IN SELECT * FROM public.job WHERE state='running' AND locked_until<=p_now
+            ORDER BY locked_until FOR UPDATE SKIP LOCKED LIMIT 100 LOOP
+            UPDATE public.job_attempt SET outcome='lease_expired',error_kind='transient',error='Worker lease expired',finished_at=p_now
+              WHERE company_id=expired.company_id AND job_id=expired.id AND attempt_no=expired.attempts;
+            UPDATE public.job SET state=CASE WHEN attempts<max_attempts THEN 'queued' ELSE 'failed' END,
+              run_after=p_now,locked_by=NULL,locked_until=NULL,last_error='Worker lease expired',
+              finished_at=CASE WHEN attempts>=max_attempts THEN p_now ELSE NULL END WHERE id=expired.id;
+          END LOOP;
           SELECT * INTO claimed FROM public.job WHERE state='queued' AND run_after<=p_now AND attempts<max_attempts
             ORDER BY run_after,created_at,id FOR UPDATE SKIP LOCKED LIMIT 1;
           IF NOT FOUND THEN RETURN; END IF;
@@ -55,6 +63,18 @@ public sealed class M0007Jobs : Migration
             VALUES(claimed.company_id,claimed.id,claimed.attempts,p_now,'running');
           RETURN NEXT claimed;
         END $$;
+        CREATE FUNCTION renew_job(p_id uuid,p_worker text,p_attempt integer,p_lease_seconds integer,
+          p_now timestamptz DEFAULT clock_timestamp()) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+          SET search_path=pg_catalog,public,pg_temp AS $$
+        BEGIN
+          IF p_lease_seconds IS NULL OR p_lease_seconds<1 OR p_lease_seconds>86400 THEN RAISE EXCEPTION 'Invalid lease'; END IF;
+          UPDATE public.job SET locked_until=p_now+make_interval(secs=>p_lease_seconds)
+            WHERE id=p_id AND state='running' AND locked_by=p_worker AND attempts=p_attempt AND locked_until>p_now;
+          RETURN FOUND;
+        END $$;
+        ALTER FUNCTION renew_job(uuid,text,integer,integer,timestamptz) OWNER TO cfdi_queue_owner;
+        REVOKE ALL ON FUNCTION renew_job(uuid,text,integer,integer,timestamptz) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION renew_job(uuid,text,integer,integer,timestamptz) TO cfdi_app;
         CREATE FUNCTION finish_job(p_id uuid,p_worker text,p_attempt integer,p_error_kind text,p_error text,p_retry_at timestamptz,
           p_now timestamptz DEFAULT clock_timestamp()) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
           SET search_path=pg_catalog,public,pg_temp AS $$
@@ -86,6 +106,7 @@ public sealed class M0007Jobs : Migration
         """);
 
     public override void Down() => Execute.Sql("""
+        DROP FUNCTION renew_job(uuid,text,integer,integer,timestamptz);
         DROP FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz);
         DROP FUNCTION claim_next_job(text,integer,timestamptz);
         DROP TABLE job_attempt,job;

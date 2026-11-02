@@ -66,7 +66,9 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         await using var owner = await database.OpenOwnerAsync();
         await owner.ExecuteAsync(new CommandDefinition("UPDATE job SET created_at=@created WHERE id=@first; UPDATE job SET run_after=@future WHERE id=@second", new { first, second, created = now.AddSeconds(-1), future = now.AddMinutes(1) }, cancellationToken: TestContext.Current.CancellationToken));
         var queue = new JobStore(source, clock);
-        Assert.Equal(first, (await queue.ClaimAsync("synthetic-first", 60, TestContext.Current.CancellationToken))!.Id);
+        var firstClaim = (await queue.ClaimAsync("synthetic-first", 60, TestContext.Current.CancellationToken))!;
+        Assert.Equal(first, firstClaim.Id);
+        Assert.True(await queue.FinishAsync(firstClaim, "synthetic-first", null, null, TimeSpan.Zero, TestContext.Current.CancellationToken));
         Assert.Null(await queue.ClaimAsync("synthetic-not-due", 60, TestContext.Current.CancellationToken));
         clock.Advance(TimeSpan.FromMinutes(1));
         Assert.Equal(second, (await queue.ClaimAsync("synthetic-due", 60, TestContext.Current.CancellationToken))!.Id);
