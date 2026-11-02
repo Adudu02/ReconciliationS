@@ -37,11 +37,12 @@ public sealed partial class JobDispatcher(JobStore store, CompanyScope companySc
             catch (Exception error)
 #pragma warning restore CA1031
             {
-                var transient = error is TimeoutException || error is NpgsqlException { IsTransient: true };
+                var failure = error.GetBaseException();
+                var transient = failure is TimeoutException || failure is NpgsqlException { IsTransient: true };
                 errorKind = transient ? "transient" : "permanent";
-                reason = error switch
+                reason = failure switch
                 {
-                    InvalidDataException => error.Message[..Math.Min(error.Message.Length, 2000)],
+                    InvalidDataException => failure.Message[..Math.Min(failure.Message.Length, 2000)],
                     CompanyReadOnlyException => "Archived company is read-only.",
                     _ => transient ? "Temporary worker failure." : "Job handler failed."
                 };
