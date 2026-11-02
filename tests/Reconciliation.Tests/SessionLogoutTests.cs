@@ -45,11 +45,7 @@ public sealed class SessionLogoutTests(ApiFixture fixture)
         var other = await fixture.SeedUserAsync();
         using var host = new SessionTestHost(fixture);
         var otherPair = await host.LoginAsync(other.Email);
-        var jwt = new JwtSecurityToken("reconciliation", "reconciliation",
-            [new Claim("sub", user.Id.ToString()), new Claim("sid", otherPair.SessionId.ToString())],
-            notBefore: host.Clock.GetUtcNow().UtcDateTime, expires: host.Clock.GetUtcNow().UtcDateTime.AddMinutes(15),
-            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes("synthetic-test-signing-key-at-least-32-bytes")), SecurityAlgorithms.HmacSha256));
-        host.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new JwtSecurityTokenHandler().WriteToken(jwt));
+        host.AuthorizeAs(user.Id, otherPair.SessionId);
         using var denied = await host.Client.PostAsync("/auth/logout", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
         Assert.False(await fixture.Database.ScalarAsync<bool>("SELECT revoked_at IS NOT NULL FROM auth_session WHERE id=@sessionId", new { sessionId = otherPair.SessionId }));

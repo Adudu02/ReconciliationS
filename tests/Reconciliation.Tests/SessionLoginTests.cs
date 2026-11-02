@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 using ApiProgram = api::Program;
 
 namespace Reconciliation.Tests;
@@ -49,6 +51,15 @@ internal sealed class SessionTestHost : IDisposable
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pair.AccessToken);
         Client.DefaultRequestHeaders.Remove("X-Company-Id");
         if (companyId.HasValue) Client.DefaultRequestHeaders.Add("X-Company-Id", companyId.ToString());
+    }
+
+    public void AuthorizeAs(Guid userId, Guid sessionId)
+    {
+        var jwt = new JwtSecurityToken("reconciliation", "reconciliation",
+            [new Claim("sub", userId.ToString()), new Claim("sid", sessionId.ToString())],
+            notBefore: Clock.GetUtcNow().UtcDateTime, expires: Clock.GetUtcNow().UtcDateTime.AddMinutes(15),
+            signingCredentials: new SigningCredentials(app.Services.GetRequiredService<SymmetricSecurityKey>(), SecurityAlgorithms.HmacSha256));
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new JwtSecurityTokenHandler().WriteToken(jwt));
     }
 
     public void Dispose() { Client.Dispose(); app.Dispose(); }
