@@ -105,6 +105,30 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
         return StatusCodes.Status204NoContent;
     }
 
+    public async Task<int> ChangePasswordAsync(Guid userId, Guid sessionId, PasswordChangeRequest request, string? remoteIp, CancellationToken cancellationToken)
+    {
+        if (request.NewPassword is null || request.NewPassword.Length < PasswordPolicy.MinimumLength) return StatusCodes.Status400BadRequest;
+        if (string.IsNullOrEmpty(request.CurrentPassword)) return StatusCodes.Status401Unauthorized;
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var account = await connection.QuerySingleOrDefaultAsync<LoginAccount>(Command("""
+            SELECT id,email,password_hash AS PasswordHash FROM app_user WHERE id=@userId FOR NO KEY UPDATE
+            """, new { userId }, transaction, cancellationToken: cancellationToken));
+        if (account is null || passwordHasher.VerifyHashedPassword(account.Email, account.PasswordHash, request.CurrentPassword) == PasswordVerificationResult.Failed)
+            return StatusCodes.Status401Unauthorized;
+        var ownsSession = await connection.ExecuteScalarAsync<bool>(Command("SELECT EXISTS(SELECT FROM auth_session WHERE id=@sessionId AND user_id=@userId)", new { sessionId, userId }, transaction, cancellationToken: cancellationToken));
+        if (!ownsSession) return StatusCodes.Status403Forbidden;
+        var passwordHash = passwordHasher.HashPassword(account.Email, request.NewPassword);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        await connection.ExecuteAsync(Command("UPDATE app_user SET password_hash=@passwordHash WHERE id=@userId", new { passwordHash, userId }, transaction, cancellationToken: cancellationToken));
+        await connection.ExecuteAsync(Command("""
+            UPDATE auth_session SET revoked_at=@now,revoked_reason='password_changed' WHERE user_id=@userId AND revoked_at IS NULL
+            """, new { now, userId }, transaction, cancellationToken: cancellationToken));
+        await WriteEventAsync(connection, transaction, userId, sessionId, "password_changed", remoteIp, now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return StatusCodes.Status204NoContent;
+    }
+
     private static Task<int> WriteEventAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid userId,
         Guid sessionId, string authEvent, string? remoteIp, DateTime now, CancellationToken cancellationToken) =>
         connection.ExecuteAsync(Command("""

@@ -69,7 +69,7 @@ internal static class TenantIsolationChecks
             var policy = await AuthorizationPolicy.CombineAsync(policies, endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>());
             Assert.NotNull(policy);
             Assert.Contains(policy.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
-            if (route == "/auth/logout")
+            if (route is "/auth/logout" or "/auth/password")
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, route);
                 using var denied = await anonymous.SendAsync(request, TestContext.Current.CancellationToken);

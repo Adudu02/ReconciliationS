@@ -17,6 +17,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
 
+public sealed record PasswordChangeRequest(string? CurrentPassword, string? NewPassword);
 public sealed record RefreshRequest(string? RefreshToken);
 public sealed record TokenRequest(string Email, string Password);
 public sealed record TokenResponse(string AccessToken, string? RefreshToken, int ExpiresIn);
@@ -92,6 +93,11 @@ public static class Authentication
         {
             if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
             return Results.StatusCode(await sessions.LogoutAsync(userId, sessionId, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+        }).RequireAuthorization();
+        routes.MapPost("/auth/password", async (PasswordChangeRequest request, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
+        {
+            if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
+            return Results.StatusCode(await sessions.ChangePasswordAsync(userId, sessionId, request, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
         }).RequireAuthorization();
         return routes;
     }
