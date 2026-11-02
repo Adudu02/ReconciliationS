@@ -18,12 +18,12 @@ public static class IngestionEndpoints
 {
     public static IEndpointRouteBuilder MapIngestion(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/companies/{companyId:guid}/imports/cfdi", (Guid companyId, HttpContext httpContext, CfdiImporter cfdiImporter, IngestionOptions ingestionOptions, CancellationToken cancellationToken) =>
-            HandleUploadAsync(httpContext.Request, ingestionOptions, upload => cfdiImporter.ImportAsync(companyId, httpContext.User.UserId()!.Value, upload.Files, cancellationToken), cancellationToken))
+        routes.MapPost("/companies/{companyId:guid}/imports/cfdi", (Guid companyId, HttpContext httpContext, ImportJobService importJobs, IngestionOptions ingestionOptions, CancellationToken cancellationToken) =>
+            HandleUploadAsync(httpContext.Request, ingestionOptions, upload => importJobs.EnqueueAsync(companyId, httpContext.User.UserId()!.Value, "import_cfdi", upload.Files, null, null, cancellationToken), cancellationToken))
             .RequireAuthorization(Policies.Accountant);
-        routes.MapPost("/companies/{companyId:guid}/imports/bank-statement", (Guid companyId, HttpContext httpContext, BankStatementImporter statementImporter, IngestionOptions ingestionOptions, CancellationToken cancellationToken) =>
-            HandleUploadAsync(httpContext.Request, ingestionOptions, upload => statementImporter.ImportAsync(companyId, httpContext.User.UserId()!.Value,
-                upload.Fields.GetValueOrDefault("bank") ?? "", upload.Fields.GetValueOrDefault("accountReference") ?? "", upload.Files, cancellationToken), cancellationToken))
+        routes.MapPost("/companies/{companyId:guid}/imports/bank-statement", (Guid companyId, HttpContext httpContext, ImportJobService importJobs, IngestionOptions ingestionOptions, CancellationToken cancellationToken) =>
+            HandleUploadAsync(httpContext.Request, ingestionOptions, upload => importJobs.EnqueueAsync(companyId, httpContext.User.UserId()!.Value, "import_statement", upload.Files,
+                upload.Fields.GetValueOrDefault("bank") ?? "", upload.Fields.GetValueOrDefault("accountReference") ?? "", cancellationToken), cancellationToken))
             .RequireAuthorization(Policies.Accountant);
         routes.MapGet("/companies/{companyId:guid}/banks", (BankStatementImporter statementImporter) => Results.Ok(statementImporter.SupportedBanks))
             .RequireAuthorization(Policies.CompanyMember);
@@ -34,7 +34,7 @@ public static class IngestionEndpoints
                     SELECT f.id AS FileId, f.filename AS Name, f.status, f.reason, c.id AS CfdiId,
                       f.imported_movements AS ImportedMovements, f.duplicate_movements AS DuplicateMovements
                     FROM import_file f LEFT JOIN cfdi c ON c.import_file_id = coalesce(f.original_file_id, f.id)
-                    WHERE f.upload_id = @uploadId ORDER BY f.created_at, f.id
+                    WHERE f.upload_id = @uploadId ORDER BY f.created_at, f.file_index, f.id
                     """, new { uploadId }, transaction, cancellationToken: transactionCancellationToken))).ToArray();
                 return fileOutcomes.Length == 0 ? Results.NotFound() : Results.Ok(new ImportReport(uploadId, fileOutcomes));
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
@@ -65,9 +65,13 @@ public static class IngestionEndpoints
 
 
     private static async Task<IResult> HandleUploadAsync(HttpRequest request, IngestionOptions options,
-        Func<MultipartUpload, Task<ImportReport>> import, CancellationToken cancellationToken)
+        Func<MultipartUpload, Task<QueuedImport>> enqueue, CancellationToken cancellationToken)
     {
-        try { return Results.Ok(await import(await MultipartUpload.ReadAsync(request, options, cancellationToken))); }
+        try
+        {
+            var queued = await enqueue(await MultipartUpload.ReadAsync(request, options, cancellationToken));
+            return Results.Accepted($"/companies/{request.RouteValues["companyId"]}/jobs/{queued.JobId}", queued);
+        }
         catch (BadHttpRequestException error) { return Results.Json(new { error = error.Message }, statusCode: error.StatusCode); }
         catch (InvalidDataException error) { return Results.BadRequest(new { error = error.Message }); }
     }

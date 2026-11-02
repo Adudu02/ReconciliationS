@@ -10,21 +10,25 @@ namespace Reconciliation.Core.Ingestion;
 public sealed class ImportJobService(CompanyScope companyScope, IngestionOptions ingestionOptions, JobOptions jobOptions,
     TimeProvider clock, CfdiImporter cfdiImporter, BankStatementImporter statementImporter)
 {
-    public Task<QueuedImport> EnqueueAsync(Guid companyId, Guid actorId, string jobType, IReadOnlyList<UploadedFile> files,
+    public async Task<QueuedImport> EnqueueAsync(Guid companyId, Guid actorId, string jobType, IReadOnlyList<UploadedFile> files,
         string? bank, string? accountReference, CancellationToken cancellationToken)
     {
         ingestionOptions.EnsureWithinLimits(files);
         if (jobType is not ("import_cfdi" or "import_statement")) throw new InvalidDataException("Unsupported import job type.");
         var uploadId = Guid.NewGuid();
-        return companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
+        try
         {
-            for (var index = 0; index < files.Count; index++)
-                await ImportFileStore.QueueAsync(connection, transaction, companyId, uploadId, files[index],
-                    jobType == "import_cfdi" ? "cfdi" : "bank-statement", index, ingestionOptions.MaxFileBytes, clock.GetUtcNow(), transactionCancellationToken);
-            var jobId = await JobStore.EnqueueAsync(connection, transaction, companyId, actorId, jobType,
-                JsonSerializer.Serialize(new { bank, accountReference }), uploadId, jobOptions.MaxAttempts, clock.GetUtcNow(), transactionCancellationToken, files.Count);
-            return new QueuedImport(jobId, uploadId);
-        }, cancellationToken);
+            return await companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
+            {
+                for (var index = 0; index < files.Count; index++)
+                    await ImportFileStore.QueueAsync(connection, transaction, companyId, uploadId, files[index],
+                        jobType == "import_cfdi" ? "cfdi" : "bank-statement", index, ingestionOptions.MaxFileBytes, clock.GetUtcNow(), transactionCancellationToken);
+                var jobId = await JobStore.EnqueueAsync(connection, transaction, companyId, actorId, jobType,
+                    JsonSerializer.Serialize(new { bank, accountReference }), uploadId, jobOptions.MaxAttempts, clock.GetUtcNow(), transactionCancellationToken, files.Count);
+                return new QueuedImport(jobId, uploadId);
+            }, cancellationToken);
+        }
+        catch (Exception error) when (error is NpgsqlException or CompanyReadOnlyException) { throw new UploadFailedException(uploadId, error); }
     }
 
     public async Task<string?> ProcessAsync(JobRecord job, NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
