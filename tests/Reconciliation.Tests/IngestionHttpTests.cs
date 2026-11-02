@@ -27,8 +27,8 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
         var bytes = SyntheticCfdi.Invoice();
         using var body = CfdiBody(bytes);
         using var accepted = await client.PostAsync($"/companies/{company}/imports/cfdi", body, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
-        var report = await accepted.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        var report = await fixture.CompleteImportAsync(client, accepted);
         var uploadId = report.GetProperty("uploadId").GetGuid();
         var file = report.GetProperty("files")[0];
         var invoice = file.GetProperty("cfdiId").GetGuid();
@@ -65,8 +65,8 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
             { new ByteArrayContent(bytes), "files", "synthetic.csv" }
         };
         using var uploaded = await client.PostAsync($"/companies/{company}/imports/bank-statement", body, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, uploaded.StatusCode);
-        var report = await uploaded.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Accepted, uploaded.StatusCode);
+        var report = await fixture.CompleteImportAsync(client, uploaded);
         var uploadId = report.GetProperty("uploadId").GetGuid();
         var fileId = report.GetProperty("files")[0].GetProperty("fileId").GetGuid();
         using var read = await client.GetAsync($"/companies/{company}/imports/{uploadId}", TestContext.Current.CancellationToken);
@@ -94,8 +94,8 @@ public sealed class IngestionHttpTests(ApiFixture fixture)
         client.DefaultRequestHeaders.Add("X-Company-Id", company.ToString());
         using var body = CfdiBody(new byte[valid.Length + 1], Encoding.UTF8.GetBytes("<!DOCTYPE x [<!ENTITY a SYSTEM 'http://127.0.0.1:1/synthetic'>]><x>&a;</x>"), valid);
         using var response = await client.PostAsync($"/companies/{company}/imports/cfdi", body, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var report = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var report = await fixture.CompleteImportAsync(client, response, app.Services);
         Assert.Equal(["rejected", "rejected", "imported"], report.GetProperty("files").EnumerateArray().Select(file => file.GetProperty("status").GetString()));
         await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.Equal(2, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM import_file WHERE company_id = @company AND status = 'rejected' AND original IS NULL AND octet_length(sha256) = 32", new { company }, cancellationToken: TestContext.Current.CancellationToken)));

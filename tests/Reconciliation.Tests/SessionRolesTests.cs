@@ -20,7 +20,7 @@ public sealed class SessionRolesTests(ApiFixture fixture)
         var pair = await host.LoginAsync(accountant.Email);
         host.Authorize(pair, company);
         using var imported = await ImportAsync(host, company);
-        Assert.Equal(HttpStatusCode.OK, imported.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, imported.StatusCode);
         using var changed = await administrator.PostAsJsonAsync($"/companies/{company}/members", new { userId = accountant.Id, role = "viewer" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NoContent, changed.StatusCode);
         using var forbidden = await ImportAsync(host, company);
