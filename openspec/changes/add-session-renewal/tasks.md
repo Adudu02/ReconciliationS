@@ -16,7 +16,7 @@
 - [x] 3.1 Write red tests with a controllable clock for absolute cap, inactivity expiry and a renewal near the cap not extending it; then implement and verify they pass
 - [x] 3.2 Write red tests and implement `POST /auth/logout` (current session only, other sessions unaffected); verify they pass
 - [x] 3.3 Write red tests and implement `POST /auth/password` (wrong current password, weak new password, all sessions revoked, old password rejected); verify they pass and that only `password_hash` can be updated on `app_user`
-- [ ] 3.4 Add a test that a role change takes effect on the next request while the session is active, and verify no role is stored in tokens or sessions
+- [x] 3.4 Add a test that a role change takes effect on the next request while the session is active, and verify no role is stored in tokens or sessions
 
 ## 4. Events, limits and cookie transport
 
