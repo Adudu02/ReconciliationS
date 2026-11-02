@@ -30,4 +30,13 @@ public sealed class JobStore(NpgsqlDataSource dataSource, TimeProvider clock)
         return await connection.QuerySingleOrDefaultAsync<JobRecord>(Command($"SELECT {Columns} FROM claim_next_job(@workerId,@leaseSeconds,@now)",
             new { workerId, leaseSeconds, now = clock.GetUtcNow() }, cancellationToken: cancellationToken));
     }
+    public async Task<bool> FinishAsync(JobRecord job, string workerId, string? errorKind, string? error,
+        TimeSpan retryDelay, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        var now = clock.GetUtcNow();
+        return await connection.QuerySingleAsync<bool>(Command("SELECT finish_job(@id,@workerId,@attempt,@errorKind,@error,@retryAt,@now)",
+            new { id = job.Id, workerId, attempt = job.Attempts, errorKind, error, retryAt = now + retryDelay, now }, cancellationToken: cancellationToken));
+    }
+
 }
