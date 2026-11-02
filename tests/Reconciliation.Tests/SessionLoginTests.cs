@@ -53,11 +53,12 @@ internal sealed class SessionTestHost : IDisposable
         if (companyId.HasValue) Client.DefaultRequestHeaders.Add("X-Company-Id", companyId.ToString());
     }
 
-    public void AuthorizeAs(Guid userId, Guid sessionId)
+    public void AuthorizeAs(Guid userId, Guid? sessionId, int accessMinutes = 15)
     {
-        var jwt = new JwtSecurityToken("reconciliation", "reconciliation",
-            [new Claim("sub", userId.ToString()), new Claim("sid", sessionId.ToString())],
-            notBefore: Clock.GetUtcNow().UtcDateTime, expires: Clock.GetUtcNow().UtcDateTime.AddMinutes(15),
+        var claims = new List<Claim> { new("sub", userId.ToString()) };
+        if (sessionId.HasValue) claims.Add(new Claim("sid", sessionId.ToString()!));
+        var jwt = new JwtSecurityToken("reconciliation", "reconciliation", claims,
+            notBefore: Clock.GetUtcNow().UtcDateTime, expires: Clock.GetUtcNow().UtcDateTime.AddMinutes(accessMinutes),
             signingCredentials: new SigningCredentials(app.Services.GetRequiredService<SymmetricSecurityKey>(), SecurityAlgorithms.HmacSha256));
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", new JwtSecurityTokenHandler().WriteToken(jwt));
     }

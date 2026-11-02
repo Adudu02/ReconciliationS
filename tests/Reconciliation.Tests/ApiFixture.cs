@@ -19,7 +19,7 @@ public sealed class ApiFixture : IAsyncLifetime
     public ManualTimeProvider Clock { get; } = new();
     public const string Password = "synthetic-password-123";
     public PostgresFixture Database { get; } = new();
-    public WebApplicationFactory<ApiProgram> App { get; private set; } = null!;
+    public WebApplicationFactory<ApiProgram> App { get; internal set; } = null!;
 
     public async ValueTask InitializeAsync()
     {
