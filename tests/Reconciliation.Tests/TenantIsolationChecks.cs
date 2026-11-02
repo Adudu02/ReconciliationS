@@ -26,6 +26,7 @@ internal static class TenantIsolationChecks
 
     public static async Task VerifyTablesAsync(NpgsqlConnection owner)
     {
+        await JobsDatabaseTests.AssertQueueRoleBoundaryAsync(owner);
         foreach (var table in await TenantTablesAsync(owner))
         {
             var state = await owner.QuerySingleAsync<(bool Enabled, bool Forced, long Policies)>(new CommandDefinition("""

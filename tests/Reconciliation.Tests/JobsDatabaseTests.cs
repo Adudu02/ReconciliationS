@@ -55,7 +55,7 @@ public sealed class JobsDatabaseTests(ApiFixture fixture)
         Assert.False(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname='cfdi_queue_owner'", cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Empty(await owner.QueryAsync<string>(new CommandDefinition("""
             SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('job','job_attempt')
-              AND (has_table_privilege('cfdi_queue_owner',quote_ident(tablename),'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))
+              AND (has_table_privilege('cfdi_queue_owner',format('%I.%I',schemaname,tablename),'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'))
             """, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.False(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT pg_has_role('cfdi_app','cfdi_queue_owner','MEMBER')", cancellationToken: TestContext.Current.CancellationToken)));
     }
