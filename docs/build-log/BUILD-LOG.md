@@ -13,7 +13,7 @@ log explains them; the status map below is generated from them.
 
 | Folder | What it holds | Why it is separate |
 |---|---|---|
-| `docs/adr/` | Architecture decision records (ADR-001 to ADR-003) | One decision = one file; they are never edited, a later ADR replaces them |
+| `docs/adr/` | Architecture decision records (ADR-001 to ADR-004) | One decision = one file; they are never edited, a later ADR replaces them |
 | `docs/build-log/` | This log in English and Spanish, and `exports/` with the generated PDF/Word files | What changes every PR; exports stay apart from the source text |
 | `docs/requirements/` | BRS and SRS (English and Spanish) | Requirements documents that rarely change |
 | `docs/reference/` | The reference bank CSV format and the project brief with reading links | Reference material that tests read or that is cited |
@@ -60,7 +60,7 @@ Regenerate the image after ticking tasks: `python3 tools/progress_diagram.py` (a
               | Reconciliation.Core           |   Tenancy | Ingestion | Audit
               | (seven modules, no Main)      |   Matching | Review | Sat | Jobs
               +---------------+---------------+   (the last four are placeholders)
-                              | SQL via Npgsql + Dapper, always inside CompanyScope
+                              | SQL via Npgsql + Dapper, CompanyScope for tenants; auth global
                               v
               +-------------------------------+        +----------------------+
               | PostgreSQL 17                 |        | Migrator (runs once) |
@@ -76,7 +76,7 @@ Every arrow is a boundary with a reason:
 - **Two hosts, one library.** The API serves people and must answer quickly; the worker will do long tasks (matching,
   SAT queries). They share `Reconciliation.Core`, so business rules are written once (ADR-001: modular monolith with a
   separate worker, instead of microservices).
-- **Modules with boundaries.** `Tenancy` (companies, users, roles), `Ingestion` (reading CFDI and CSV), `Audit` (log),
+- **Modules with boundaries.** `Tenancy` (companies, users, roles, sessions), `Ingestion` (reading CFDI and CSV), `Audit` (log),
   and the placeholders `Matching`, `Review`, `Sat`, `Jobs` that groups 4 to 8 will fill. A module talks to another
   through interfaces, never by reading its tables.
 - **PostgreSQL as the final referee.** Even if the code forgets to filter by company, the database does not return
@@ -97,8 +97,8 @@ the audit hash chain, the SAT client port and OpenTelemetry.
 Example: an accountant uploads an invoice with `POST /companies/{companyId}/imports/cfdi`.
 
 1. **Login.** The client calls `POST /auth/tokens` with `{"email","password"}`. The API finds the user
-   case-insensitively, verifies the password (salted PBKDF2) and returns a signed JWT (HMAC-SHA256) valid for one hour.
-   The token carries only the user id, in the `sub` claim.
+   case-insensitively, verifies the password (salted PBKDF2) and returns a signed JWT (HMAC-SHA256) valid for 15 minutes.
+   The token carries `sub` (user), `sid` (session family) and `jti` (access-token identifier); roles stay outside it.
 2. **Request.** The client sends the file with `Authorization: Bearer <token>` and `X-Company-Id: <uuid>`.
 3. **Authentication.** ASP.NET validates signature, issuer, audience and expiry. If that fails the answer is 401.
 4. **Per-company authorisation.** `CompanyRoleHandler` requires `X-Company-Id` to match the route `{id}`, opens a
@@ -109,6 +109,25 @@ Example: an accountant uploads an invoice with `POST /companies/{companyId}/impo
 6. **Work.** The importer reads and validates the file and inserts rows; every query goes through the RLS policies.
 7. **Close.** If everything worked, `COMMIT`; if anything fails, `ROLLBACK` and nothing is left half done. The response
    is an `ImportReport` with one result per file.
+
+### 2.2a Session renewal
+
+`add-session-renewal` is tracked independently from the 85 MVP tasks. It adds no company-data route and does not
+change their Bearer contract. The API issues a 15-minute access JWT and a 256-bit base64url refresh credential;
+only SHA-256 `token_hash` is stored. `sub` identifies the user, `sid` the family and `jti` the access token.
+`SessionService` uses injected `TimeProvider` for issuance, validation, deadlines and events. `SessionOptions`
+validates at startup. `CompanyRoleHandler` still reads membership live; roles stay outside tokens and sessions.
+
+1. Login verifies the slow salted password hash and inserts a family, refresh digest and `login` event in one transaction.
+2. Renewal looks up the digest, locks `auth_session` with `SELECT ... FOR UPDATE`, re-reads the token, and rotates it
+   atomically with its `refresh` event. It updates `last_used_at`; the new expiry is the lesser of idle time and the original cap.
+3. A replay through the inclusive grace boundary returns 409 and changes nothing. Later replay revokes the family and
+   writes `reuse_detected`; other devices remain active. Clients coordinate with single-flight renewal.
+4. Logout revokes the owned family. Password change verifies the current password, hashes the new one and revokes all
+   of that user's sessions with `password_changed`, atomically. Auth events are append-only for `cfdi_app`.
+5. Access stays stateless until expiry; no session lookup is added to company requests. Optional HttpOnly/Secure/
+   SameSite=Strict cookies use Path=/auth and require an allowed Origin for renewal; default transport remains JSON.
+   Login keeps its email/IP limits; refresh and logout share a named IP limit. See ADR-004.
 
 ### 2.3 Security layers (defence in depth)
 
@@ -158,6 +177,22 @@ the full report can be requested later.
 Conventions repeated in every company table: `id uuid` generated by the database; mandatory `company_id`; RLS enabled
 **and** forced; composite foreign keys; money in `numeric(18,2)`, never `double` or `float`.
 
+### 2.6 Per-user authentication storage
+
+The company/ingestion diagrams describe their tenant model. M0006 adds these global per-user tables outside company
+RLS; they have no `company_id` and do not use `CompanyScope`. Existing company policies and SQL names stay unchanged.
+
+| Table | Fields and purpose |
+|---|---|
+| `auth_session` | `id`, `user_id`, `created_at`, `last_used_at`, `absolute_expires_at`, `revoked_at`, `revoked_reason`: one device/family |
+| `refresh_token` | `id`, `session_id`, `token_hash`, `issued_at`, `expires_at`, `rotated_at`, `replaced_by`: immutable digest/deadline and rotation link |
+| `auth_event` | `id`, `user_id`, `session_id`, `event`, `remote_ip`, `created_at`: login/refresh/reuse/logout/password events, no credentials |
+
+Indexes cover the unique digest, family and user. `cfdi_app` has SELECT/INSERT, UPDATE only on named mutable columns,
+no DELETE, and no event UPDATE. `app_user` gains only UPDATE(password_hash). Down removes the new tables and that grant.
+All session timestamps are explicit UTC values from TimeProvider. Group 5 will integrate events into chained auditing;
+expired-row purging waits for jobs. Existing access can outlive revocation until its configured expiry.
+
 ## 3. Dictionary of names and variables
 
 ### 3.1 Environment variables and configuration
@@ -182,6 +217,23 @@ Conventions repeated in every company table: `id uuid` generated by the database
 
 `IngestionOptions.Validate()` checks everything at start-up: a non-positive value or a retention outside 5–100 stops the
 program from starting, instead of failing later in the middle of an import.
+
+### 3.1a Session dictionary and configuration
+
+| Name | Default / meaning |
+|---|---|
+| `Session__AccessTokenMinutes` | 15; allowed 5–30; returned as `expiresIn` seconds |
+| `Session__IdleMinutes` | 480; renewal inactivity deadline |
+| `Session__AbsoluteDays` | 30; cap fixed at login, never extended |
+| `Session__ReuseGraceSeconds` | 10; inclusive replay conflict window |
+| `Session__RefreshCookie` | false; optional cookie instead of JSON refresh delivery |
+| `Session__AllowedOrigins__0` | allowed HTTPS frontend Origin, e.g. https://app.example.invalid; required for successful cookie renewal |
+| `RefreshRateLimit__IpPermitLimit` | 60 per LoginRateLimit__WindowSeconds, shared by refresh/logout per IP |
+| `SessionOptions`, `TimeProvider` | validated configuration and injected clock; tests use ManualTimeProvider without sleeps |
+| `accessToken`, `refreshToken`, `expiresIn` | login/renewal response; refreshToken omitted in cookie mode |
+| `sid`, `token_hash`, `replaced_by` | family id; SHA-256 of the wire credential; successor token id |
+| `reuse_detected` | revocation/event reason after grace; 409 inside grace changes nothing |
+| `/auth/refresh`, `/auth/logout`, `/auth/password` | renew; end the owned family; change own password and end all own families |
 
 ### 3.2 HTTP headers, routes and fields
 
@@ -243,12 +295,12 @@ program from starting, instead of failing later in the middle of an import.
 | **Worker host** | Host | Runs background jobs. Today it starts, reports health and waits | `src/Reconciliation.Worker` |
 | **Migrator** | Tool | Applies or reverts database changes (`up`, `down`) and creates the first operator | `src/Reconciliation.Migrator` |
 | **SAT stub** | Host | A simulation of the SAT status service to develop without a real account. Today only a placeholder | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Database | Stores all data with forced RLS per company | `docker-compose.yml`, migrations `M0001` to `M0005` |
+| **PostgreSQL 17** | Database | Stores all data with forced RLS per company | `docker-compose.yml`, migrations `M0001` to `M0006` |
 | Docker Compose | Pipeline | Starts database, migrator, API, worker and stub with one command and waits for all to be healthy | `docker-compose.yml`, `Dockerfile` |
 | CI pipeline | Pipeline | On every push: format, build, tests, migrations up/down/up and a full system start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Big decisions and the alternatives that were rejected | `docs/adr/` |
 | Requirements and plan | Docs | BRS, SRS, diagrams and the OpenSpec change that defines the work | `docs/requirements/`, `docs/diagrams/`, `openspec/` |
-| Tests | Tests | 126 xUnit cases: 122 passing, 3 pending scenarios and 1 opt-in benchmark; real PostgreSQL for tenancy and ingestion | `tests/Reconciliation.Tests` |
+| Tests | Tests | 190 xUnit cases: 186 passing, 3 pending scenarios and 1 opt-in benchmark; real PostgreSQL | `tests/Reconciliation.Tests` |
 | Progress map | Tool | Draws the status image from `tasks.md` | `tools/progress_diagram.py` |
 
 ## 5. Pull request log
@@ -256,6 +308,44 @@ program from starting, instead of failing later in the middle of an import.
 Most recent first. Each entry answers six questions: **What it is** (the piece), **How it works** (step by step),
 **Names and variables** (what each new term means), **Why this way** (decision and rejected alternative), **What you
 learn** (C#, SQL or tooling idea) and **Verified** (how it was checked).
+
+### PR-6: Session renewal
+
+**What it is:** the independent `add-session-renewal` change: short access, rotating refresh families, bounded
+renewal, logout, password change, append-only authentication events and optional browser cookie transport.
+
+**How it works:** red tests were committed before each new behavior and followed by feature commits. Real
+PostgreSQL/Testcontainers, the real M0006 migrator and an injected fake clock verify storage, grants, races and
+expiry. Rotation locks the family, re-reads the credential and uses a second conditional-update guard. Every event
+shares its state-change transaction. Live membership remains in CompanyRoleHandler; no ORM, new NuGet package or
+company RLS policy is added for sessions. Existing Bearer routes and existing SQL/JSON names stay intact.
+
+**Names and variables:** SessionOptions holds the six session settings; TimeProvider supplies UTC time;
+auth_session is the family; refresh_token stores only token_hash; auth_event records user/session/event/IP/time.
+The JWT sid links access to its family, while jti distinguishes access tokens issued at the same instant. A grace
+409 differs from a revoked/unknown/expired 401. Cookie refresh requires an allowed Origin, and its secret never
+appears in JSON. See the architecture and dictionary above and ADR-004.
+
+**Why this way:** a rotating 256-bit opaque secret needs only a fast SHA-256 digest. The row lock makes concurrent
+outcomes explicit; sixteen requests produce one winner and fifteen conflicts. The grace window tolerates tabs but
+can hide an immediate replay, so clients use single-flight. Stateless access retains the documented revocation
+latency (15 minutes by default). Optional refresh cookies preserve Bearer clients; server-side cookie sessions
+were rejected, and OIDC remains the production recommendation. IP budgets affect shared NATs. Chained auditing,
+expired-row purging, MFA/SSO/recovery and a UI remain outside this change's scope.
+
+**What I learned:** a token lookup performed before a lock can be stale after waiting; read it again under the
+family lock. Password verification/session creation and password changes serialize on a user row without blocking
+foreign-key reads. A real denied event INSERT proves rollback instead of merely asserting transaction syntax.
+Already-green concurrency, expiry, legacy-Bearer and live-role regressions were committed as verification-only
+changes with user approval; no artificial failures or production changes were introduced. Test-host mutations
+prove the auth guard rejects an unregistered route and a refresh endpoint that ignores credentials.
+
+**Verified:** 190 cases: 186 pass and 4 skip (the existing three group 6/8 scenarios and the opt-in ingestion
+benchmark). Build has zero warnings/errors; format verification passes. Migrations up/down/up run against a
+disposable database; cfdi_app cannot delete sessions/tokens or alter events and can update only password_hash on
+app_user. Compose is healthy. The README curl flow and live rotation/grace/password/logout checks pass without
+logging credentials. Word/PDF exports are regenerated and rendered for inspection. No MVP task/spec/design was
+edited; supplied session design/spec artifacts remain unchanged. Commits are local; nothing is pushed.
 
 ### PR-5: Naming and de-duplication
 
