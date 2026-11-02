@@ -12,15 +12,20 @@ public sealed record DummyPasswordHash(string Value);
 
 public static class LoginProtection
 {
+    public const string SessionIpPolicy = "session-ip";
     public static IServiceCollection AddLoginProtection(this IServiceCollection services, IConfiguration configuration)
     {
         var emailPermitLimit = configuration.GetValue("LoginRateLimit:EmailPermitLimit", 10);
         var ipPermitLimit = configuration.GetValue("LoginRateLimit:IpPermitLimit", 30);
+        var sessionIpPermitLimit = configuration.GetValue("RefreshRateLimit:IpPermitLimit", 60);
         var windowSeconds = configuration.GetValue("LoginRateLimit:WindowSeconds", 60);
         if (emailPermitLimit <= 0 || ipPermitLimit <= 0 || windowSeconds <= 0)
             throw new InvalidOperationException("LoginRateLimit permit limits and WindowSeconds must be positive.");
+        if (sessionIpPermitLimit <= 0) throw new InvalidOperationException("RefreshRateLimit IpPermitLimit must be positive.");
         services.AddRateLimiter(options =>
         {
+            options.AddPolicy(SessionIpPolicy, httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => Window(sessionIpPermitLimit, windowSeconds)));
             options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
                 PartitionedRateLimiter.Create<HttpContext, string>(httpContext => IsLogin(httpContext)
                     ? RateLimitPartition.GetFixedWindowLimiter(httpContext.Items["LoginEmail"]?.ToString() ?? "", _ => Window(emailPermitLimit, windowSeconds))
@@ -33,7 +38,7 @@ public static class LoginProtection
                 rejectionContext.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 var retryAfterSeconds = rejectionContext.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) ? Math.Ceiling(retryAfter.TotalSeconds) : windowSeconds;
                 rejectionContext.HttpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
-                await rejectionContext.HttpContext.Response.WriteAsJsonAsync(new { error = "Too many login attempts; retry later." }, cancellationToken);
+                await rejectionContext.HttpContext.Response.WriteAsJsonAsync(new { error = IsLogin(rejectionContext.HttpContext) ? "Too many login attempts; retry later." : "Too many session requests; retry later." }, cancellationToken);
             };
         });
         return services;

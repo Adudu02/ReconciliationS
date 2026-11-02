@@ -88,12 +88,12 @@ public static class Authentication
         {
             var renewed = await sessions.RefreshAsync(request.RefreshToken, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             return renewed.Pair is null ? Results.StatusCode(renewed.StatusCode) : Results.Ok(renewed.Pair);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting(LoginProtection.SessionIpPolicy);
         routes.MapPost("/auth/logout", async (HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
         {
             if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
             return Results.StatusCode(await sessions.LogoutAsync(userId, sessionId, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting(LoginProtection.SessionIpPolicy);
         routes.MapPost("/auth/password", async (PasswordChangeRequest request, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
         {
             if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();

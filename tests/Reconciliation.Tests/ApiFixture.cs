@@ -32,6 +32,7 @@ public sealed class ApiFixture : IAsyncLifetime
                 services.AddSingleton<TimeProvider>(Clock);
                 services.AddTransient<IStartupFilter, RoleProbeStartup>();
             });
+            builder.UseSetting("RefreshRateLimit:IpPermitLimit", "10000");
             builder.UseSetting("LoginRateLimit:IpPermitLimit", "10000");
             builder.UseSetting("LoginRateLimit:EmailPermitLimit", "10000");
             builder.UseSetting("Jwt:SigningKey", "synthetic-test-signing-key-at-least-32-bytes");

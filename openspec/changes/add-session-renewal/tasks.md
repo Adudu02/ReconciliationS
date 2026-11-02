@@ -21,7 +21,7 @@
 ## 4. Events, limits and cookie transport
 
 - [x] 4.1 Write red tests and implement `auth_event` writes for login, refresh, reuse_detected, logout and password_changed; verify no token or password appears in any event
-- [ ] 4.2 Generalise the login rate limiter to `/auth/refresh` and `/auth/logout` and verify 429 with `Retry-After` in a test
+- [x] 4.2 Generalise the login rate limiter to `/auth/refresh` and `/auth/logout` and verify 429 with `Retry-After` in a test
 - [ ] 4.3 Write red tests and implement cookie transport (`HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/auth`, no token in body, `Origin` allow-list, cookie cleared on logout); verify they pass and that body transport still works when the flag is off
 
 ## 5. Hardening and documentation

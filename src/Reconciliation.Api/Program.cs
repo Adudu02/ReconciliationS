@@ -24,9 +24,9 @@ app.UseExceptionHandler(handler => handler.Run(async http =>
     if (error is UploadFailedException upload) extensions["uploadId"] = upload.UploadId;
     await Results.Problem(statusCode: status, title: archived ? "Archived company is read-only." : "The request could not be completed.", extensions: extensions).ExecuteAsync(http);
 }));
+app.UseLoginProtection();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseLoginProtection();
 app.MapAuthentication();
 app.MapCompanies();
 app.MapCompanyManagement();
