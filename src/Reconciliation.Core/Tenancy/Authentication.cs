@@ -1,6 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Dapper;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -20,11 +22,12 @@ namespace Reconciliation.Core.Tenancy;
 public sealed record PasswordChangeRequest(string? CurrentPassword, string? NewPassword);
 public sealed record RefreshRequest(string? RefreshToken);
 public sealed record TokenRequest(string Email, string Password);
-public sealed record TokenResponse(string AccessToken, string? RefreshToken, int ExpiresIn);
+public sealed record TokenResponse(string AccessToken, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RefreshToken, int ExpiresIn);
 public sealed record LoginAccount(Guid Id, string Email, string PasswordHash);
 
 public static class Authentication
 {
+    public const string RefreshCookieName = "refresh_token";
     public static IServiceCollection AddTenancyAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
         var signingKeyText = configuration["Jwt:SigningKey"];
@@ -79,20 +82,41 @@ public static class Authentication
 
     public static IEndpointRouteBuilder MapAuthentication(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/auth/tokens", async (TokenRequest credentials, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
+        routes.MapPost("/auth/tokens", async (TokenRequest credentials, HttpContext httpContext, SessionService sessions, SessionOptions sessionOptions, CancellationToken cancellationToken) =>
         {
             var pair = await sessions.LoginAsync(credentials, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
-            return pair is null ? Results.Unauthorized() : Results.Ok(pair);
+            return pair is null ? Results.Unauthorized() : DeliverPair(httpContext, pair, sessionOptions);
         }).AllowAnonymous();
-        routes.MapPost("/auth/refresh", async (RefreshRequest request, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
+        routes.MapPost("/auth/refresh", async (HttpContext httpContext, SessionService sessions, SessionOptions sessionOptions, CancellationToken cancellationToken) =>
         {
-            var renewed = await sessions.RefreshAsync(request.RefreshToken, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
-            return renewed.Pair is null ? Results.StatusCode(renewed.StatusCode) : Results.Ok(renewed.Pair);
+            string? refreshToken;
+            if (sessionOptions.RefreshCookie)
+            {
+                if (!sessionOptions.AllowedOrigins.Contains(httpContext.Request.Headers.Origin.ToString(), StringComparer.Ordinal))
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                refreshToken = httpContext.Request.Cookies[RefreshCookieName];
+            }
+            else
+            {
+                if (!httpContext.Request.HasJsonContentType()) return Results.Unauthorized();
+                try { refreshToken = (await httpContext.Request.ReadFromJsonAsync<RefreshRequest>(cancellationToken))?.RefreshToken; }
+                catch (JsonException) { return Results.BadRequest(new { error = "Invalid refresh request." }); }
+            }
+            var renewed = await sessions.RefreshAsync(refreshToken, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            return renewed.Pair is null ? Results.StatusCode(renewed.StatusCode) : DeliverPair(httpContext, renewed.Pair, sessionOptions);
         }).AllowAnonymous().RequireRateLimiting(LoginProtection.SessionIpPolicy);
-        routes.MapPost("/auth/logout", async (HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
+        routes.MapPost("/auth/logout", async (HttpContext httpContext, SessionService sessions, SessionOptions sessionOptions, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
             if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
-            return Results.StatusCode(await sessions.LogoutAsync(userId, sessionId, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
+            var status = await sessions.LogoutAsync(userId, sessionId, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            if (status == StatusCodes.Status204NoContent && sessionOptions.RefreshCookie)
+            {
+                var cookie = RefreshCookieOptions();
+                cookie.Expires = timeProvider.GetUtcNow().AddDays(-1);
+                cookie.MaxAge = TimeSpan.Zero;
+                httpContext.Response.Cookies.Append(RefreshCookieName, "", cookie);
+            }
+            return Results.StatusCode(status);
         }).RequireAuthorization().RequireRateLimiting(LoginProtection.SessionIpPolicy);
         routes.MapPost("/auth/password", async (PasswordChangeRequest request, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
         {
@@ -101,4 +125,19 @@ public static class Authentication
         }).RequireAuthorization();
         return routes;
     }
+
+    private static IResult DeliverPair(HttpContext httpContext, TokenResponse pair, SessionOptions options)
+    {
+        if (!options.RefreshCookie) return Results.Ok(pair);
+        httpContext.Response.Cookies.Append(RefreshCookieName, pair.RefreshToken!, RefreshCookieOptions());
+        return Results.Ok(pair with { RefreshToken = null });
+    }
+
+    private static CookieOptions RefreshCookieOptions() => new()
+    {
+        HttpOnly = true,
+        Secure = true,
+        SameSite = SameSiteMode.Strict,
+        Path = "/auth"
+    };
 }
