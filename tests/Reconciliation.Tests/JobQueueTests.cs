@@ -118,6 +118,46 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         Assert.True(await database.ScalarAsync<bool>("SELECT payload->>'synthetic'='true' FROM job WHERE id=@jobId", new { jobId }));
     }
 
+    [Fact]
+    public async Task Heartbeat_extends_lease_and_expired_attempt_is_reaped_and_fenced()
+    {
+        var seeded = await SeedAsync();
+        await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
+        var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance);
+        var jobId = await scope.ExecuteWriteAsync(seeded.CompanyId, (connection, transaction, cancellationToken) =>
+            JobStore.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 3, clock.GetUtcNow(), cancellationToken), TestContext.Current.CancellationToken);
+        var store = new JobStore(source, clock);
+        var first = (await store.ClaimAsync("synthetic-dead", 10, TestContext.Current.CancellationToken))!;
+        clock.Advance(TimeSpan.FromSeconds(9));
+        Assert.True(await store.RenewAsync(first, "synthetic-dead", 10, TestContext.Current.CancellationToken));
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.Null(await store.ClaimAsync("synthetic-too-early", 10, TestContext.Current.CancellationToken));
+        clock.Advance(TimeSpan.FromSeconds(9));
+        var second = (await store.ClaimAsync("synthetic-replacement", 10, TestContext.Current.CancellationToken))!;
+        Assert.Equal(jobId, second.Id);
+        Assert.Equal(2, second.Attempts);
+        Assert.False(await store.RenewAsync(first, "synthetic-dead", 10, TestContext.Current.CancellationToken));
+        Assert.False(await store.FinishAsync(first, "synthetic-dead", null, null, TimeSpan.Zero, TestContext.Current.CancellationToken));
+        Assert.True(await store.FinishAsync(second, "synthetic-replacement", null, null, TimeSpan.Zero, TestContext.Current.CancellationToken));
+        Assert.Equal("lease_expired", await database.ScalarAsync<string>("SELECT outcome FROM job_attempt WHERE job_id=@jobId AND attempt_no=1", new { jobId }));
+        Assert.Equal("transient", await database.ScalarAsync<string>("SELECT error_kind FROM job_attempt WHERE job_id=@jobId AND attempt_no=1", new { jobId }));
+    }
+
+    [Fact]
+    public async Task Expired_final_attempt_becomes_failed_and_retains_history()
+    {
+        var seeded = await SeedAsync();
+        await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
+        var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance);
+        await scope.ExecuteWriteAsync(seeded.CompanyId, (connection, transaction, cancellationToken) =>
+            JobStore.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.UserId, "status_check", "{}", null, 1, clock.GetUtcNow(), cancellationToken), TestContext.Current.CancellationToken);
+        var store = new JobStore(source, clock);
+        var job = (await store.ClaimAsync("synthetic-final", 10, TestContext.Current.CancellationToken))!;
+        clock.Advance(TimeSpan.FromSeconds(10));
+        Assert.Null(await store.ClaimAsync("synthetic-reaper", 10, TestContext.Current.CancellationToken));
+        Assert.Equal("failed", await database.ScalarAsync<string>("SELECT state FROM job WHERE id=@Id", new { job.Id }));
+    }
+
     private async Task<(Guid CompanyId, Guid UserId)> SeedAsync()
     {
         await using var owner = await database.OpenOwnerAsync();
