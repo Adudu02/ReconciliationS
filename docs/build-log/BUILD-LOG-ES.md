@@ -97,19 +97,28 @@ aislamiento por empresa y las tablas de ingesta, y el *SAT stub* como marcador. 
 
 Ejemplo: un contador sube una factura con `POST /companies/{companyId}/imports/cfdi`.
 
-1. **Login.** El cliente llama `POST /auth/tokens` con `{"email","password"}`. La API busca el usuario sin distinguir
-   mayúsculas, verifica la contraseña (PBKDF2 con sal) y devuelve un JWT firmado (HMAC-SHA256) válido 15 minutos.
-   El token lleva `sub` (usuario), `sid` (familia de sesión) y `jti` (identificador de acceso); los roles quedan fuera.
+1. **Login.** El cliente llama `POST /auth/tokens` con `{"email","password"}`. Antes de tocar la base,
+   `LoginProtection` lee el cuerpo (máximo 8 KiB), normaliza el correo (recortar y pasar a mayúsculas) y aplica dos
+   límites de ventana fija: 10 intentos por minuto por correo y 30 por minuto por IP; al excederlos responde 429 con
+   `Retry-After`. Luego busca al usuario sin distinguir mayúsculas y hace **exactamente una** verificación PBKDF2: contra
+   su hash real o, si el correo no existe, contra un hash ficticio (`DummyPasswordHash`) creado una vez al arrancar, así
+   el tiempo de respuesta no revela qué correos existen. Si coincide, devuelve un JWT firmado (HMAC-SHA256) válido 15 minutos con los claims `sub`, `sid` y `jti`.
 2. **Solicitud.** El cliente envía el archivo con `Authorization: Bearer <token>` y `X-Company-Id: <uuid>`.
 3. **Autenticación.** ASP.NET valida firma, emisor, audiencia y caducidad. Si falla, responde 401.
-4. **Autorización por empresa.** `CompanyRoleHandler` exige que el `X-Company-Id` coincida con el `{id}` de la
+4. **Autorización por empresa.** `CompanyRoleHandler` exige que el `X-Company-Id` coincida con el `{companyId}` de la
    ruta, abre una transacción con ese contexto y lee de `membership` el rol del usuario. La política `accountant`
    acepta administrador y contador; consulta (`viewer`) recibe 403.
 5. **Contexto de empresa.** `CompanyScope.ExecuteAsync` abre una conexión, inicia una transacción y ejecuta
-   `set_config('app.company_id', <uuid>, true)`; el `true` hace que valga solo dentro de esa transacción.
+   `set_config('app.company_id', <uuid>, true)`; el `true` hace que valga solo dentro de esa transacción. En
+   operaciones de escritura, en el mismo lote de comandos (`NpgsqlBatch`) toma un bloqueo de la fila de la empresa
+   (`SELECT archived_at IS NOT NULL FROM company FOR UPDATE`): si la empresa está archivada lanza
+   `CompanyReadOnlyException` y la API responde 409; el bloqueo también serializa cambios simultáneos (por ejemplo, dos
+   degradaciones de administradores a la vez).
 6. **Trabajo.** El importador lee y valida el archivo, e inserta filas; cada consulta pasa por las políticas RLS.
 7. **Cierre.** Si todo salió bien, `COMMIT`; si algo falla, `ROLLBACK` y no queda nada a medias. La respuesta es un
-   `ImportReport` con un resultado por archivo.
+   `ImportReport` con un resultado por archivo. Un error inesperado pasa por `UseExceptionHandler` y se devuelve como
+   `ProblemDetails` con un mensaje seguro, sin detalles internos; si ya se habían confirmado algunos archivos, el error
+   incluye el `uploadId` para consultar el reporte parcial.
 
 ### 2.2a Renovación de sesión
 
@@ -134,13 +143,17 @@ usa `TimeProvider` inyectado para emisión, validación, plazos y eventos. `Sess
 
 | Capa | Qué impide | Dónde vive | Cómo se prueba |
 |---|---|---|---|
+| Límite de intentos de login | Fuerza bruta y relleno de credenciales | `LoginProtection.cs` | `ReviewHardeningTests` |
 | Autenticación JWT | Solicitudes anónimas | `Authentication.cs`, política de respaldo | `AuthenticationTests` |
 | Membresía y rol por empresa | Usar una empresa donde no se tiene rol, o una acción no permitida al rol | `CompanyRoleHandler.cs` | `MembershipTests`, `IsolationTests` |
-| Transacción con contexto | Consultas sin empresa asignada | `CompanyScope.cs` | `TenantContextTests` |
+| Transacción con contexto | Consultas sin empresa asignada | `CompanyScope.cs` | `CompanyScopeTests` |
+| Empresa archivada de solo lectura | Escribir en una empresa archivada o dejar sin administradores por carreras | `CompanyScope.cs` (bloqueo de fila) | `ReviewHardeningTests` |
 | RLS forzado en PostgreSQL | Ver o escribir filas de otra empresa aunque falte un `WHERE` | Migraciones `M0002` y `M0004` | Guardián de aislamiento sobre todas las tablas y rutas |
 | Claves foráneas compuestas | Que una fila apunte a un registro de otra empresa | `FOREIGN KEY (company_id, x_id)` | `IngestionDatabaseTests` |
 | Rol sin privilegios | Saltarse RLS, borrar datos | `cfdi_app`: sin superusuario, sin `BYPASSRLS`, sin `DELETE` | Pruebas que usan el rol real |
 | Lectura segura de XML | Ataques XXE y archivos "bomba" | `SafeCfdiXmlReader.cs` | `SafeXmlTests` |
+| Límites de entrada | Archivos o CSV desmesurados; nombres de archivo hostiles | `IngestionOptions`, `MultipartUpload.cs` | `ReviewHardeningTests`, `IngestionHttpTests` |
+| Descargas y errores seguros | Que el navegador interprete un original; filtrar detalles internos | `Content-Disposition: attachment`, `nosniff`, `ProblemDetails` | `ReviewHardeningTests` |
 
 Por qué varias capas: cada una cubre un fallo distinto. Un 403 no demuestra que exista la política RLS, y una política
 RLS no identifica al usuario; por eso hacen falta ambas y pruebas para cada una.
@@ -149,22 +162,26 @@ RLS no identifica al usuario; por eso hacen falta ambas y pruebas para cada una.
 
 ```
  multipart (files, bank, accountReference)
-   -> MultipartUpload: cuenta bytes mientras lee (413/400 si pasa los límites)
-   -> por cada archivo:   SafeCfdiXmlReader -> CfdiParser -> ¿involucra a la empresa? -> ¿UUID repetido?
-   -> por cada archivo, UNA transacción propia:
-        import_file (original, sha256, retained_until) -> cfdi/pagos/movimientos -> audit
+   -> MultipartUpload: cuenta bytes al leer, limpia nombres de archivo (413/400)
+   -> por archivo: SafeCfdiXmlReader (una sola lectura acotada) -> CfdiParser -> ¿es de la empresa?
+   -> por archivo, UNA transacción propia:
+        import_file en estado 'importing' (solo metadatos, privada a la transacción)
+        -> filas en lotes (CFDI, pagos, relaciones; movimientos en bloques de 5000)
+        -> se finaliza una vez: original + hash validado -> 'imported' -> audit
    -> ImportReport { upload_id, archivos[ estado, motivo, ids ] }
 ```
 
 El punto clave es "una transacción por archivo": si el tercer archivo de diez es inválido, los otros nueve se
 importan y el tercero queda como `rejected` con su motivo. Todos los archivos de una subida comparten `upload_id`
-(un UUID nuevo por subida) para poder pedir luego el reporte completo.
+(un UUID nuevo por subida) para poder pedir luego el reporte completo. La fila transitoria `importing` nunca se
+confirma: como vive solo dentro de la transacción, los bytes del original (hasta 10 MiB) se escriben y se verifican una
+sola vez, en lugar de recalcular el hash cada vez que se actualiza un contador.
 
 ### 2.5 Modelo de datos
 
 | Tabla | Para qué existe | Columnas clave |
 |---|---|---|
-| `company` | Cada cliente (empresa) del sistema | `rfc` (inmutable, validado), `date_tolerance_days`, `amount_tolerance`, `archived_at` |
+| `company` | Cada cliente (empresa) del sistema | `rfc` (inmutable, validado), `date_tolerance_days` (0–366), `amount_tolerance`, `archived_at` |
 | `app_user` | Personas que inician sesión | `email` (único sin distinguir mayúsculas), `password_hash` |
 | `membership` | Une usuario, empresa y rol | PK `(company_id, user_id)`, `role` (`administrator`, `accountant`, `viewer`) |
 | `audit_entry` | Qué hizo quién y cuándo | `actor_id`, `action`, `old_values`, `new_values` (jsonb) |
@@ -176,7 +193,23 @@ importan y el tercero queda como `rejected` con su motivo. Todos los archivos de
 | `bank_movement` | Un renglón del estado de cuenta | `movement_date`, `credit`, `debit`, `balance`, `reference` |
 
 Convenciones que se repiten en todas las tablas de empresa: `id uuid` generado por la base; `company_id` obligatorio;
-RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`.
+RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
+que empiezan por `company_id` (`M0005`) para que cada consulta de una empresa recorra solo sus filas.
+
+El esquema construido (migraciones M0001 a M0006), dibujado a partir de las propias migraciones:
+
+![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
+
+Azul es multiempresa, morado son sesiones (por usuario, fuera del RLS de empresa) y verde es ingesta; la etiqueta naranja
+`RLS` marca las tablas con seguridad a nivel de fila forzada. Los dos diagramas siguientes muestran las reglas de estado
+de los datos y quién puede hacer qué:
+
+![Reglas de estado y ciclo de vida](../diagrams/database/database-states-implemented-es.png)
+
+![Seguridad de filas, privilegios e inmutabilidad](../diagrams/database/database-security-implemented-es.png)
+
+El modelo original de diseño (tablas planeadas para todo el MVP) sigue en `docs/diagrams/database/database-erd.png`.
+Regenera los tres diagramas construidos con `python3 tools/db_diagrams.py` (agrega `--lang es` para español).
 
 ### 2.6 Persistencia de autenticación por usuario
 
@@ -202,22 +235,25 @@ auditoría encadenada; la purga espera a trabajos. El acceso emitido puede sobre
 |---|---|---|---|
 | `ConnectionStrings__Default` | `Host=postgres;Port=5432;Username=cfdi_app;...` | API, worker, migrador | Cadena de conexión a PostgreSQL. El doble guion bajo es cómo .NET escribe `ConnectionStrings:Default` en una variable de entorno. API y worker usan el rol `cfdi_app`; el migrador usa el dueño `cfdi` |
 | `APP_DB_PASSWORD` | marcador sintético | Migrador y Compose | Contraseña con la que el migrador activa el login del rol `cfdi_app` (`ALTER ROLE ... LOGIN PASSWORD`) |
-| `Jwt__SigningKey` / `JWT_SIGNING_KEY` | al menos 32 bytes | API | Clave secreta con la que se firman y verifican los tokens. Si falta o es corta, la API no arranca. `JWT_SIGNING_KEY` es el nombre en `.env` para Compose, que lo entrega como `Jwt__SigningKey` |
-| `OPERATOR_EMAIL`, `OPERATOR_PASSWORD` | opcionales; contraseña de 12+ caracteres | Migrador (`up`) | Si existen, se crea una sola vez el operador de plataforma; nunca se restablece la contraseña de uno existente |
+| `Jwt__SigningKey` / `JWT_SIGNING_KEY` | al menos 32 bytes aleatorios | API | Clave secreta con la que se firman y verifican los tokens. Si falta, es corta o es el antiguo valor público de ejemplo, la API no arranca. Compose **exige** `JWT_SIGNING_KEY` (ya no hay valor por defecto) y se la entrega a la API como `Jwt__SigningKey`; genérala con `openssl rand -hex 32` |
+| `OPERATOR_EMAIL`, `OPERATOR_PASSWORD` | opcionales; contraseña de 12+ caracteres | Migrador (`up`) | Si existen, se crea una sola vez el operador de plataforma; nunca se restablece la contraseña de uno existente (solo se registra que no se modificó) |
 | `Ingestion__MaxFileBytes` | 10485760 (10 MiB) | Ingesta | Tamaño máximo de un archivo. Uno mayor se rechaza solo a él |
 | `Ingestion__MaxUploadBytes` | 20971520 (20 MiB) | Ingesta | Tamaño máximo de toda la subida, contando cabeceras multipart. Excederlo rechaza toda la carga (413) |
 | `Ingestion__MaxFiles` | 20 | Ingesta | Cantidad máxima de archivos por subida (400 si se excede) |
 | `Ingestion__MaxXmlNodes` | 100000 | Ingesta | Nodos y atributos XML máximos; frena archivos "bomba" |
 | `Ingestion__MaxXmlDepth` | 64 | Ingesta | Profundidad máxima de anidación XML |
-| `Ingestion__MaxStatementLines` | 100000 | Ingesta | Filas máximas; excederlas rechaza ese archivo |
-| `Ingestion__MaxDescriptionLength` | 500 | Ingesta | Caracteres máximos del concepto; acota las claves del índice |
-| `LoginRateLimit__EmailPermitLimit` | 10 | API | Intentos por correo normalizado en cada ventana fija |
-| `LoginRateLimit__IpPermitLimit` | 30 | API | Intentos por IP remota en cada ventana fija |
-| `LoginRateLimit__WindowSeconds` | 60 | API | Duración; al exceder se devuelve 429 y Retry-After |
+| `Ingestion__MaxStatementLines` | 100000 | Ingesta | Filas máximas de un estado de cuenta; excederlas rechaza ese archivo completo con su motivo |
+| `Ingestion__MaxDescriptionLength` | 500 | Ingesta | Caracteres máximos del concepto; acota el tamaño de las claves del índice único de movimientos |
 | `Ingestion__RetentionYears` | 10 (mínimo 5, máximo 100) | Ingesta | Años que se conserva el original; fija `retained_until` |
+| `LoginRateLimit__EmailPermitLimit` | 10 | API | Intentos de login por correo normalizado en cada ventana fija |
+| `LoginRateLimit__IpPermitLimit` | 30 | API | Intentos de login por IP remota en cada ventana fija |
+| `LoginRateLimit__WindowSeconds` | 60 | API | Duración de la ventana; al exceder un límite se devuelve 429 con `Retry-After` |
+| `RUN_BENCHMARKS` | `1` (solo al medir) | Pruebas | Activa el benchmark de rendimiento optativo; sin ella (y en CI) se omite |
 
-`IngestionOptions.Validate()` revisa todo al arrancar: un valor no positivo o una retención fuera de 5–100 impide
-iniciar, en lugar de fallar después en medio de una importación.
+`IngestionOptions.Validate()` y `LoginProtection` revisan todo al arrancar: un valor no positivo, una retención fuera de
+5–100 o una ventana de login no positiva impiden iniciar, en lugar de fallar después en medio de una operación.
+El límite por correo puede usarse para frenar a una víctima (un atacante agota sus intentos); el valor por defecto es
+holgado y el límite por IP ayuda, pero en producción hay que ajustarlo y vigilarlo.
 
 ### 3.1a Diccionario y configuración de sesiones
 
@@ -236,19 +272,33 @@ iniciar, en lugar de fallar después en medio de una importación.
 | `reuse_detected` | motivo de revocación/evento fuera de gracia; dentro, 409 no cambia nada |
 | `/auth/refresh`, `/auth/logout`, `/auth/password` | renovar; terminar la familia propia; cambiar contraseña y terminar todas las familias propias |
 
-### 3.2 Cabeceras, rutas y campos HTTP
+### 3.2 Cabeceras, rutas, campos y códigos HTTP
 
 | Nombre | Dónde aparece | Significado |
 |---|---|---|
 | `Authorization: Bearer <JWT>` | Cabecera | El token obtenido en el login |
-| `X-Company-Id` | Cabecera | La empresa en la que actúa la solicitud; debe ser la misma del `{id}` de la ruta y el usuario debe tener membresía |
-| `{id}` / `companyId` | Ruta / código | UUID de la empresa |
+| `X-Company-Id` | Cabecera | La empresa en la que actúa la solicitud; debe ser la misma del `{companyId}` de la ruta y el usuario debe tener membresía |
+| `{companyId}` | Ruta | UUID de la empresa |
 | `{uploadId}` / `upload_id` | Ruta / columna | UUID que agrupa los archivos de una misma subida |
 | `{invoiceId}` | Ruta | UUID interno (`cfdi.id`) de la factura. No es el UUID fiscal |
 | `{fileId}` | Ruta | UUID de una fila de `import_file` |
-| `files` | Campo multipart | Uno o más archivos subidos |
+| `files` | Campo multipart | Uno o más archivos subidos; los nombres se limpian (sin caracteres de control, máximo 255) |
 | `bank` | Campo multipart | Identificador del formato bancario; hoy solo `reference` |
 | `accountReference` | Campo multipart | Etiqueta de 1–40 letras/dígitos ASCII, espacios, guiones y guiones bajos. Nunca un número de cuenta real |
+| `Retry-After` | Cabecera de respuesta | Segundos de espera tras un 429 de login |
+| `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` | Cabeceras de respuesta | En descargas: obligan a guardar el archivo y a no adivinar su tipo |
+
+| Código | Cuándo |
+|---|---|
+| 400 | Cuerpo mal formado o demasiados archivos |
+| 401 | Sin token, token inválido o credenciales incorrectas |
+| 403 | Autenticado, pero sin el rol necesario en esa empresa |
+| 404 | Recurso inexistente **o de otra empresa** (no se distingue a propósito) |
+| 405 | Método no permitido; por ejemplo, no hay `DELETE` |
+| 409 | Empresa archivada: solo lectura; o refresh ya rotado dentro de su ventana de gracia |
+| 413 | Cuerpo de login o subida mayores que el límite |
+| 429 | Demasiados intentos de login o renovación/logout; Retry-After indica cuándo reintentar |
+| 500 | Error inesperado; se devuelve `ProblemDetails` seguro, sin detalles internos |
 
 ### 3.3 Nombres de base de datos
 
@@ -261,13 +311,15 @@ iniciar, en lugar de fallar después en medio de una importación.
 | `uuid` (en `cfdi`) | Identificador fiscal del CFDI (folio fiscal del SAT). Es único **por empresa** |
 | `type` | `I` ingreso, `E` egreso (nota de crédito), `P` pago (complemento de pago) |
 | `direction` | `issued` si la empresa es el emisor; `received` si es el receptor |
-| `status` (en `import_file`) | `imported`, `already_imported` (UUID repetido) o `rejected` |
+| `status` (en `import_file`) | `imported`, `already_imported` (UUID repetido), `rejected`, o `importing` (transitorio: nunca queda confirmado) |
 | `original_file_id` | En un duplicado, apunta al archivo que ya se había aceptado |
 | `sha256` | Huella de 32 bytes del archivo; permite probar que no cambió |
 | `retained_until` | Fecha antes de la cual el original no puede borrarse ni acortarse |
-| `date_tolerance_days` | Días de diferencia admitidos entre fecha bancaria y fiscal al conciliar (por defecto 3) |
+| `preserve_import_original` | Trigger: solo una fila `importing` puede fijar su original (pasando a `imported`); un original aceptado, su hash y su retención no cambian |
+| `date_tolerance_days` | Días de diferencia admitidos entre fecha bancaria y fiscal al conciliar (por defecto 3, máximo 366: `company_date_tolerance_max`) |
 | `amount_tolerance` | Diferencia de importe admitida al conciliar (por defecto 0.01) |
 | `complement_next_biz_day` | Regla de plazo para complementos de pago; se usará en el grupo 6 |
+| `VersionInfo` | Tabla de FluentMigrator con las versiones aplicadas (hoy 1 a 6) |
 | `numeric(18,2)` | Dinero con 18 dígitos y 2 decimales exactos |
 | `numeric(20,10)` | Tipo de cambio con hasta 10 decimales |
 
@@ -280,10 +332,20 @@ iniciar, en lugar de fallar después en medio de una importación.
 | `UploadedFile(Name, Content, Hash, Error)` | Un archivo en memoria con su huella SHA-256; `Error` lleva el motivo si no se pudo leer |
 | `FileImportOutcome` | Resultado de un archivo: estado, motivo, ids y conteos de movimientos |
 | `ImportReport(UploadId, Files)` | Lo que responde la API: todos los resultados de una subida |
-| `ParsedCfdi`, `PaidInvoice` | Representación ya leída de un CFDI y de cada línea de pago |
+| `UploadFailedException` | Error de base de datos a mitad de una subida; lleva el `UploadId` para consultar lo ya confirmado |
+| `ParsedCfdi`, `PaidInvoice` | Representación ya leída de un CFDI y de cada línea de pago (las marcas de saldo son inmutables) |
 | `InconsistentBalance` | Marca de una línea de pago cuyo saldo no encaja; no rechaza, manda a revisión |
 | `IBankStatementParser` | Contrato para leer el CSV de un banco; hay un implementador por banco |
 | `CompanyScope` | Servicio que ejecuta código dentro de una transacción con la empresa asignada |
+| `CompanyReadOnlyException` | Se lanza al escribir en una empresa archivada; la API la traduce a 409 |
+| `Policies`, `MembershipRoles` | Constantes con los nombres de las políticas (`company-member`, `administrator`, `accountant`, `platform-operator`) y de los roles |
+| `JwtTokenPolicy`, `PasswordPolicy` | Constantes: emisor/audiencia (`reconciliation`), desfase cero y contraseña mínima de 12; la duración de acceso viene de `SessionOptions` |
+| `CompanyHeader.Name` | El nombre de la cabecera `X-Company-Id` en un solo lugar |
+| `DummyPasswordHash` | Hash ficticio creado al arrancar para igualar el trabajo cuando el correo no existe |
+| `LoginProtection` | Límites por correo/IP de login y política IP con nombre para `/auth/refresh` y `/auth/logout` |
+| `AuditLog.WriteAsync` | Única función que escribe en `audit_entry`; la usan todas las acciones |
+| `DapperExtensions` | Ayudas para armar comandos Dapper con alias de parámetros explícitos |
+| `ImportFileStore` | Guarda los archivos originales y sus metadatos |
 
 ## 4. Qué existe hoy
 
@@ -308,7 +370,7 @@ iniciar, en lugar de fallar después en medio de una importación.
 
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
-**Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó).
+**Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
 
 ### PR-6: Renovación de sesión
 
@@ -348,115 +410,136 @@ El flujo curl de README y pruebas reales de rotación/gracia/contraseña/logout 
 Se regeneran Word/PDF y se renderizan para inspección. No se editó tarea/spec/design del MVP; los artefactos de
 sesión suministrados siguen iguales. Commits locales, sin push.
 
-### PR-5: Naming and de-duplication
+### PR-5: Nombres del dominio y eliminación de duplicados
 
-**Propósito:** expresar el código en el lenguaje del dominio sin cambiar rutas, campos JSON, nombres de tablas o
-columnas SQL, estados del reporte ni versiones de migración.
-**Qué cambió:** B1 renombró variables y parámetros; B2 nombró políticas, roles y límites monetarios, de contraseña,
-JWT y carga, con enums de estado/tipo mapeados a las cadenas existentes; B3 unificó auditoría, comandos Dapper,
-claims, resultados de transacción, validación/errores de carga y utilidades de pruebas/documentos; B4 separó lectura
-y persistencia e hizo inmutables las marcas de saldo; B5 renombró tipos y archivos junto con ambas guías.
+**Qué es:** una limpieza sin cambio de comportamiento. El código se reescribe con el vocabulario del proyecto (empresa,
+CFDI, subida, archivo) y se quita la repetición, conservando rutas, campos JSON, nombres de tablas y columnas SQL,
+estados del reporte y versiones de migración.
+**Cómo se hizo:** cinco bloques de refactor, cada uno verificado con la suite completa antes de seguir:
+- **B1:** variables y parámetros con nombres de dominio.
+- **B2:** constantes con nombre para políticas, roles, límites de dinero/contraseña/JWT/carga; los estados y tipos se
+  mapean explícitamente a las cadenas que ya existen en la base de datos.
+- **B3:** código compartido: una sola escritura de auditoría, comandos Dapper, claims, resultados de transacción,
+  validación y mapeo de errores de carga, y utilidades de pruebas.
+- **B4:** la lectura/validación del CFDI se separó de su persistencia, y las marcas de saldo de un pago quedaron
+  inmutables.
+- **B5:** renombrado de tipos y archivos, con README, ADR-003 y ambas bitácoras actualizados a la vez.
 
-**Qué aprendí:** renombrar una variable puede cambiar una propiedad anónima inferida que Dapper usa como parámetro.
-Los alias explícitos conservan los nombres SQL. Cambiar el nombre de un tipo C# tampoco exige cambiar sus campos
-JSON. Los callbacks conservan `transactionCancellationToken`; métodos/endpoints usan `cancellationToken`. Los overrides
-del framework conservan los nombres de parámetros de la firma base para respetar los analizadores. La herramienta
-Roslyn temporal queda fuera del repositorio. Cada refactor se verificó con la suite; la limpieza no marcó tareas nuevas.
+**Nombres y variables nuevos o cambiados:**
 
-**RENAME MAP / mapa de nombres**
-
-| Nombre anterior | Nombre nuevo | Motivo |
+| Nombre anterior | Nombre nuevo | Por qué |
 |---|---|---|
 | `TenantContext` | `CompanyScope` | La transacción pertenece a una empresa |
 | `CompanyManagement` | `CompanyAdminEndpoints` | Rutas de administración de empresa |
 | `ImportStorage` | `ImportFileStore` | Conserva los archivos originales |
-| `CompanyAuthorization` | `CompanyRoleHandler` | Autoriza el rol de la empresa solicitada |
+| `CompanyAuthorization` | `CompanyRoleHandler` | Autoriza el rol en la empresa solicitada |
 | `PlatformAuthorization` | `PlatformOperatorHandler` | Autoriza al operador de plataforma |
-| `IngestionServices` | `IngestionServiceCollectionExtensions` | Describe los registros de DI |
+| `IngestionServices` | `IngestionServiceCollectionExtensions` | Describe los registros de inyección de dependencias |
 | `SafeCfdiXml` | `SafeCfdiXmlReader` | Lee XML con límites de seguridad |
-| `PaymentDocument` | `PaidInvoice` | Factura pagada por un complemento |
+| `PaymentDocument` | `PaidInvoice` | Una factura pagada por un complemento |
 | `InvoiceResponse` | `CfdiResponse` | Usa el término de dominio CFDI |
-| `ExistingInvoice` | `StoredCfdi` | Resultado persistido de idempotencia |
-| `FileImportResult` | `FileImportOutcome` | Resultado de un archivo cargado |
+| `ExistingInvoice` | `StoredCfdi` | Resultado guardado que permite la idempotencia |
+| `FileImportResult` | `FileImportOutcome` | Resultado de un archivo subido |
 | `LoginRequest` | `TokenRequest` | Entrada del endpoint de token |
 | `LoginUser` | `LoginAccount` | Cuenta usada para iniciar sesión |
-| `M0003CompanyManagement` | `M0003OperatorAndAudit` | Esquema de operador/auditoría; versión 3 igual |
-| `M0004Ingestion` | `M0004IngestionTables` | Esquema de ingesta; versión 4 igual |
+| `M0003CompanyManagement` | `M0003OperatorAndAudit` | Describe operador y auditoría; la versión 3 no cambia |
+| `M0004Ingestion` | `M0004IngestionTables` | Describe las tablas de ingesta; la versión 4 no cambia |
 
-| Hallazgo | Corrección o decisión consciente |
+Los parámetros de ruta `{id}` pasaron a `{companyId}`. Las entradas de PR-1 a PR-3 de esta bitácora conservan los
+nombres que tenía el código en ese momento; usa la tabla de arriba para traducirlos. Las constantes nuevas
+(`Policies`, `MembershipRoles`, `JwtTokenPolicy`, `PasswordPolicy`, `CompanyHeader`) están en la sección 3.4.
+
+**Por qué así:** el nombre `TenantContext` hablaba de arquitectura ("inquilino") y no de negocio; `CompanyScope` dice
+qué pasa: una transacción acotada a una empresa. Decisiones deliberadas de **no** cambiar: la visibilidad de los tipos
+(se mantiene como estaba), los siete módulos planeados (siguen como mapa del diseño, con un comentario de "planeado") y
+los términos fiscales del XML, que se dejan como los usa el SAT.
+
+| Hallazgo de la revisión | Corrección o decisión |
 |---|---|
-| Variables y parámetros genéricos | Nombres de dominio; alias Dapper explícitos y cancellationToken / transactionCancellationToken |
-| Literales repetidos de políticas/estados/límites | Constantes y mapeo explícito de enums a DB; mismas cadenas públicas |
-| SQL/auditoría/cargas/pruebas duplicados | DapperExtensions, un AuditLog.WriteAsync, handler de carga, resultados, claims y utilidades compartidas |
-| Métodos largos de lectura/persistencia | Etapas con nombre, CfdiInsertRow y marcas inmutables de PaidInvoice |
-| Nombres de tipos ambiguos | Mapa anterior; código, README, ADR-003 y ambas bitácoras actualizados juntos |
-| Reducir visibilidad / borrar módulos / traducir XML | Se omite a propósito: conservar visibilidad, mapa de módulos previstos y terminología fiscal |
+| Nombres genéricos en variables y parámetros | Nombres de dominio; alias explícitos de Dapper; `cancellationToken` y `transactionCancellationToken` |
+| Literales repetidos de políticas, estados y límites | Constantes compartidas; enums mapeados a las cadenas de la base, que no cambian |
+| SQL, auditoría, carga y pruebas repetidos | `DapperExtensions`, un solo `AuditLog.WriteAsync`, un manejador de carga, resultados de transacción, helpers de claims y de fixtures |
+| Métodos largos de lectura y persistencia | Etapas con nombre, `CfdiInsertRow` y `PaidInvoice` inmutable |
+| Nombres de tipo ambiguos | Mapa de arriba; código, README, ADR-003 y bitácoras actualizados juntos |
+| Reducir visibilidad / borrar módulos vacíos / traducir términos XML | Omitido a propósito (ver arriba) |
 
-**Revisiones de nombres/duplicación:** los nombres genéricos se sustituyeron por nombres del dominio; las constantes
-y helpers compartidos eliminan duplicación; los métodos largos tienen etapas con nombre; los siete módulos previstos
-siguen como mapa del plan con un comentario. No se redujo visibilidad de tipos ni se tradujeron términos XML/SAT.
-**Verificado:** 126 casos: 122 pasan y 4 se omiten (3 escenarios futuros y el benchmark optativo); formato limpio en
-cada commit de refactor. El mapa mantiene las mismas tareas completas.
+**Qué aprendes:** renombrar una variable local puede cambiar una propiedad inferida de un objeto anónimo que Dapper usa
+como parámetro SQL; por eso se escriben alias explícitos. Cambiar el nombre de un tipo C# no cambia sus campos JSON. Los
+callbacks de transacción usan `transactionCancellationToken` y los métodos de endpoint `cancellationToken`; los
+parámetros de un `override` conservan el nombre de la firma base para no activar analizadores. Una herramienta Roslyn
+temporal ayudó con los renombrados y se dejó fuera del repositorio.
+**Verificado:** 126 casos: 122 aprobados y 4 omitidos (tres escenarios futuros y el benchmark optativo); formato limpio
+tras cada commit de refactor. El mapa de progreso conserva las mismas tareas completas: no se marcó ninguna por limpieza.
 
-### PR-4: Hardening and performance
+### PR-4: Endurecimiento y rendimiento
 
-**Para qué:** aplicar la revisión de corrección/seguridad y rendimiento sin cambiar contratos públicos de datos.
-**Medición inicial anterior a cambios de producción:** benchmark xUnit opcional con `RUN_BENCHMARKS=1`, PostgreSQL 17
-real, un calentamiento y tres muestras, mismo contenedor SDK y máquina. Se omite por defecto y en CI.
+**Qué es:** la corrección de los hallazgos de una revisión de seguridad, corrección y rendimiento, sin cambiar los
+contratos públicos de datos.
+**Cómo se hizo:** primero las pruebas en rojo (`ReviewHardeningTests`, `PerformanceRegressionTests`) y una medición
+base con un benchmark optativo (`RUN_BENCHMARKS=1`) sobre PostgreSQL 17 real: un calentamiento y tres muestras, con el
+mismo contenedor de SDK y la misma máquina. La medición base se confirmó **antes** de cambiar el código de producción.
+Después se aplicaron las correcciones. Las ejecuciones normales y el CI omiten el benchmark.
 
-| Carga | Muestras antes (ms) | Mediana antes (ms) | Mediana después (ms) |
+| Carga | Mediana antes (ms) | Mediana después (ms) | Mejora |
 |---|---|---|---|
-| 50,000 movimientos | 13423.6802, 13529.5307, 13336.1982 | 13423.6802 | 4089.7699 |
-| Pagos con 300 documentos relacionados | 65.4256, 66.9515, 63.3336 | 65.4256 | 17.5534 |
+| 50,000 filas de estado de cuenta | 13423.6802 | 4089.7699 | ≈ 3.28× |
+| Pago con 300 documentos relacionados | 65.4256 | 17.5534 | ≈ 3.73× |
 
-Son tiempos locales, no garantías de latencia en producción. La medición inicial se comprometió antes de los cambios de rendimiento.
+Muestras antes: 13423.6802 / 13529.5307 / 13336.1982 y 65.4256 / 66.9515 / 63.3336. Muestras después: 4230.7872 /
+4089.7699 / 4083.4153 y 17.5399 / 17.5534 / 17.9515. Son tiempos locales, no garantías de latencia en producción, y
+ya incluyen las nuevas comprobaciones de seguridad y los índices.
 
-**Muestras después (ms):** banco 4230.7872 / 4089.7699 / 4083.4153; Pagos300 17.5399 / 17.5534 / 17.9515.
-Las medianas mejoraron aproximadamente 3.28x y 3.73x, incluidos los nuevos controles e índices.
+**Cómo funciona cada corrección:**
 
-**Qué cambió / hallazgos:**
-
-| Hallazgo | Corrección o decisión consciente |
+| Hallazgo | Corrección o decisión |
 |---|---|
-| Nombres multipart hostiles e importación parcial sin localizar | Quitar controles/NUL, reemplazar Unicode inválido y limitar a 255; errores SQL devuelven uploadId |
-| Amplificación por atributos XML | Atributos cuentan en el límite; un lector acotado carga XML una sola vez |
-| Escrituras archivadas y último administrador | Bloqueo de fila de empresa: cambios archivados dan 409 y demociones concurrentes conservan un administrador |
-| Costo distinto para correo desconocido | Hash ficticio precalculado al arrancar; una verificación PBKDF2 por intento bien formado |
-| Abuso de login | Ventanas encadenadas por correo normalizado (10/min) e IP (30/min), configurables; 429 y Retry-After |
-| JWT público por defecto | Compose exige JWT_SIGNING_KEY; se rechaza el literal anterior; CI suministra valor sintético explícito |
-| Descargas interpretadas/buffer completo | Attachment y nosniff; bytea con SequentialAccess y Results.Stream dentro de transacción por empresa |
-| CSV ilimitado / índice btree demasiado grande | MaxStatementLines=100000 y MaxDescriptionLength=500; rechazar archivo completo con motivo |
-| Tolerancia y semilla de operador | API + M0005 limitan a 366; se registra que un operador existente no fue modificado |
-| Excepciones y OpenAPI | AddProblemDetails + UseExceptionHandler dan errores seguros; OpenAPI sigue anónimo según spec, se descartó exigir auth en Production |
-| INSERT por fila | Chunks unnest de 5000 movimientos; lotes para relaciones/pagos/documentos, conservando conteos de duplicados |
-| Hash repetido del original | Fila temporal importing y una finalización con bytes, hash y conteos; no se confirma importing; rollback elimina todo |
-| Cambio inseguro de NULL a bytes | M0005 solo permite importing -> imported; originales rechazados/already_imported confirmados no cambian |
-| Viajes extra de UUID/RFC/contexto | INSERT ON CONFLICT RETURNING y SELECT solo para duplicado; caché de RFC inmutable de cinco minutos; NpgsqlBatch junta contexto y bloqueo |
-| Búsquedas sin índice | M0005 agrega índices con company_id primero; membership ya tiene PK (company_id,user_id) |
-| Copias de memoria | Capacidad inicial, buffer con longitud explícita, binding bytea sin copia, un parse XML y StreamReader CSV |
-| UNIQUE company.rfc | No se agrega: un RFC puede existir en varios espacios de trabajo |
-| Permisos por columna / SECURITY DEFINER app_user | Diferido al endurecimiento de auditoría del grupo 5 |
-| Caché de roles | Se omite para conservar revocación por membresía consultada en cada solicitud |
+| Nombres de archivo hostiles; subidas parciales imposibles de descubrir | Se quitan caracteres de control y NUL, se reemplaza Unicode inválido y se limita a 255; si falla la base a mitad de la subida, el error devuelve el `uploadId` de lo ya confirmado |
+| Amplificación por atributos XML | Los atributos cuentan en el presupuesto de nodos; el XML se lee **una vez** con un lector acotado |
+| Escrituras en empresa archivada; carrera por el último administrador | Un bloqueo de la fila de la empresa protege toda escritura; una empresa archivada responde 409; dos degradaciones simultáneas dejan al menos un administrador |
+| Trabajo distinto para correos desconocidos | Un hash ficticio creado al arrancar; exactamente una verificación PBKDF2 por intento bien formado |
+| Abuso del login | Dos ventanas fijas encadenadas: correo normalizado (10/min) e IP (30/min), configurables; 429 con `Retry-After` |
+| Clave JWT pública por defecto | Compose exige `JWT_SIGNING_KEY` y el arranque rechaza el antiguo valor público; el CI aporta uno sintético de forma explícita |
+| Descargas interpretables y en memoria | `attachment` + `nosniff`; los bytes se envían en flujo (`SequentialAccess`, `Results.Stream`) mientras la transacción de empresa sigue abierta |
+| CSV sin límite y claves de índice demasiado grandes | `MaxStatementLines` = 100000 y `MaxDescriptionLength` = 500; se rechaza el archivo completo con su motivo |
+| Tolerancia de fechas ilimitada; operador existente | Tope de 366 en la API y en `M0005`; el arranque registra que una cuenta existente no se modificó |
+| Fuga en errores; OpenAPI | `AddProblemDetails` + `UseExceptionHandler` dan errores seguros en cualquier entorno; OpenAPI sigue anónimo según la especificación (se descartó la sugerencia de exigir autenticación en producción) |
+| Escrituras fila por fila | Bloques de 5000 filas con `unnest` para movimientos; un solo lote de relaciones, pagos y documentos; los duplicados dentro y entre bloques conservan sus conteos |
+| Recalcular el hash del original | Una fila transitoria `importing` solo con metadatos se finaliza una vez con los bytes, la validación del hash y los contadores; ninguna fila `importing` se confirma; un fallo deshace todas las filas |
+| Guarda débil de NULL a bytes | `M0005` permite fijar el original solo en la transición `importing` → `imported`; un original confirmado como rechazado o duplicado no puede cambiar |
+| Viajes de ida y vuelta por UUID, RFC y contexto | `INSERT ... ON CONFLICT ... RETURNING` con `SELECT` de respaldo para duplicados; el RFC (inmutable) se guarda en caché 5 minutos; `NpgsqlBatch` junta contexto, bloqueo y verificación |
+| Consultas por empresa sin índice | `M0005` agrega índices que empiezan por empresa en archivos, pagos y documentos; `membership` ya tenía el índice de su clave primaria `(company_id, user_id)` |
+| Copias de memoria | Capacidades previstas, buffer más longitud explícita, bytea enlazado como memoria, una sola lectura XML, CSV leído con `StreamReader` sin cadena completa |
+| `UNIQUE` en `company.rfc` | **No** se agregó: el mismo RFC puede identificar varios espacios de trabajo |
+| Permisos por columna de `app_user` / `SECURITY DEFINER` | Se pospone al endurecimiento de auditoría del grupo 5 |
+| Caché de roles | Se omitió: consultar la membresía en cada solicitud garantiza que una revocación surta efecto de inmediato |
 
-**Qué aprendí:** reducir comandos no elimina restricciones e índices por fila de PostgreSQL; el trabajo del servidor
-sigue siendo proporcional a las filas. Una fila pendiente no es visible fuera de la transacción: finalizar el blob una
-vez evita recalcular hash de originales de 10 MiB al cambiar conteos, sin otra tabla ni diferir claves foráneas.
-Streaming mantiene la conexión hasta terminar la descarga. El límite por correo puede usarse para bloquear a una
-víctima; el valor generoso y el límite por IP ayudan, pero no eliminan ese riesgo. Producción requiere monitoreo y ajuste.
-Las pruebas anteriores siguen verdes; benchmark omitido por defecto/CI y los tres escenarios previos siguen pendientes.
+**Nombres y variables nuevos:** `Ingestion__MaxStatementLines`, `Ingestion__MaxDescriptionLength`,
+`LoginRateLimit__EmailPermitLimit`, `LoginRateLimit__IpPermitLimit`, `LoginRateLimit__WindowSeconds` y `RUN_BENCHMARKS`
+(sección 3.1); el estado `importing`, el tope `company_date_tolerance_max` y el trigger `preserve_import_original`
+(sección 3.3); `DummyPasswordHash`, `CompanyReadOnlyException`, `UploadFailedException` y `LoginProtection` (sección 3.4);
+los códigos 409, 413 y 429 (sección 3.2); y `M0005HardeningAndIndexes` (versión 5).
 
-**Verificación final de PR-4 / PR-5:** `dotnet build` aprobó con 0 advertencias y 0 errores; la ejecución normal de
-`dotnet test --solution Reconciliation.slnx` aprobó 122 de 126 casos con cuatro omisiones explícitas; formato limpio.
-Con `RUN_BENCHMARKS=1` aprobaron 123 y solo se omitieron los tres escenarios futuros del dominio. Tras el refactor,
-el benchmark confirmó medianas de 3983.3587 ms (50k filas) y 17.3551 ms (Pagos300), con muestras
-4143.5624 / 3983.3587 / 3926.9649 y 17.7486 / 17.3551 / 17.2354 respectivamente.
-`docker compose up --build --wait` terminó con PostgreSQL, API, worker y stub SAT saludables y el migrador finalizado
-correctamente. Migraciones up/down/up aprobaron en una base desechable y conservaron un original sintético;
-VersionInfo conserva versiones 1–5, existe el índice de clave primaria compuesta de membership y las diez tablas
-por empresa tienen RLS habilitado y forzado. Ambos comandos del mapa se ejecutaron: 26/85 tareas; no se marcó ninguna
-adicional. Siguen pendientes “Viewer cannot decide” y “Different roles” (grupo 8) y “Tolerance changed” (grupo 6).
-Los commits rojos registran sus fallos esperados antes de las correcciones. Todo queda en commits locales, sin push.
-No quedan preguntas abiertas de implementación de esta revisión.
+**Por qué así:** la mayor parte del ahorro viene de enviar menos comandos y de no repetir trabajo; el costo por fila de
+las restricciones e índices de PostgreSQL permanece. Se prefirió leer la membresía en cada solicitud antes que cachear
+roles, aun a costa de una consulta más.
+
+**Qué aprendes:** reducir viajes cliente-servidor no elimina el trabajo por fila que hace PostgreSQL (restricciones e
+índices), así que el tiempo sigue siendo proporcional a las filas. Una fila pendiente es privada dentro de su
+transacción, por lo que fijar un blob una sola vez evita recalcular el hash de 10 MiB en cada actualización, sin tabla
+nueva ni diferir claves foráneas. Una descarga en flujo retiene una conexión hasta terminar el cuerpo. El límite por
+correo puede usarse para frenar a una víctima; el valor holgado y el límite por IP reducen el abuso pero no lo
+eliminan, y producción necesita monitoreo y ajuste.
+**Verificado (PR-4 y PR-5):** `dotnet build` con 0 advertencias y 0 errores; `dotnet test --solution Reconciliation.slnx`
+con 122 de 126 aprobados y cuatro omitidos de forma explícita; verificación de formato limpia. Con `RUN_BENCHMARKS=1`,
+123 aprobados y solo los tres escenarios futuros omitidos. El benchmark posterior al refactor dio medianas de
+3983.3587 ms (50 mil filas) y 17.3551 ms (Pagos300), con muestras 4143.5624 / 3983.3587 / 3926.9649 y 17.7486 / 17.3551 /
+17.2354. `docker compose up --build --wait` terminó con PostgreSQL, API, worker y stub del SAT sanos y el migrador
+completado. Migraciones subir/bajar/subir en una base desechable, conservando un original sintético; `VersionInfo`
+queda en las versiones 1–5, existe el índice de la clave primaria compuesta de `membership` y las diez tablas de empresa
+tienen RLS habilitado y forzado. Ambos comandos del mapa de progreso se ejecutaron: 26/85 tareas, sin tareas nuevas.
+Siguen pendientes "Viewer cannot decide" y "Different roles" (grupo 8) y "Tolerance changed" (grupo 6). Los commits en rojo
+registran sus fallos esperados antes de las correcciones. Todo queda local; no se hizo push. No quedan preguntas
+abiertas de esta revisión.
 
 ### PR-3: Modelo de dominio e ingesta (3.1–3.8, incluidas 3.4b–3.4f)
 
@@ -774,7 +857,7 @@ mapa conserva el grupo 2 en progreso de forma intencional.
    a la sección 3.
 4. Actualiza la sección 2 (arquitectura) si cambió un flujo, un módulo o una tabla.
 5. Mueve "Siguiente trabajo" (sección 6) al grupo siguiente.
-6. Regenera los exportados en `exports/` (Word y PDF) a partir de este archivo; nunca los edites a mano.
+6. Regenera los exportados en `exports/` (Word y PDF) a partir de este archivo; nunca los edites a mano. Comando: `npm install --prefix /tmp/mdtools docx` una vez, luego `NODE_PATH=/tmp/mdtools/node_modules node tools/md_to_docx.js <bitácora>.md exports/<bitácora>.docx` y `soffice --headless --convert-to pdf --outdir exports exports/<bitácora>.docx`.
 7. La plantilla de pull request (`.github/pull_request_template.md`) pide esta misma información, así que la
    descripción se puede pegar en la bitácora.
 
