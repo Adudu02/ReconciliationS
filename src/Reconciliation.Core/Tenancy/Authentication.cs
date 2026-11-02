@@ -79,9 +79,9 @@ public static class Authentication
 
     public static IEndpointRouteBuilder MapAuthentication(this IEndpointRouteBuilder routes)
     {
-        routes.MapPost("/auth/tokens", async (TokenRequest credentials, SessionService sessions, CancellationToken cancellationToken) =>
+        routes.MapPost("/auth/tokens", async (TokenRequest credentials, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>
         {
-            var pair = await sessions.LoginAsync(credentials, cancellationToken);
+            var pair = await sessions.LoginAsync(credentials, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             return pair is null ? Results.Unauthorized() : Results.Ok(pair);
         }).AllowAnonymous();
         routes.MapPost("/auth/refresh", async (RefreshRequest request, HttpContext httpContext, SessionService sessions, CancellationToken cancellationToken) =>

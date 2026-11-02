@@ -17,7 +17,7 @@ public sealed record SessionRenewal(int StatusCode, TokenResponse? Pair = null);
 public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<string> passwordHasher,
     DummyPasswordHash dummyHash, SymmetricSecurityKey signingKey, SessionOptions options, TimeProvider timeProvider)
 {
-    public async Task<TokenResponse?> LoginAsync(TokenRequest credentials, CancellationToken cancellationToken)
+    public async Task<TokenResponse?> LoginAsync(TokenRequest credentials, string? remoteIp, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(credentials.Email) || string.IsNullOrEmpty(credentials.Password)) return null;
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -36,6 +36,7 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
             VALUES(@Id,@now,@now,@absoluteExpiresAt) RETURNING id
             """, new { account.Id, now, absoluteExpiresAt }, transaction, cancellationToken: cancellationToken));
         var refresh = await InsertRefreshAsync(connection, transaction, sessionId, now, absoluteExpiresAt, cancellationToken);
+        await WriteEventAsync(connection, transaction, account.Id, sessionId, "login", remoteIp, now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return IssuePair(account.Id, sessionId, refresh.Value, now);
     }
@@ -82,6 +83,7 @@ public sealed class SessionService(NpgsqlDataSource dataSource, IPasswordHasher<
             """, new { now, replacementId = replacement.Id, presentedId = presented.Id }, transaction, cancellationToken: cancellationToken));
         if (rowsRotated != 1) return new SessionRenewal(StatusCodes.Status409Conflict);
         await connection.ExecuteAsync(Command("UPDATE auth_session SET last_used_at=@now WHERE id=@sessionId", new { now, sessionId }, transaction, cancellationToken: cancellationToken));
+        await WriteEventAsync(connection, transaction, session.UserId, session.Id, "refresh", remoteIp, now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new SessionRenewal(StatusCodes.Status200OK, IssuePair(session.UserId, session.Id, replacement.Value, now));
     }
