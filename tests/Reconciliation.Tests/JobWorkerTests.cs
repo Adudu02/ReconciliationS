@@ -100,7 +100,8 @@ public sealed class JobWorkerTests(PostgresFixture database) : IClassFixture<Pos
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:Default"] = database.AppConnectionString, ["Jobs:LeaseSeconds"] = "9"
+            ["ConnectionStrings:Default"] = database.AppConnectionString,
+            ["Jobs:LeaseSeconds"] = "9"
         }).Build();
         var services = new ServiceCollection().AddLogging().AddReconciliationDatabase(configuration).AddJobs(configuration);
         services.AddSingleton<TimeProvider>(clock);

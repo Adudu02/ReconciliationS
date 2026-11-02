@@ -14,6 +14,7 @@ public static class JobServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(options);
         services.AddSingleton<JobStore>();
+        services.AddSingleton<JobDispatcher>();
         services.AddSingleton(new JobBackoff(options, RandomNumberGenerator.GetInt32));
         return services;
     }

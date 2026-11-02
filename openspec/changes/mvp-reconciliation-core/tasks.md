@@ -38,7 +38,7 @@
 ## 4. Jobs (days 3–4)
 
 - [x] 4.1 Implement the PostgreSQL job queue with transactional enqueue and `SKIP LOCKED` claiming, and verify two workers never process the same job
-- [ ] 4.2 Implement attempts, backoff, permanent versus transient failure, and the failed-jobs list with re-run, and verify the retry scenarios pass
+- [x] 4.2 Implement attempts, backoff, permanent versus transient failure, and the failed-jobs list with re-run, and verify the retry scenarios pass
 - [ ] 4.3 Implement visibility timeout recovery and verify a worker killed mid-job leads to completion by another worker with effects applied once
 - [ ] 4.4 Move CFDI and statement imports onto jobs with progress and verify an upload returns a job identifier immediately and reaches succeeded
 - [ ] 4.5 Write ADR-004 (queue on PostgreSQL) with the migration path to a broker and verify it states the volume limit
