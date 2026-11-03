@@ -14,6 +14,13 @@ public sealed class M0007Jobs : Migration
         GRANT UPDATE(pending_original) ON import_file TO cfdi_app;
         CREATE OR REPLACE FUNCTION preserve_import_original() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
+          IF OLD.pending_original IS NOT NULL AND
+            (NEW.sha256 IS DISTINCT FROM OLD.sha256 OR
+             (NEW.pending_original IS DISTINCT FROM OLD.pending_original AND NOT
+               (NEW.pending_original IS NULL AND NEW.status IN ('imported','already_imported','rejected'))) OR
+             (NEW.status='imported' AND NEW.original IS DISTINCT FROM OLD.pending_original)) THEN
+            RAISE EXCEPTION 'Queued input bytes and their hash cannot be replaced';
+          END IF;
           IF NEW.original IS DISTINCT FROM OLD.original AND NOT
             (OLD.status IN ('queued','processing') AND NEW.status='imported' AND OLD.original IS NULL AND NEW.original IS NOT NULL) THEN
             RAISE EXCEPTION 'Only a queued or processing file may finalize its original';
