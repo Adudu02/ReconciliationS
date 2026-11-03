@@ -80,6 +80,22 @@ public sealed class QueuedImportTests(PostgresFixture database) : IClassFixture<
         Assert.Equal(0, await database.ScalarAsync<int>("SELECT count(*) FROM bank_movement WHERE company_id=@companyId", new { companyId }));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Queued_input_cannot_be_rewritten_even_with_a_matching_replacement_hash(bool finalize)
+    {
+        await using var services = CreateServices();
+        var (companyId, actorId) = await SeedAsync();
+        var queued = await services.GetRequiredService<ImportJobService>().EnqueueAsync(companyId, actorId, "import_cfdi",
+            [UploadedFile.FromBytes("synthetic.xml", SyntheticCfdi.Invoice())], null, null, TestContext.Current.CancellationToken);
+        await using var owner = await database.OpenOwnerAsync();
+        var sql = finalize
+            ? "UPDATE import_file SET status='imported',original='\\x01',pending_original=NULL,sha256=sha256('\\x01'::bytea),retained_until=created_at+interval '10 years' WHERE upload_id=@UploadId"
+            : "UPDATE import_file SET pending_original='\\x01',sha256=sha256('\\x01'::bytea) WHERE upload_id=@UploadId";
+        await Assert.ThrowsAsync<PostgresException>(() => owner.ExecuteAsync(new CommandDefinition(sql, new { queued.UploadId }, cancellationToken: TestContext.Current.CancellationToken)));
+    }
+
     private static Task<string?> RunHandlerAsync(IServiceProvider services, IJobHandler handler, JobRecord job) =>
         services.GetRequiredService<CompanyScope>().ExecuteAsync(job.CompanyId, (connection, transaction, cancellationToken) => handler.HandleAsync(job, connection, transaction, cancellationToken), TestContext.Current.CancellationToken);
 
