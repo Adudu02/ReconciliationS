@@ -13,7 +13,7 @@ Fuente de verdad de los elementos de trabajo: `openspec/changes/mvp-reconciliati
 
 | Carpeta | Qué contiene | Por qué está separada |
 |---|---|---|
-| `docs/adr/` | Registros de decisiones de arquitectura (ADR-001 a ADR-004) | Una decisión = un archivo; nunca se editan, se reemplazan por otro ADR |
+| `docs/adr/` | Registros de decisiones de arquitectura (ADR-001 a ADR-005) | Una decisión = un archivo; nunca se editan, se reemplazan por otro ADR |
 | `docs/build-log/` | Esta bitácora en español e inglés, y `exports/` con los PDF/Word generados | Lo que se actualiza en cada PR; los exportados no se mezclan con el texto fuente |
 | `docs/requirements/` | BRS y SRS (inglés y español) | Documentos de requisitos que casi no cambian |
 | `docs/reference/` | Formato CSV bancario de referencia y la ficha del proyecto con enlaces de consulta | Material de consulta que las pruebas leen o que se cita |
@@ -27,7 +27,7 @@ leen `docs/adr/`, `docs/reference/` y `docs/build-log/`), y usa `git mv` para co
 
 ![Mapa de estado de la construcción](../diagrams/progress/status-map-es.png)
 
-**26 de 85 tareas completas. Grupo 3 completo; del grupo 2 solo queda 2.4 para decisiones reales del grupo 8.**
+**32 de 85 tareas completas. Grupos 3 y 4 completos; del grupo 2 solo queda 2.4 para decisiones reales del grupo 8.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -60,7 +60,7 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
               +-------------------------------+
               | Reconciliation.Core           |   Tenancy | Ingestion | Audit
               | (siete módulos, sin Main)     |   Matching | Review | Sat | Jobs
-              +---------------+---------------+   (los últimos cuatro son marcadores)
+              +---------------+---------------+   (Matching, Review y Sat son marcadores)
                               | SQL con Npgsql + Dapper, CompanyScope para empresa; auth global
                               v
               +-------------------------------+        +----------------------+
@@ -78,20 +78,19 @@ Cada flecha es una frontera con una razón de ser:
   (conciliar, consultar al SAT). Comparten `Reconciliation.Core`, así la regla de negocio se escribe una sola vez
   (ADR-001: monolito modular con worker separado, en lugar de microservicios).
 - **Módulos con fronteras.** `Tenancy` (empresas, usuarios, roles, sesiones), `Ingestion` (lectura de CFDI y CSV), `Audit`
-  (bitácora), y los marcadores `Matching`, `Review`, `Sat`, `Jobs` que se llenarán en los grupos 4 a 8. Un módulo
+  (bitácora), `Jobs` (cola/ejecución), y los marcadores `Matching`, `Review`, `Sat` de grupos posteriores. Un módulo
   habla con otro por interfaces, nunca leyendo las tablas ajenas.
 - **PostgreSQL como árbitro final.** Aunque el código olvide filtrar por empresa, la base de datos no entrega filas
   de otra empresa (sección 2.3).
 - **El migrador es un programa aparte** con otro rol de base de datos: el dueño del esquema (`cfdi`) crea y cambia
   tablas; la aplicación (`cfdi_app`) solo puede lo que se le concede.
 
-El diseño completo, incluido lo que aún no existe (cola de trabajos, cliente SAT, telemetría), es este:
+El diseño completo, incluido lo que aún no existe (cliente SAT, telemetría), es este:
 
 ![Vista de contenedores del diseño (Docker Compose)](../../openspec/changes/mvp-reconciliation-core/diagrams/containers.png)
 
-Lo construido hasta ahora es la caja *API process*, el *Worker* (solo arranca y reporta salud), *PostgreSQL* con el
-aislamiento por empresa y las tablas de ingesta, y el *SAT stub* como marcador. Faltan la cola de trabajos
-(`SKIP LOCKED`), la cadena de hash de auditoría, el puerto del cliente SAT y OpenTelemetry.
+Existen API, worker de sondeo, tablas PostgreSQL de empresa/ingesta/sesiones/trabajos y stub de salud SAT.
+Faltan cadena de hash de auditoría, manejadores reales de conciliación/SAT y OpenTelemetry.
 
 ### 2.2 Ciclo de una solicitud autenticada
 
@@ -114,11 +113,9 @@ Ejemplo: un contador sube una factura con `POST /companies/{companyId}/imports/c
    (`SELECT archived_at IS NOT NULL FROM company FOR UPDATE`): si la empresa está archivada lanza
    `CompanyReadOnlyException` y la API responde 409; el bloqueo también serializa cambios simultáneos (por ejemplo, dos
    degradaciones de administradores a la vez).
-6. **Trabajo.** El importador lee y valida el archivo, e inserta filas; cada consulta pasa por las políticas RLS.
-7. **Cierre.** Si todo salió bien, `COMMIT`; si algo falla, `ROLLBACK` y no queda nada a medias. La respuesta es un
-   `ImportReport` con un resultado por archivo. Un error inesperado pasa por `UseExceptionHandler` y se devuelve como
-   `ProblemDetails` con un mensaje seguro, sin detalles internos; si ya se habían confirmado algunos archivos, el error
-   incluye el `uploadId` para consultar el reporte parcial.
+6. **Encolar.** Los límites de streaming preceden una transacción para originales queued y trabajo. La petición no analiza XML/CSV.
+7. **Cerrar.** COMMIT devuelve 202 con jobId/uploadId; ROLLBACK no deja archivos ni trabajo. ProblemDetails seguro
+   incluye uploadId ante un fallo al encolar. Luego el worker confirma por archivo y GET imports/{uploadId} da el reporte.
 
 ### 2.2a Renovación de sesión
 
@@ -161,21 +158,19 @@ RLS no identifica al usuario; por eso hacen falta ambas y pruebas para cada una.
 ### 2.4 Ciclo de una importación
 
 ```
- multipart (files, bank, accountReference)
-   -> MultipartUpload: cuenta bytes al leer, limpia nombres de archivo (413/400)
-   -> por archivo: SafeCfdiXmlReader (una sola lectura acotada) -> CfdiParser -> ¿es de la empresa?
-   -> por archivo, UNA transacción propia:
-        import_file en estado 'importing' (solo metadatos, privada a la transacción)
-        -> filas en lotes (CFDI, pagos, relaciones; movimientos en bloques de 5000)
-        -> se finaliza una vez: original + hash validado -> 'imported' -> audit
-   -> ImportReport { upload_id, archivos[ estado, motivo, ids ] }
+ multipart -> límites de streaming y limpieza de nombres
+   -> UNA transacción por empresa: import_file queued (pending_original + sha256) + job
+   -> 202 {jobId, uploadId}
+ worker -> claim_next_job -> running + intento + heartbeat
+   -> validación XML / CSV segura; un archivo malo no bloquea los otros
+   -> transacción por archivo con guarda: processing -> imported / rejected / already_imported + audit
+   -> limpiar pendientes; original aceptado inmutable; progreso -> succeeded
+ GET jobs/{jobId} -> estado/historial/progreso; GET imports/{uploadId} -> reporte estable por archivo
 ```
 
-El punto clave es "una transacción por archivo": si el tercer archivo de diez es inválido, los otros nueve se
-importan y el tercero queda como `rejected` con su motivo. Todos los archivos de una subida comparten `upload_id`
-(un UUID nuevo por subida) para poder pedir luego el reporte completo. La fila transitoria `importing` nunca se
-confirma: como vive solo dentro de la transacción, los bytes del original (hasta 10 MiB) se escriben y se verifican una
-sola vez, en lugar de recalcular el hash cada vez que se actualiza un contador.
+Fallar al encolar no deja una subida parcial. Un fallo posterior conserva archivos confirmados y entrada queued,
+por lo que otra entrega retoma sin efectos de dominio/auditoría duplicados. Processing vive dentro de la transacción.
+Se verifica/finaliza el original una vez; los avances actualizan job sin recalcular el hash de todo el archivo.
 
 ### 2.5 Modelo de datos
 
@@ -185,22 +180,23 @@ sola vez, en lugar de recalcular el hash cada vez que se actualiza un contador.
 | `app_user` | Personas que inician sesión | `email` (único sin distinguir mayúsculas), `password_hash` |
 | `membership` | Une usuario, empresa y rol | PK `(company_id, user_id)`, `role` (`administrator`, `accountant`, `viewer`) |
 | `audit_entry` | Qué hizo quién y cuándo | `actor_id`, `action`, `old_values`, `new_values` (jsonb) |
-| `import_file` | Un archivo subido y su resultado | `upload_id`, `status`, `reason`, `original` (bytes), `sha256`, `retained_until`, `original_file_id` |
+| `import_file` | Un archivo subido y su resultado | `upload_id`, `status`, `reason`, `original` (bytes), `pending_original`, `file_index`, `sha256`, `retained_until`, `original_file_id` |
 | `cfdi` | Una factura importada | `uuid`, `type` (I/P/E), `direction`, importes `numeric(18,2)`, `is_global`, `review_reason` |
 | `cfdi_relation` | Relaciones entre CFDI (por ejemplo, nota de crédito) | `related_uuid`, `relation_code` |
 | `cfdi_payment`, `cfdi_payment_doc` | Complemento de pago y las facturas que liquida | `payment_index`, `installment`, `previous_balance`, `paid`, `remaining_balance` |
+| `job`, `job_attempt` | Cola duradera, leases e intentos | `company_id`, type/state/input_ref, attempts, run_after, locked_until, progress e historial de errores |
 | `bank_account` | Cuenta bancaria identificada por etiqueta | `bank`, `account_reference` |
 | `bank_movement` | Un renglón del estado de cuenta | `movement_date`, `credit`, `debit`, `balance`, `reference` |
 
-Convenciones que se repiten en todas las tablas de empresa: `id uuid` generado por la base; `company_id` obligatorio;
+Convenciones de empresa: `id uuid` generado por la base (job_attempt usa clave compuesta); `company_id` obligatorio;
 RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
-que empiezan por `company_id` (`M0005`) para que cada consulta de una empresa recorra solo sus filas.
+por empresa que empiezan con `company_id` (`M0005`); el worker global además necesita índices de vencimiento/lease.
 
-El esquema construido (migraciones M0001 a M0006), dibujado a partir de las propias migraciones:
+El esquema construido (migraciones M0001 a M0007), dibujado a partir de las propias migraciones:
 
 ![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
 
-Azul es multiempresa, morado son sesiones (por usuario, fuera del RLS de empresa) y verde es ingesta; la etiqueta naranja
+Azul es multiempresa, morado son sesiones (por usuario, fuera del RLS de empresa), naranja son trabajos y verde es ingesta; la etiqueta naranja
 `RLS` marca las tablas con seguridad a nivel de fila forzada. Los dos diagramas siguientes muestran las reglas de estado
 de los datos y quién puede hacer qué:
 
@@ -226,6 +222,25 @@ Los índices cubren digest único, familia y usuario. `cfdi_app` tiene SELECT/IN
 concretas, sin DELETE ni UPDATE de eventos. `app_user` recibe únicamente UPDATE(password_hash). Down elimina las tablas
 nuevas y ese permiso. Los tiempos de sesión son UTC explícitos de TimeProvider. El grupo 5 integrará los eventos en la
 auditoría encadenada; la purga espera a trabajos. El acceso emitido puede sobrevivir a la revocación hasta su caducidad.
+
+### 2.7 Trabajos duraderos
+
+M0007 agrega `job` y `job_attempt`, tablas por empresa con RLS forzado. `JobStore.EnqueueAsync` comparte la transacción
+CompanyScope del llamador. `JobLoop` es un BackgroundService con sondeo y concurrencia configurables;
+`JobDispatcher` reclama trabajo vencido, ejecuta el manejador bajo su empresa y renueva el lease hasta terminar.
+
+La frontera entre empresas es `claim_next_job`: SECURITY DEFINER, propiedad de `cfdi_queue_owner` (NOLOGIN BYPASSRLS),
+con permisos solo en job/job_attempt. cfdi_app sigue NOBYPASSRLS, no puede asumir ese dueño y recibe EXECUTE solo
+sobre claim/renew/finish con search_path fijado; PUBLIC no puede ejecutarlas. Renovar/terminar exige trabajador,
+intento y lease vigente. La recuperación registra lease_expired y vuelve a encolar o falla al agotar intentos. Todos
+los tiempos llegan de TimeProvider mediante p_now opcional en SQL; ninguna ruta HTTP acepta ni expone p_now. Ver ADR-005.
+
+Los errores transitorios usan backoff exponencial con jitter y tope; una entrada inválida falla de inmediato.
+Historial y entrada se conservan para un reintento administrativo auditado. Los archivos restantes quedan queued con
+pending_original hasta un reintento exitoso; no hay limpieza implementada. La comprobación del lease por archivo y
+sus ids estables evitan duplicar efectos y auditoría tras otra entrega. Los cuatro tipos son import_cfdi,
+import_statement, reconciliation_run y status_check; los dos últimos registran expresamente el límite de grupos 6/7
+al finalizar sin efectos de dominio.
 
 ## 3. Diccionario de nombres y variables
 
@@ -272,6 +287,28 @@ holgado y el límite por IP ayuda, pero en producción hay que ajustarlo y vigil
 | `reuse_detected` | motivo de revocación/evento fuera de gracia; dentro, 409 no cambia nada |
 | `/auth/refresh`, `/auth/logout`, `/auth/password` | renovar; terminar la familia propia; cambiar contraseña y terminar todas las familias propias |
 
+### 3.1b Nombres y configuración de trabajos
+
+| Nombre | Valor por defecto / significado |
+|---|---|
+| `Jobs__PollIntervalMilliseconds` / `JOBS_POLL_INTERVAL_MILLISECONDS` | 500; intervalo de sondeo sin trabajo |
+| `Jobs__Concurrency` / `JOBS_CONCURRENCY` | 2; carriles por proceso worker |
+| `Jobs__LeaseSeconds` / `JOBS_LEASE_SECONDS` | 60; heartbeat cada tercio del lease |
+| `Jobs__MaxAttempts` / `JOBS_MAX_ATTEMPTS` | 5; presupuesto inicial y extra al reintentar como administrador |
+| `Jobs__BackoffBaseSeconds` / `JOBS_BACKOFF_BASE_SECONDS` | 2; base exponencial de reintento |
+| `Jobs__BackoffCapSeconds` / `JOBS_BACKOFF_CAP_SECONDS` | 300; tope del retraso incluido jitter |
+| `JobLoop`, `JobDispatcher`, `IJobHandler` | sondeo, claim/heartbeat/clasificación y frontera del manejador por empresa |
+| `job`, `job_attempt` | estado/entrada/progreso duraderos e historial de resultados/errores por intento |
+| `locked_by`, `locked_until`, `attempt_no` | dueño/plazo del lease y guarda contra trabajadores obsoletos |
+| `pending_original`, `file_index` | bytes privados en cola, verificados con sha256; orden estable de subida |
+| `claim_next_job`, `p_now`, `TimeProvider` | claim global restringido y UTC inyectado; p_now nunca es campo HTTP |
+| `jobId`, `uploadId` | respuesta 202; recurso de progreso y reporte de importación estable |
+
+Las opciones se validan al arrancar. Los nombres en mayúsculas se mapean desde Compose a Jobs__*;
+JOBS_MAX_ATTEMPTS también configura el encolado de la API. pending_original nunca aparece en JSON ni descargas.
+La aceptación mueve exactamente esos bytes a original, limpia los pendientes y cuenta RetentionYears desde la
+aceptación. Un rechazo conserva solo hash/motivo.
+
 ### 3.2 Cabeceras, rutas, campos y códigos HTTP
 
 | Nombre | Dónde aparece | Significado |
@@ -311,15 +348,15 @@ holgado y el límite por IP ayuda, pero en producción hay que ajustarlo y vigil
 | `uuid` (en `cfdi`) | Identificador fiscal del CFDI (folio fiscal del SAT). Es único **por empresa** |
 | `type` | `I` ingreso, `E` egreso (nota de crédito), `P` pago (complemento de pago) |
 | `direction` | `issued` si la empresa es el emisor; `received` si es el receptor |
-| `status` (en `import_file`) | `imported`, `already_imported` (UUID repetido), `rejected`, o `importing` (transitorio: nunca queda confirmado) |
+| `status` (en `import_file`) | `imported`, `already_imported` (UUID repetido), `rejected`, o `queued` y `processing` (este último privado de transacción) |
 | `original_file_id` | En un duplicado, apunta al archivo que ya se había aceptado |
 | `sha256` | Huella de 32 bytes del archivo; permite probar que no cambió |
 | `retained_until` | Fecha antes de la cual el original no puede borrarse ni acortarse |
-| `preserve_import_original` | Trigger: solo una fila `importing` puede fijar su original (pasando a `imported`); un original aceptado, su hash y su retención no cambian |
+| `preserve_import_original` | Trigger: solo una fila queued/processing puede fijar su original (pasando a `imported`); un original aceptado, su hash y su retención no cambian |
 | `date_tolerance_days` | Días de diferencia admitidos entre fecha bancaria y fiscal al conciliar (por defecto 3, máximo 366: `company_date_tolerance_max`) |
 | `amount_tolerance` | Diferencia de importe admitida al conciliar (por defecto 0.01) |
 | `complement_next_biz_day` | Regla de plazo para complementos de pago; se usará en el grupo 6 |
-| `VersionInfo` | Tabla de FluentMigrator con las versiones aplicadas (hoy 1 a 6) |
+| `VersionInfo` | Tabla de FluentMigrator con las versiones aplicadas (hoy 1 a 7) |
 | `numeric(18,2)` | Dinero con 18 dígitos y 2 decimales exactos |
 | `numeric(20,10)` | Tipo de cambio con hasta 10 decimales |
 
@@ -355,15 +392,15 @@ holgado y el límite por IP ayuda, pero en producción hay que ajustarlo y vigil
 | Reglas de compilación compartidas | Compilación | Todos los proyectos usan la misma configuración: .NET 10, verificación de nulos, las advertencias son errores | `Directory.Build.props`, `.editorconfig`, `global.json` |
 | **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts: multiempresa, ingesta, auditoría mínima y código común de base de datos y salud | `src/Reconciliation.Core` |
 | **Host de la API** | Host | La API web que llamarán los usuarios. Atiende autenticación, empresas, miembros, configuración, archivo, importaciones, salud y OpenAPI | `src/Reconciliation.Api` |
-| **Host del worker** | Host | Ejecuta trabajos en segundo plano. Hoy arranca, reporta su salud y espera | `src/Reconciliation.Worker` |
+| **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0006` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0007` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS, diagramas y el cambio de OpenSpec que define el trabajo | `docs/requirements/`, `docs/diagrams/`, `openspec/` |
-| Pruebas | Pruebas | 190 casos xUnit: 186 aprobados, 3 escenarios pendientes y 1 benchmark optativo; PostgreSQL real | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 227 casos xUnit: 223 aprobados, 3 escenarios pendientes y 1 benchmark optativo; PostgreSQL real | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 5. Registro de pull requests
@@ -371,6 +408,83 @@ holgado y el límite por IP ayuda, pero en producción hay que ajustarlo y vigil
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
+
+### PR-7: Trabajos
+
+**Qué es:** grupo 4 (4.1–4.6): trabajos duraderos en PostgreSQL, manejadores por empresa, historial de intentos,
+reintentos/backoff, heartbeat/recuperación, importaciones asíncronas y una sola conciliación activa por empresa.
+Las seis tareas están verdes; van 32 de 85 tareas del MVP. Sesiones conserva su cambio independiente. El ADR de cola
+es ADR-005: ADR-004 ya estaba ocupado y el texto de 4.5 quedó antiguo; no se editó ninguna especificación ni diseño.
+
+**Cómo funciona:** cada parte tiene un commit de prueba roja con los fallos esperados en su cuerpo, seguido de un
+feat/fix verde con suite completa y formato. Las pruebas usan PostgreSQL real/Testcontainers y TimeProvider
+inyectado, incluidos temporizadores controlados sin pausas a ciegas. El encolado transaccional guarda todos los
+archivos queued y el trabajo de forma atómica. claim_next_job con SECURITY DEFINER usa FOR UPDATE SKIP LOCKED,
+registra intento y lease. JobLoop sondea concurrentemente; JobDispatcher ejecuta en CompanyScope, renueva propiedad
+y clasifica excepciones reales, incluidos timeouts envueltos por el importador. Recuperar/renovar/terminar y cada
+escritura por archivo verifican intento/trabajador/lease vigente. Se reutilizan ids de archivos terminados: un fallo
+tras confirmar un archivo no produce otra factura, movimiento ni entrada de auditoría de importación.
+
+**Nombres y variables:** job contiene type/state/payload/input_ref/attempts/max_attempts/run_after/locked_by/locked_until,
+progress_done/progress_total, last_error y actor/fechas. job_attempt guarda inicio/fin, resultado, error_kind y motivo
+seguro. pending_original y file_index son bytes/orden privados en cola; aceptar mueve los mismos bytes a original
+inmutable con comprobación de hash/retención, rechazar limpia pendientes. Ver diccionario 3.1b y ADR-005.
+
+**Por qué así:** PostgreSQL evita una escritura doble entre base y cola. El presupuesto sostenido es **100 jobs/minute**,
+con 10,000 pendientes; es un umbral conservador de revisión, no una capacidad medida. Redis y RabbitMQ/SQS necesitan
+outbox; el ADR registra esa migración. Decisiones delegadas por el usuario y detalles conservadores:
+
+| Decisión | Resultado |
+|---|---|
+| pending_original separado | CHECK permite bytes solo en queued/processing y verifica hash; aceptar mueve los mismos bytes en un UPDATE, rechazar limpia; no se pueden sustituir bytes/hash en cola |
+| Retener entrada fallida | Los archivos restantes quedan queued con bytes hasta reintento administrativo exitoso; no hay política de limpieza/borrado en este MVP (D15) |
+| Dueño de funciones restringido | cfdi_queue_owner es NOLOGIN BYPASSRLS con permisos solo en job/job_attempt; cfdi_app sigue NOBYPASSRLS; funciones fijan search_path y revocan EXECUTE a PUBLIC |
+| p_now opcional en SQL | El worker entrega UTC inyectado de TimeProvider; HTTP no lo acepta ni lo expone |
+| Procesamiento y orden | Processing vive dentro de la transacción para volver a queued al hacer rollback; file_index conserva orden tras encolar varios archivos atómicamente |
+| Clasificación y límites | Timeout/deadlock/serialización/conexión reintentan con jitter y tope; errores desconocidos fallan conservadoramente con texto seguro; un reintento conserva historial y amplía el presupuesto de forma acotada |
+| Migration Down | Rechaza descartar entradas queued/processing; sin ellas restaura la regla de retención M0005 y elimina objetos/rol/permisos M0007 |
+| Manejadores futuros | reconciliation_run/status_check terminan expresamente con resultNote “not implemented until group 6/7”; no se afirma conciliación ni consulta SAT |
+
+**Antes / después:**
+
+| Antes | Después |
+|---|---|
+| Subida responde 200 tras analizar/guardar | 202 {jobId, uploadId} después de límites de streaming y encolado atómico; analiza el worker |
+| Un fallo de base puede dejar archivos previos sin trabajo | Encolar revierte todos los archivos/trabajo; las confirmaciones por archivo del worker se pueden retomar |
+| Worker solo informa salud | Sondeo concurrente, heartbeat, intentos y recuperación de leases vencidos; conserva salud |
+| Marcador importing solo de metadatos dentro del importador | Bytes queued duraderos, processing privado de transacción y un original aceptado inmutable |
+| Sin ADR de cola | ADR-005 compara Redis/broker/SQS y declara límite de volumen y camino con outbox |
+
+**Qué aprendí:** SKIP LOCKED evita reclamar dos veces, pero no basta contra trabajadores obsoletos: terminar y cada
+transacción de dominio necesitan guardas. Bloquear la fila durante un archivo protege esa confirmación; otra entrega
+omite su id estable y su auditoría. Un hash consistente no demuestra que una subida sea la misma: las pruebas
+permitían sustituir bytes junto con su hash, así que el trigger también conserva identidad. Envolver un timeout debe
+conservar su clasificación transitoria. Recuperar cambia las pruebas: un trabajo dejado sin terminar vuelve a estar
+disponible al vencer su lease, de modo que la prueba de orden debe finalizar lo que no prueba como recuperación.
+
+**Verificado:** 227 casos: 223 pasan y cuatro omisiones previas (Viewer cannot decide/Different roles del grupo 8,
+Tolerance changed del 6 y benchmark de ingesta optativo). Compilación sin advertencias/errores y dotnet format
+--verify-no-changes limpio. Todos los comandos dotnet corren mediante el contenedor SDK del README, sin SDK anfitrión
+ni NuGet nuevo. Compose sano con worker reclamando importaciones reales. Migraciones CLI up/down/up verificadas en
+base desechable hasta versión 7, incluido RLS forzado y reversión de permisos. Se regeneran ambos mapas, diagramas
+construidos y exportados Word/PDF. Commits locales; no se hizo push.
+
+**Demostración manual de caída (ejecutada, no pausa de CI):** entrada sintética y trigger temporal limitado a esa
+empresa con advisory lock mantienen al worker dentro de un INSERT CFDI. Se inicia con lease de seis segundos y un
+carril, se observa running y se ejecuta:
+
+```bash
+# JWT_SIGNING_KEY ya está definido en el entorno del llamador; no se imprimen credenciales.
+docker compose kill worker
+# Soltar la compuerta sintética y volver a iniciar el worker.
+docker compose up -d worker
+```
+
+Un sondeo acotado observó dos intentos: lease_expired, succeeded; progreso 1/1; **un CFDI, un archivo y una entrada de
+auditoría de importación**. SHA-256 coincide con original y pending_original queda NULL. Se quitaron trigger/bloqueo,
+se archivó la empresa sintética y se restauró el worker por defecto sano. No se escribieron datos fiscales reales ni
+credenciales en claro en la bitácora. La recuperación y la idempotencia de importación también están automatizadas
+con reloj falso; esta caída real complementa esas pruebas.
 
 ### PR-6: Renovación de sesión
 
@@ -827,11 +941,11 @@ migración subir/bajar/subir en una base de datos real y la ejecución `41122200
   silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 6. Siguiente trabajo: grupo 4, Trabajos
+## 6. Siguiente trabajo: grupo 5, Auditoría
 
-Mover los servicios síncronos de ingesta a la cola PostgreSQL conservando transacciones por empresa, resultados por
-archivo e idempotencia. 2.4 espera decisiones reales del grupo 8; la prueba configuración/corrida espera el grupo 6. El
-mapa conserva el grupo 2 en progreso de forma intencional.
+Agregar cadena de hash append-only y verificación. La cola del grupo 4 está completa; los manejadores reales de
+conciliación/SAT esperan grupos 6/7. La tarea 2.4 espera decisiones del grupo 8 y el escenario configuración/corrida
+espera el grupo 6. El mapa mantiene visibles esos pendientes; ninguna omisión los marca como completos.
 
 ## 7. El resto del camino
 

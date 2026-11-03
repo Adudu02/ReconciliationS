@@ -2,8 +2,7 @@ using Reconciliation.Core.Common;
 
 namespace Reconciliation.Core.Jobs;
 
-/// <summary>Boundary of the "Jobs" module. Filled in by later tasks.</summary>
-// Planned module: implemented by its corresponding OpenSpec group.
+/// <summary>Durable tenant jobs, leases, retries and dispatch.</summary>
 public sealed class JobsModule : IModule
 {
     public string Name => "jobs";

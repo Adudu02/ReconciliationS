@@ -18,7 +18,10 @@ public sealed class JobsDatabaseTests(ApiFixture fixture)
         await using var owner = await fixture.Database.OpenOwnerAsync();
         await TenantIsolationChecks.VerifyTablesAsync(owner);
         foreach (var companyId in new[] { seeded.CompanyId, otherCompany })
-            await owner.ExecuteAsync(new CommandDefinition("INSERT INTO job(company_id,type,payload,created_by) VALUES(@companyId,'status_check','{}',@Id)", new { companyId, seeded.User.Id }, cancellationToken: TestContext.Current.CancellationToken));
+        {
+            var jobId = await owner.QuerySingleAsync<Guid>(new CommandDefinition("INSERT INTO job(company_id,type,state,attempts,payload,created_by) VALUES(@companyId,'status_check','failed',1,'{}',@Id) RETURNING id", new { companyId, seeded.User.Id }, cancellationToken: TestContext.Current.CancellationToken));
+            await owner.ExecuteAsync(new CommandDefinition("INSERT INTO job_attempt(company_id,job_id,attempt_no,started_at,outcome,error_kind,error) VALUES(@companyId,@jobId,1,now(),'failed','permanent','Synthetic input')", new { companyId, jobId }, cancellationToken: TestContext.Current.CancellationToken));
+        }
         await using var app = new NpgsqlConnection(fixture.Database.AppConnectionString);
         await app.OpenAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, await app.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM job", cancellationToken: TestContext.Current.CancellationToken)));
@@ -26,6 +29,7 @@ public sealed class JobsDatabaseTests(ApiFixture fixture)
         await using var transaction = await app.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await app.ExecuteAsync(new CommandDefinition("SELECT set_config('app.company_id',@company,true)", new { company = seeded.CompanyId.ToString() }, transaction, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal([seeded.CompanyId], await app.QueryAsync<Guid>(new CommandDefinition("SELECT company_id FROM job", transaction: transaction, cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal([seeded.CompanyId], await app.QueryAsync<Guid>(new CommandDefinition("SELECT company_id FROM job_attempt", transaction: transaction, cancellationToken: TestContext.Current.CancellationToken)));
         var error = await Assert.ThrowsAsync<PostgresException>(() => app.ExecuteAsync(new CommandDefinition("INSERT INTO job(company_id,type,payload,created_by) VALUES(@otherCompany,'status_check','{}',@Id)", new { otherCompany, seeded.User.Id }, transaction, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, error.SqlState);
     }
@@ -36,14 +40,18 @@ public sealed class JobsDatabaseTests(ApiFixture fixture)
         await using var owner = await fixture.Database.OpenOwnerAsync();
         Assert.True(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT EXISTS(SELECT FROM pg_proc WHERE proname='claim_next_job')", cancellationToken: TestContext.Current.CancellationToken)), "Missing claim function");
         await AssertQueueRoleBoundaryAsync(owner);
-        var metadata = await owner.QuerySingleAsync<(bool Definer, string Owner, string[] Settings, bool AppExecute, bool PublicExecute)>(new CommandDefinition("""
+        var functions = (await owner.QueryAsync<(bool Definer, string Owner, string[] Settings, bool AppExecute, bool PublicExecute)>(new CommandDefinition("""
             SELECT p.prosecdef, r.rolname, p.proconfig, has_function_privilege('cfdi_app',p.oid,'EXECUTE'),
               EXISTS(SELECT FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')
-            FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.proname='claim_next_job'
-            """, cancellationToken: TestContext.Current.CancellationToken));
-        Assert.True(metadata.Definer && metadata.AppExecute && !metadata.PublicExecute);
-        Assert.Equal("cfdi_queue_owner", metadata.Owner);
-        Assert.Contains("search_path=pg_catalog, public, pg_temp", metadata.Settings);
+            FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.proname IN ('claim_next_job','renew_job','finish_job')
+            """, cancellationToken: TestContext.Current.CancellationToken))).ToArray();
+        Assert.Equal(3, functions.Length);
+        foreach (var metadata in functions)
+        {
+            Assert.True(metadata.Definer && metadata.AppExecute && !metadata.PublicExecute);
+            Assert.Equal("cfdi_queue_owner", metadata.Owner);
+            Assert.Contains("search_path=pg_catalog, public, pg_temp", metadata.Settings);
+        }
         await using var app = new NpgsqlConnection(fixture.Database.AppConnectionString);
         await app.ExecuteAsync(new CommandDefinition("SELECT * FROM claim_next_job('synthetic-worker',30)", cancellationToken: TestContext.Current.CancellationToken));
     }

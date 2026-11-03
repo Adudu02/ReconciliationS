@@ -35,6 +35,7 @@ services:
   api:
     build: { context: ., target: api }
     environment:
+      Jobs__MaxAttempts: ${JOBS_MAX_ATTEMPTS:-5}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random secret of at least 32 bytes}
       ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
     ports:
@@ -51,6 +52,12 @@ services:
   worker:
     build: { context: ., target: worker }
     environment:
+      Jobs__PollIntervalMilliseconds: ${JOBS_POLL_INTERVAL_MILLISECONDS:-500}
+      Jobs__Concurrency: ${JOBS_CONCURRENCY:-2}
+      Jobs__LeaseSeconds: ${JOBS_LEASE_SECONDS:-60}
+      Jobs__MaxAttempts: ${JOBS_MAX_ATTEMPTS:-5}
+      Jobs__BackoffBaseSeconds: ${JOBS_BACKOFF_BASE_SECONDS:-2}
+      Jobs__BackoffCapSeconds: ${JOBS_BACKOFF_CAP_SECONDS:-300}
       ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
     depends_on:
       migrate:
