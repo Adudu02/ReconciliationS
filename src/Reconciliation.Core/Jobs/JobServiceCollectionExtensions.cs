@@ -19,6 +19,8 @@ public static class JobServiceCollectionExtensions
         services.AddSingleton<ImportJobService>();
         services.AddSingleton<IJobHandler, CfdiImportJobHandler>();
         services.AddSingleton<IJobHandler, StatementImportJobHandler>();
+        services.AddSingleton<IJobHandler, ReconciliationRunHandler>();
+        services.AddSingleton<IJobHandler, StatusCheckHandler>();
         services.AddSingleton(new JobBackoff(options, RandomNumberGenerator.GetInt32));
         return services;
     }

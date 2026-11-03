@@ -50,6 +50,15 @@ public static class JobEndpoints
                 await AuditLog.WriteAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value, "job.retried", new { job.State, job.Attempts }, new { jobId }, transactionCancellationToken);
                 return Results.Accepted($"/companies/{companyId}/jobs/{jobId}", new { jobId });
             }, cancellationToken)).RequireAuthorization(Policies.Administrator);
+        routes.MapPost("/companies/{companyId:guid}/reconciliation-runs", (Guid companyId, HttpContext httpContext, CompanyScope companyScope, JobOptions options, TimeProvider clock, CancellationToken cancellationToken) =>
+            companyScope.ExecuteWriteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
+            {
+                var active = await connection.QuerySingleOrDefaultAsync<JobRecord>(Command($"SELECT {JobStore.Columns} FROM job WHERE type='reconciliation_run' AND state IN ('queued','running')", transaction: transaction, cancellationToken: transactionCancellationToken));
+                if (active is not null) return Results.Ok(new { jobId = active.Id, active.State });
+                var jobId = await JobStore.EnqueueAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value,
+                    "reconciliation_run", "{}", null, options.MaxAttempts, clock.GetUtcNow(), transactionCancellationToken);
+                return Results.Accepted($"/companies/{companyId}/jobs/{jobId}", new { jobId, state = "queued" });
+            }, cancellationToken)).RequireAuthorization(Policies.Accountant);
         return routes;
     }
 

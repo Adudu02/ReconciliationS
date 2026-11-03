@@ -23,13 +23,14 @@ public sealed partial class JobDispatcher(JobStore store, CompanyScope companySc
         var heartbeat = HeartbeatAsync(job, workerId, workCancellation, heartbeatCancellation.Token);
         try
         {
+            string? note = null;
             string? errorKind = null;
             string? reason = null;
             try
             {
                 var handler = handlers.SingleOrDefault(candidate => candidate.Type == job.Type)
                     ?? throw new InvalidDataException("Unsupported job type.");
-                await companyScope.ExecuteAsync(job.CompanyId, (connection, transaction, transactionCancellationToken) =>
+                note = await companyScope.ExecuteAsync(job.CompanyId, (connection, transaction, transactionCancellationToken) =>
                     handler.HandleAsync(job, connection, transaction, transactionCancellationToken), workCancellation.Token);
             }
             catch (OperationCanceledException) when (workCancellation.IsCancellationRequested) { return true; }
@@ -50,7 +51,7 @@ public sealed partial class JobDispatcher(JobStore store, CompanyScope companySc
             if (!workCancellation.IsCancellationRequested)
             {
                 var finished = await store.FinishAsync(job, workerId, errorKind, reason,
-                    errorKind == "transient" ? backoff.Delay(job.Attempts) : TimeSpan.Zero, cancellationToken);
+                    errorKind == "transient" ? backoff.Delay(job.Attempts) : TimeSpan.Zero, note, cancellationToken);
                 Finished(logger, job.Id, job.CompanyId, job.Type, errorKind ?? "succeeded", finished);
             }
             return true;

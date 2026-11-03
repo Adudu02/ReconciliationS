@@ -145,6 +145,7 @@ internal static class TenantIsolationChecks
             case "GET /companies/{companyId:guid}/members":
             case "GET /companies/{companyId:guid}/settings":
             case "POST /companies/{companyId:guid}/archive":
+            case "POST /companies/{companyId:guid}/reconciliation-runs":
             case "GET /companies/{companyId:guid}/banks":
             case "GET /companies/{companyId:guid}/imports/{uploadId:guid}":
             case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}":

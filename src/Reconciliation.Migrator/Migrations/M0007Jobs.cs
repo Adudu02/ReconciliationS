@@ -93,7 +93,7 @@ public sealed class M0007Jobs : Migration
         REVOKE ALL ON FUNCTION renew_job(uuid,text,integer,integer,timestamptz) FROM PUBLIC;
         GRANT EXECUTE ON FUNCTION renew_job(uuid,text,integer,integer,timestamptz) TO cfdi_app;
         CREATE FUNCTION finish_job(p_id uuid,p_worker text,p_attempt integer,p_error_kind text,p_error text,p_retry_at timestamptz,
-          p_now timestamptz DEFAULT clock_timestamp()) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+          p_now timestamptz DEFAULT clock_timestamp(),p_note text DEFAULT NULL) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
           SET search_path=pg_catalog,public,pg_temp AS $$
         DECLARE claimed public.job; next_state text;
         BEGIN
@@ -109,14 +109,15 @@ public sealed class M0007Jobs : Migration
             finished_at=p_now,error_kind=p_error_kind,error=p_error
             WHERE company_id=claimed.company_id AND job_id=claimed.id AND attempt_no=claimed.attempts;
           UPDATE public.job SET state=next_state,last_error=p_error,locked_by=NULL,locked_until=NULL,
+            payload=CASE WHEN next_state='succeeded' AND p_note IS NOT NULL THEN payload || jsonb_build_object('resultNote',p_note) ELSE payload END,
             run_after=CASE WHEN next_state='queued' THEN p_retry_at ELSE run_after END,
             finished_at=CASE WHEN next_state IN ('succeeded','failed') THEN p_now ELSE NULL END,
             progress_done=CASE WHEN next_state='succeeded' THEN progress_total ELSE progress_done END WHERE id=claimed.id;
           RETURN true;
         END $$;
-        ALTER FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz) OWNER TO cfdi_queue_owner;
-        REVOKE ALL ON FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz) FROM PUBLIC;
-        GRANT EXECUTE ON FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz) TO cfdi_app;
+        ALTER FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz,text) OWNER TO cfdi_queue_owner;
+        REVOKE ALL ON FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz,text) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz,text) TO cfdi_app;
         ALTER FUNCTION claim_next_job(text,integer,timestamptz) OWNER TO cfdi_queue_owner;
         REVOKE ALL ON FUNCTION claim_next_job(text,integer,timestamptz) FROM PUBLIC;
         GRANT EXECUTE ON FUNCTION claim_next_job(text,integer,timestamptz) TO cfdi_app;
@@ -144,7 +145,7 @@ public sealed class M0007Jobs : Migration
           RETURN NEW;
         END $$;
         DROP FUNCTION renew_job(uuid,text,integer,integer,timestamptz);
-        DROP FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz);
+        DROP FUNCTION finish_job(uuid,text,integer,text,text,timestamptz,timestamptz,text);
         DROP FUNCTION claim_next_job(text,integer,timestamptz);
         DROP TABLE job_attempt,job;
         REVOKE USAGE ON SCHEMA public FROM cfdi_queue_owner;
