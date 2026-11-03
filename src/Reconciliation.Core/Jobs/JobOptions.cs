@@ -23,6 +23,8 @@ public sealed class JobBackoff(JobOptions options, Func<int, int> jitter)
     public TimeSpan Delay(int attempt)
     {
         var seconds = (int)Math.Min(options.BackoffCapSeconds, options.BackoffBaseSeconds * Math.Pow(2, Math.Clamp(attempt - 1, 0, 30)));
-        return TimeSpan.FromSeconds(Math.Min(options.BackoffCapSeconds, seconds + jitter(Math.Max(1, seconds / 5 + 1))));
+        var milliseconds = seconds * 1000;
+        return TimeSpan.FromMilliseconds(Math.Min(options.BackoffCapSeconds * 1000,
+            milliseconds + jitter(milliseconds / 5 + 1)));
     }
 }
