@@ -88,6 +88,9 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         Assert.Equal(TimeSpan.FromSeconds(2), backoff.Delay(1));
         Assert.Equal(TimeSpan.FromSeconds(4), backoff.Delay(2));
         Assert.Equal(TimeSpan.FromSeconds(5), backoff.Delay(10));
+        var maximumJitter = new JobBackoff(options, upperBound => upperBound - 1);
+        Assert.Equal(TimeSpan.FromMilliseconds(2400), maximumJitter.Delay(1));
+        Assert.Equal(TimeSpan.FromSeconds(5), maximumJitter.Delay(10));
         var first = (await store.ClaimAsync("synthetic-first", 60, TestContext.Current.CancellationToken))!;
         Assert.True(await store.FinishAsync(first, "synthetic-first", "transient", "Synthetic timeout", backoff.Delay(first.Attempts), TestContext.Current.CancellationToken));
         Assert.Null(await store.ClaimAsync("synthetic-too-early", 60, TestContext.Current.CancellationToken));
