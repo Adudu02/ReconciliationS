@@ -167,3 +167,38 @@ Imports are synchronous until group 4. No DELETE endpoint exists for imported re
 ## Decisions
 
 Architecture decision records are in `docs/adr/`.
+
+## Background jobs and asynchronous imports
+
+`POST /companies/{companyId}/imports/cfdi` and `/imports/bank-statement` stream and size-check the multipart request,
+store queued files and their job in one tenant transaction, and return **202** with `{jobId, uploadId}` and a Location
+header. They do not wait for XML/CSV parsing. Poll `GET /companies/{companyId}/jobs/{jobId}` for
+`state` (`queued`, `running`, `succeeded`, `failed`), `progressDone`, `progressTotal` and `history`. Then read the existing
+`GET /companies/{companyId}/imports/{uploadId}` report: one result per file, including queued/processing and final
+imported/already_imported/rejected statuses. One hostile, oversized or invalid file is rejected independently; aggregate
+upload/count limits still reject the entire request before anything is enqueued. Pending bytes are never downloadable.
+
+Viewers can read jobs and reports. Accountants and administrators can import and `POST
+/companies/{companyId}/reconciliation-runs`. That route returns a new job with 202, or the existing queued/running
+job with 200. Only administrators can `GET /companies/{companyId}/jobs?status=failed` or `POST
+/companies/{companyId}/jobs/{jobId}/retry`; retry is audited and retains history/input. Archived companies refuse
+these writes. The reconciliation/status handlers explicitly record `not implemented until group 6` / group 7 and
+succeed without matching or calling SAT; their registered presence is not a claim those later features exist.
+
+The worker uses PostgreSQL SKIP LOCKED claims, heartbeat leases and capped exponential backoff with jitter. Each
+handler uses CompanyScope; cfdi_app still cannot bypass RLS. The queue-only NOLOGIN owner and SECURITY DEFINER
+functions are explained in [ADR-005](docs/adr/ADR-005-postgresql-job-queue.md), along with the conservative
+100 jobs/minute review budget and outbox migration path. Expired claims consume attempts; failed jobs retain queued
+pending bytes until an administrator reruns them successfully. There is no cleanup/delete path. Migration Down refuses
+to discard pending queued/processing input; finish or rerun that input first.
+
+Configuration section `Jobs` uses `Jobs__PollIntervalMilliseconds=500`, `Jobs__Concurrency=2`, `Jobs__LeaseSeconds=60`,
+`Jobs__MaxAttempts=5`, `Jobs__BackoffBaseSeconds=2`, `Jobs__BackoffCapSeconds=300`. Invalid bounds fail startup.
+Compose maps the corresponding `JOBS_*` variables from `.env.example`; `JOBS_MAX_ATTEMPTS` also configures API enqueue.
+Structured worker logs include jobId, companyId and type. Health remains on port 3001 inside Compose.
+
+For a manual recovery demonstration, upload synthetic input, observe the job as running, execute
+`docker compose kill worker`, then `docker compose up -d worker`. After the lease expires a replacement claims it;
+verify a succeeded job with lease_expired history and one set of import effects. The controlled demo and observed
+counts are recorded in both PR-7 build logs. Use the SDK container command above for all development checks when no
+host SDK is installed.

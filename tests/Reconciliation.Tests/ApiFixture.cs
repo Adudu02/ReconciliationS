@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Reconciliation.Core.Jobs;
 using ApiProgram = api::Program;
 
 namespace Reconciliation.Tests;
@@ -86,6 +87,30 @@ public sealed class ApiFixture : IAsyncLifetime
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", json.GetProperty("accessToken").GetString());
         if (companyId is not null) client.DefaultRequestHeaders.Add("X-Company-Id", companyId.ToString());
         return client;
+    }
+
+    public async Task<JsonElement> CompleteImportAsync(HttpClient client, HttpResponseMessage accepted, IServiceProvider? workerServices = null)
+    {
+        Assert.Equal(System.Net.HttpStatusCode.Accepted, accepted.StatusCode);
+        var receipt = await accepted.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        var jobId = receipt.GetProperty("jobId").GetGuid();
+        var uploadId = receipt.GetProperty("uploadId").GetGuid();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        var dispatcher = (workerServices ?? App.Services).GetRequiredService<JobDispatcher>();
+        while (true)
+        {
+            using var status = await client.GetAsync($"/companies/{client.DefaultRequestHeaders.GetValues("X-Company-Id").Single()}/jobs/{jobId}", deadline.Token);
+            status.EnsureSuccessStatusCode();
+            var job = await status.Content.ReadFromJsonAsync<JsonElement>(deadline.Token);
+            var state = job.GetProperty("state").GetString();
+            Assert.NotEqual("failed", state);
+            if (state == "succeeded") break;
+            if (!await dispatcher.RunOneAsync("synthetic-http-worker", deadline.Token)) await Task.Yield();
+        }
+        using var report = await client.GetAsync($"/companies/{client.DefaultRequestHeaders.GetValues("X-Company-Id").Single()}/imports/{uploadId}", deadline.Token);
+        report.EnsureSuccessStatusCode();
+        return await report.Content.ReadFromJsonAsync<JsonElement>(deadline.Token);
     }
 
     public async ValueTask DisposeAsync()

@@ -76,18 +76,18 @@ public sealed class SessionDatabaseTests(ApiFixture fixture)
     {
         await using var database = new PostgresFixture();
         await database.InitializeAsync();
-        Assert.Equal(6, await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
+        Assert.True(6 <= await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
         using var services = new ServiceCollection().AddFluentMigratorCore()
             .ConfigureRunner(runner => runner.AddPostgres().WithGlobalConnectionString(database.OwnerConnectionString)
                 .ScanIn(typeof(M0001CompanyUserMembership).Assembly).For.Migrations())
             .AddLogging().BuildServiceProvider(validateScopes: false);
         using var scope = services.CreateScope();
         var migrations = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-        migrations.Rollback(1);
+        migrations.MigrateDown(5);
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('auth_session') IS NOT NULL"));
         Assert.False(await database.ScalarAsync<bool>("SELECT has_column_privilege('cfdi_app','app_user','password_hash','UPDATE')"));
         migrations.MigrateUp();
         Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('auth_session') IS NOT NULL"));
-        Assert.Equal(6, await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
+        Assert.True(6 <= await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
     }
 }

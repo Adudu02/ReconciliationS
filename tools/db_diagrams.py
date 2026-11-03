@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the AS-BUILT database diagrams (migrations M0001 to M0006) as SVG and PNG.
+"""Draw the AS-BUILT database diagrams (migrations M0001 to M0007) as SVG and PNG.
 
 Writes into docs/diagrams/database/:
   database-erd-implemented[-es]      tables, columns and foreign keys, grouped by area
@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / 'docs/diagrams/database'
 
 ES = {
-    'As-built data model (migrations M0001 to M0006)': 'Modelo de datos construido (migraciones M0001 a M0006)',
+    'As-built data model (migrations M0001 to M0007)': 'Modelo de datos construido (migraciones M0001 a M0007)',
     'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company':
         'PK clave primaria · FK clave foránea · UK único · RLS = seguridad a nivel de fila forzada por empresa',
     'Tenancy and access': 'Multiempresa y acceso',
@@ -41,8 +41,8 @@ ES = {
     'hash kept, bytes not kept': 'se conserva el hash, no los bytes',
     'UUID already imported': 'UUID ya importado',
     'original_file_id points to the first file': 'original_file_id apunta al primer archivo',
-    'Once committed: original, sha256 and retention cannot change or shrink (trigger preserve_import_original).':
-        'Ya confirmado: original, sha256 y retención no cambian ni se acortan (trigger preserve_import_original).',
+    'Once accepted: original, sha256 and retention cannot change or shrink (trigger preserve_import_original).':
+        'Ya aceptado: original, sha256 y retención no cambian ni se acortan (trigger preserve_import_original).',
     'No DELETE privilege and no DELETE route exist.': 'No existe privilegio DELETE ni ruta DELETE.',
     'login': 'login',
     'revoked_at is NULL': 'revoked_at es NULL',
@@ -72,7 +72,25 @@ ES = {
     'raw RLS note': 'RLS',
 }
 
+ES.update({
+    'jobs': 'trabajos', 'Jobs (forced RLS; cross-company claims through queue-only definer)':
+        'Trabajos (RLS forzado; claim global por dueño restringido de cola)',
+    'Durable jobs': 'Trabajos duraderos',
+    'queued -> processing': 'queued -> processing',
+    'pending_original; processing is transaction-local': 'pending_original; processing vive dentro de la transacción',
+    'claim + attempt + lease': 'claim + intento + lease', 'complete': 'completar',
+    'permanent or exhausted': 'permanente o agotado', 'retry/backoff or expired lease': 'reintento/backoff o lease vencido',
+    'administrator retry (audited)': 'reintento de administrador (auditado)',
+    'claim/renew/finish through restricted definer': 'claim/renew/finish por dueño restringido',
+    'attempt writes through restricted definer only': 'intentos escritos solo por dueño restringido',
+    'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.':
+        'cfdi_queue_owner: NOLOGIN BYPASSRLS, permisos solo en job/job_attempt.',
+    'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.':
+        'cfdi_app: NOBYPASSRLS; funciones fijadas, sin EXECUTE para PUBLIC.',
+})
+
 AREAS = {
+    'jobs': ('#fff7ed', '#c2410c'),
     'tenancy': ('#dbeafe', '#1d4ed8'),
     'sessions': ('#ede9fe', '#6d28d9'),
     'ingestion': ('#dcfce7', '#15803d'),
@@ -80,6 +98,16 @@ AREAS = {
 
 # name: (area, rls, [(column, type, flags)])
 TABLES = {
+    'job': ('jobs', True, [
+        ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('type', 'text (4 types)', ''),
+        ('state', 'text (4 states)', ''), ('payload', 'jsonb', ''), ('input_ref', 'uuid', 'upload ref'),
+        ('attempts', 'int', ''), ('max_attempts', 'int', ''), ('run_after', 'timestamptz', ''), ('locked_by', 'text', ''),
+        ('locked_until', 'timestamptz', ''), ('progress_done', 'int', ''), ('progress_total', 'int', ''), ('last_error', 'text', ''),
+        ('created_by', 'uuid', 'FK'), ('created_at', 'timestamptz', ''), ('finished_at', 'timestamptz', '')]),
+    'job_attempt': ('jobs', True, [
+        ('company_id', 'uuid', 'PK FK'), ('job_id', 'uuid', 'PK FK'), ('attempt_no', 'int', 'PK'),
+        ('started_at', 'timestamptz', ''), ('finished_at', 'timestamptz', ''), ('outcome', 'text', ''),
+        ('error_kind', 'transient/permanent', ''), ('error', 'text', '')]),
     'company': ('tenancy', True, [
         ('id', 'uuid', 'PK'), ('rfc', 'text', 'CHECK'), ('name', 'text', ''), ('date_tolerance_days', 'int (0-366)', ''),
         ('amount_tolerance', 'numeric(18,2)', ''), ('complement_next_biz_day', 'boolean', ''),
@@ -110,7 +138,7 @@ TABLES = {
         ('classification', 'text', '')]),
     'import_file': ('ingestion', True, [
         ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('upload_id', 'uuid', ''), ('filename', 'text', ''),
-        ('kind', 'text', ''), ('status', 'text', ''), ('reason', 'text', ''), ('original', 'bytea', ''),
+        ('kind', 'text', ''), ('file_index', 'int', ''), ('status', 'text', ''), ('reason', 'text', ''), ('pending_original', 'bytea', 'transient'), ('original', 'bytea', ''),
         ('sha256', 'bytea', ''), ('original_file_id', 'uuid', 'FK self'), ('retained_until', 'timestamptz', ''),
         ('imported_movements', 'int', ''), ('duplicate_movements', 'int', ''), ('created_at', 'timestamptz', '')]),
     'cfdi': ('ingestion', True, [
@@ -134,6 +162,7 @@ TABLES = {
 
 # privileges of role cfdi_app, and immutability rules (from the migrations)
 GRANTS = {
+    'job': 'S I U(state, max_attempts, run_after, ...)', 'job_attempt': 'S',
     'company': 'S I U', 'membership': 'S I U', 'app_user': 'S I U(password_hash)', 'audit_entry': 'S I',
     'auth_session': 'S I U(last_used_at, revoked_at, revoked_reason)', 'refresh_token': 'S I U(rotated_at, replaced_by)',
     'auth_event': 'S I', 'bank_account': 'S I', 'bank_movement': 'S I',
@@ -141,6 +170,8 @@ GRANTS = {
     'cfdi_relation': 'S I', 'cfdi_payment': 'S I', 'cfdi_payment_doc': 'S I U(inconsistent_balance)',
 }
 NOTES = {
+    'job': 'claim/renew/finish through restricted definer',
+    'job_attempt': 'attempt writes through restricted definer only',
     'company': 'rfc cannot change (trigger company_rfc_immutable)',
     'import_file': 'original, sha256 and retention frozen (trigger)',
     'auth_event': 'append-only', 'audit_entry': 'append-only',
@@ -263,6 +294,7 @@ def zone(x, y, w, h, area, label, ctx):
 def erd(ctx):
     c = [30, 370, 710, 1050, 1390]
     pos = {
+        'job': (c[0], 1320), 'job_attempt': (c[1], 1320),
         'company': (c[0], 120), 'membership': (c[1], 120), 'app_user': (c[2], 120),
         'audit_entry': (c[1], 330),
         'auth_session': (c[3], 120), 'refresh_token': (c[4], 120), 'auth_event': (c[3], 360),
@@ -270,11 +302,12 @@ def erd(ctx):
         'cfdi_relation': (c[4], 650), 'cfdi_payment': (c[3], 1010), 'cfdi_payment_doc': (c[4], 1010),
     }
     lay = Layout(pos)
-    width, height = 1700, 1270
-    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0006)',
+    width, height = 1700, 1720
+    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0007)',
                    'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company', ctx)
     out += zone(18, 78, 1002, 480, 'tenancy', 'Tenancy and access', ctx)
     out += zone(1028, 78, 662, 480, 'sessions', 'Sessions (per user, outside company RLS)', ctx)
+    out += zone(18, 1280, 1672, 420, 'jobs', 'Jobs (forced RLS; cross-company claims through queue-only definer)', ctx)
     out += zone(18, 600, 1672, 650, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
     out += link(lay, 'company', 'id', 'right', 'membership', 'company_id', 'left')
     out += link(lay, 'app_user', 'id', 'left', 'membership', 'user_id', 'right')
@@ -290,6 +323,10 @@ def erd(ctx):
     out += link(lay, 'cfdi', 'id', 'right', 'cfdi_relation', 'cfdi_id', 'left')
     out += link(lay, 'cfdi', 'id', 'bottom', 'cfdi_payment', 'cfdi_id', 'top')
     out += link(lay, 'cfdi_payment', 'id', 'right', 'cfdi_payment_doc', 'payment_id', 'left')
+    out += link(lay, 'job', 'id', 'right', 'job_attempt', 'job_id', 'left')
+    for y, text in [(1360, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
+                    (1390, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
+        out.append(f'<text x="730" y="{y}" font-size="12" fill="#222">{esc(ctx.tr(text))}</text>')
     for name in TABLES:
         out += draw_table(name, lay, ctx)
     note = ctx.tr('PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company')
@@ -324,15 +361,15 @@ def arrow(points, label_lines, lx, ly, ctx, color='#475569', anchor='start'):
 
 
 def states(ctx):
-    width, height = 1300, 940
-    out = svg_open(width, height, 'Status and lifecycle rules of the data', 'import_file.status · auth_session / refresh_token', ctx)
+    width, height = 1300, 1270
+    out = svg_open(width, height, 'Status and lifecycle rules of the data', 'import_file.status · auth_session / refresh_token · job.state', ctx)
     out.append('<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">'
                '<path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker></defs>')
     # panel 1
     out += zone(18, 78, 1264, 400, 'ingestion', 'import_file.status', ctx)
     out.append('<circle cx="70" cy="250" r="9" fill="#111"/>')
     out.append(f'<text x="70" y="278" text-anchor="middle" font-size="11" fill="#222">{esc(ctx.tr("upload received"))}</text>')
-    out += node(170, 200, 300, 100, 'importing', 'transient: lives only inside the transaction, never committed', '#fff7e6', '#c77c00', ctx, dashed=True)
+    out += node(170, 200, 300, 100, 'queued -> processing', 'pending_original; processing is transaction-local', '#fff7e6', '#c77c00', ctx, dashed=True)
     out += arrow([(80, 250), (170, 250)], [], 0, 0, ctx)
     out += node(900, 110, 230, 66, 'imported', '', '#dcfce7', '#15803d', ctx)
     out += node(900, 215, 230, 66, 'rejected', '', '#fee2e2', '#b91c1c', ctx)
@@ -340,7 +377,7 @@ def states(ctx):
     out += arrow([(470, 225), (600, 225), (600, 143), (900, 143)], ['valid CFDI or CSV', 'original + sha256 stored, retained_until set'], 610, 118, ctx)
     out += arrow([(470, 250), (900, 250)], ['invalid, hostile or not the company\'s', 'hash kept, bytes not kept'], 610, 228, ctx)
     out += arrow([(470, 275), (600, 275), (600, 353), (900, 353)], ['UUID already imported', 'original_file_id points to the first file'], 610, 328, ctx)
-    out.append(f'<text x="36" y="420" font-size="12" fill="#222">{esc(ctx.tr("Once committed: original, sha256 and retention cannot change or shrink (trigger preserve_import_original)."))}</text>')
+    out.append(f'<text x="36" y="420" font-size="12" fill="#222">{esc(ctx.tr("Once accepted: original, sha256 and retention cannot change or shrink (trigger preserve_import_original)."))}</text>')
     out.append(f'<text x="36" y="440" font-size="12" fill="#222">{esc(ctx.tr("No DELETE privilege and no DELETE route exist."))}</text>')
     # panel 2
     out += zone(18, 500, 1264, 420, 'sessions', 'Session and refresh token', ctx)
@@ -359,13 +396,23 @@ def states(ctx):
     out.append(f'<text x="700" y="878" font-size="11" fill="#222">{esc(ctx.tr("presented again within the grace window (10 s): 409, nothing changes"))}</text>')
     out += arrow([(825, 780), (825, 672)], [], 0, 0, ctx, color='#b91c1c')
     out.append(f'<text x="837" y="735" font-size="11" fill="#b91c1c">{esc(ctx.tr("presented again after the grace window: session revoked"))}</text>')
+    out += zone(18, 940, 1264, 310, 'jobs', 'Durable jobs', ctx)
+    out += node(80, 1030, 200, 64, 'queued', '', '#fff7ed', '#c2410c', ctx)
+    out += node(430, 1030, 200, 64, 'running', '', '#fff7ed', '#c2410c', ctx)
+    out += node(960, 980, 200, 64, 'succeeded', '', '#dcfce7', '#15803d', ctx)
+    out += node(960, 1130, 200, 64, 'failed', '', '#fee2e2', '#b91c1c', ctx)
+    out += arrow([(280, 1050), (430, 1050)], ['claim + attempt + lease'], 290, 1038, ctx)
+    out += arrow([(630, 1050), (790, 1050), (790, 1012), (960, 1012)], ['complete'], 800, 1002, ctx)
+    out += arrow([(630, 1072), (790, 1072), (790, 1162), (960, 1162)], ['permanent or exhausted'], 800, 1150, ctx)
+    out += arrow([(530, 1094), (530, 1130), (180, 1130), (180, 1094)], ['retry/backoff or expired lease'], 225, 1120, ctx)
+    out += arrow([(1060, 1194), (1060, 1225), (100, 1225), (100, 1094)], ['administrator retry (audited)'], 500, 1214, ctx)
     out.append('</svg>')
     return width, height, out
 
 
 def security(ctx):
     order = ['company', 'membership', 'app_user', 'audit_entry', 'auth_session', 'refresh_token', 'auth_event',
-             'import_file', 'cfdi', 'cfdi_relation', 'cfdi_payment', 'cfdi_payment_doc', 'bank_account', 'bank_movement']
+             'import_file', 'cfdi', 'cfdi_relation', 'cfdi_payment', 'cfdi_payment_doc', 'bank_account', 'bank_movement', 'job', 'job_attempt']
     cols = [('Table', 180), ('Area', 110), ('Forced RLS', 100), ('Privileges of role cfdi_app', 430), ('Immutability / triggers', 380)]
     width = sum(w for _, w in cols) + 40
     row_h = 30

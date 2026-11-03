@@ -1,16 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="940" viewBox="0 0 1300 940" font-family="Liberation Sans, Arial, sans-serif">
-<rect width="1300" height="940" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1270" viewBox="0 0 1300 1270" font-family="Liberation Sans, Arial, sans-serif">
+<rect width="1300" height="1270" fill="#fff"/>
 <text x="650.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Reglas de estado y ciclo de vida de los datos</text>
-<text x="650.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">import_file.status · auth_session / refresh_token</text>
+<text x="650.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">import_file.status · auth_session / refresh_token · job.state</text>
 <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker></defs>
 <rect x="18" y="78" width="1264" height="400" rx="10" fill="#dcfce7" fill-opacity="0.35" stroke="#15803d" stroke-dasharray="6 4"/>
 <text x="30" y="98" font-size="13.5" font-weight="bold" fill="#15803d">import_file.status</text>
 <circle cx="70" cy="250" r="9" fill="#111"/>
 <text x="70" y="278" text-anchor="middle" font-size="11" fill="#222">archivo recibido</text>
 <rect x="170" y="200" width="300" height="100" rx="10" fill="#fff7e6" stroke="#c77c00" stroke-width="2" stroke-dasharray="6 4"/>
-<text x="320.0" y="222" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">importing</text>
-<text x="320.0" y="240" text-anchor="middle" font-size="11" fill="#444">transitorio: vive solo dentro de la transacción,</text>
-<text x="320.0" y="254" text-anchor="middle" font-size="11" fill="#444">nunca se confirma</text>
+<text x="320.0" y="222" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">queued -&gt; processing</text>
+<text x="320.0" y="240" text-anchor="middle" font-size="11" fill="#444">pending_original; processing vive dentro de la</text>
+<text x="320.0" y="254" text-anchor="middle" font-size="11" fill="#444">transacción</text>
 <path d="M80 250 L170 250" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <rect x="900" y="110" width="230" height="66" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
 <text x="1015.0" y="148.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">imported</text>
@@ -27,7 +27,7 @@
 <path d="M470 275 L600 275 L600 353 L900 353" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="610" y="328" font-size="11" fill="#222" text-anchor="start">UUID ya importado</text>
 <text x="610" y="342" font-size="11" fill="#222" text-anchor="start">original_file_id apunta al primer archivo</text>
-<text x="36" y="420" font-size="12" fill="#222">Ya confirmado: original, sha256 y retención no cambian ni se acortan (trigger preserve_import_original).</text>
+<text x="36" y="420" font-size="12" fill="#222">Ya aceptado: original, sha256 y retención no cambian ni se acortan (trigger preserve_import_original).</text>
 <text x="36" y="440" font-size="12" fill="#222">No existe privilegio DELETE ni ruta DELETE.</text>
 <rect x="18" y="500" width="1264" height="420" rx="10" fill="#ede9fe" fill-opacity="0.35" stroke="#6d28d9" stroke-dasharray="6 4"/>
 <text x="30" y="520" font-size="13.5" font-weight="bold" fill="#6d28d9">Sesión y token de refresco</text>
@@ -58,4 +58,24 @@
 <text x="700" y="878" font-size="11" fill="#222">presentado de nuevo dentro de la ventana de gracia (10 s): 409, nada cambia</text>
 <path d="M825 780 L825 672" fill="none" stroke="#b91c1c" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="837" y="735" font-size="11" fill="#b91c1c">presentado de nuevo después de la ventana: se revoca la sesión</text>
+<rect x="18" y="940" width="1264" height="310" rx="10" fill="#fff7ed" fill-opacity="0.35" stroke="#c2410c" stroke-dasharray="6 4"/>
+<text x="30" y="960" font-size="13.5" font-weight="bold" fill="#c2410c">Trabajos duraderos</text>
+<rect x="80" y="1030" width="200" height="64" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"/>
+<text x="180.0" y="1067.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">queued</text>
+<rect x="430" y="1030" width="200" height="64" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="2"/>
+<text x="530.0" y="1067.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">running</text>
+<rect x="960" y="980" width="200" height="64" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
+<text x="1060.0" y="1017.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">succeeded</text>
+<rect x="960" y="1130" width="200" height="64" rx="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="2"/>
+<text x="1060.0" y="1167.0" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">failed</text>
+<path d="M280 1050 L430 1050" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="290" y="1038" font-size="11" fill="#222" text-anchor="start">claim + intento + lease</text>
+<path d="M630 1050 L790 1050 L790 1012 L960 1012" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="800" y="1002" font-size="11" fill="#222" text-anchor="start">completar</text>
+<path d="M630 1072 L790 1072 L790 1162 L960 1162" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="800" y="1150" font-size="11" fill="#222" text-anchor="start">permanente o agotado</text>
+<path d="M530 1094 L530 1130 L180 1130 L180 1094" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="225" y="1120" font-size="11" fill="#222" text-anchor="start">reintento/backoff o lease vencido</text>
+<path d="M1060 1194 L1060 1225 L100 1225 L100 1094" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="500" y="1214" font-size="11" fill="#222" text-anchor="start">reintento de administrador (auditado)</text>
 </svg>

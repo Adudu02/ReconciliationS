@@ -16,7 +16,7 @@ namespace Reconciliation.Tests;
 
 internal static class TenantIsolationChecks
 {
-    private sealed record Resources(Guid InvoiceId, Guid UploadId, Guid FileId);
+    private sealed record Resources(Guid InvoiceId, Guid UploadId, Guid FileId, Guid JobId);
     public static async Task<IEnumerable<string>> TenantTablesAsync(NpgsqlConnection owner) =>
         await owner.QueryAsync<string>(new CommandDefinition("""
             SELECT DISTINCT table_name FROM information_schema.columns
@@ -26,6 +26,7 @@ internal static class TenantIsolationChecks
 
     public static async Task VerifyTablesAsync(NpgsqlConnection owner)
     {
+        await JobsDatabaseTests.AssertQueueRoleBoundaryAsync(owner);
         foreach (var table in await TenantTablesAsync(owner))
         {
             var state = await owner.QuerySingleAsync<(bool Enabled, bool Forced, long Policies)>(new CommandDefinition("""
@@ -51,8 +52,8 @@ internal static class TenantIsolationChecks
         using var platform = await fixture.LoginAsync(operatorEmail);
         await using var owner = await fixture.Database.OpenOwnerAsync();
         var importer = fixture.App.Services.GetRequiredService<CfdiImporter>();
-        var resourceA = await SeedResourcesAsync(importer, a, user.Id);
-        var resourceB = await SeedResourcesAsync(importer, b, other.Id);
+        var resourceA = await SeedResourcesAsync(importer, owner, a, user.Id);
+        var resourceB = await SeedResourcesAsync(importer, owner, b, other.Id);
         var before = await SnapshotAsync(owner, b);
         var source = fixture.App.Services.GetRequiredService<EndpointDataSource>();
         var policies = fixture.App.Services.GetRequiredService<IAuthorizationPolicyProvider>();
@@ -92,7 +93,7 @@ internal static class TenantIsolationChecks
                 }
                 client.DefaultRequestHeaders.Remove("X-Company-Id");
                 client.DefaultRequestHeaders.Add("X-Company-Id", a.ToString());
-                if (route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal))
+                if (route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal))
                 {
                     using var foreignResource = Request(method, route, a, other.Id, resourceB);
                     using var hidden = await client.SendAsync(foreignResource, TestContext.Current.CancellationToken);
@@ -106,10 +107,11 @@ internal static class TenantIsolationChecks
         Assert.Contains("POST /companies/{companyId:guid}/members", exercised);
     }
 
-    private static async Task<Resources> SeedResourcesAsync(CfdiImporter importer, Guid company, Guid actor)
+    private static async Task<Resources> SeedResourcesAsync(CfdiImporter importer, NpgsqlConnection owner, Guid company, Guid actor)
     {
         var report = await importer.ImportAsync(company, actor, [UploadedFile.FromBytes("synthetic.xml", SyntheticCfdi.Invoice())], TestContext.Current.CancellationToken);
-        return new Resources(report.Files[0].CfdiId!.Value, report.UploadId, report.Files[0].FileId);
+        var jobId = await owner.QuerySingleAsync<Guid>(new CommandDefinition("INSERT INTO job(company_id,type,state,created_by) VALUES(@company,'status_check','failed',@actor) RETURNING id", new { company, actor }, cancellationToken: TestContext.Current.CancellationToken));
+        return new Resources(report.Files[0].CfdiId!.Value, report.UploadId, report.Files[0].FileId, jobId);
     }
 
     private static async Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company)
@@ -132,14 +134,18 @@ internal static class TenantIsolationChecks
         var request = new HttpRequestMessage(new HttpMethod(method), route.Replace("{companyId:guid}", company.ToString(), StringComparison.Ordinal)
             .Replace("{invoiceId:guid}", resources.InvoiceId.ToString(), StringComparison.Ordinal)
             .Replace("{uploadId:guid}", resources.UploadId.ToString(), StringComparison.Ordinal)
-            .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal));
+            .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal)
+            .Replace("{jobId:guid}", resources.JobId.ToString(), StringComparison.Ordinal));
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
+            case "GET /companies/{companyId:guid}/jobs/{jobId:guid}":
+            case "POST /companies/{companyId:guid}/jobs/{jobId:guid}/retry":
             case "GET /companies/{companyId:guid}":
             case "GET /companies/{companyId:guid}/members":
             case "GET /companies/{companyId:guid}/settings":
             case "POST /companies/{companyId:guid}/archive":
+            case "POST /companies/{companyId:guid}/reconciliation-runs":
             case "GET /companies/{companyId:guid}/banks":
             case "GET /companies/{companyId:guid}/imports/{uploadId:guid}":
             case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}":
@@ -156,6 +162,9 @@ internal static class TenantIsolationChecks
                     { new StringContent("reference"), "bank" }, { new StringContent("Synthetic-1234"), "accountReference" },
                     { new ByteArrayContent(Encoding.UTF8.GetBytes("fecha,concepto,abono,cargo,saldo\n2026-10-10,SYNTHETIC,1,0,1\n")), "files", "synthetic.csv" }
                 };
+                break;
+            case "GET /companies/{companyId:guid}/jobs":
+                request.RequestUri = new Uri(request.RequestUri + "?status=failed", UriKind.Relative);
                 break;
             case "POST /companies":
                 request.Content = JsonContent.Create(new { rfc = "AAA010101AAA", name = "Synthetic isolated", adminEmail = $"isolation-admin-{Guid.NewGuid():N}@example.invalid", adminPassword = ApiFixture.Password });

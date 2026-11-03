@@ -32,8 +32,8 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
         hostile.Headers.TryAddWithoutValidation("Content-Disposition", "form-data; name=\"files\"; filename*=UTF-8''" + encodedName);
         content.Add(hostile);
         using var response = await client.PostAsync($"/companies/{company}/imports/cfdi", content, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var report = await response.Content.ReadFromJsonAsync<ImportReport>(TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var report = (await fixture.CompleteImportAsync(client, response)).Deserialize<ImportReport>(JsonSerializerOptions.Web);
         Assert.Equal(2, report!.Files.Count);
         Assert.All(report.Files, file => Assert.Equal("imported", file.Status));
         Assert.DoesNotContain(report.Files[1].Name, char.IsControl);
@@ -41,7 +41,7 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
     }
 
     [Fact]
-    public async Task Mid_upload_database_failure_returns_upload_id_for_already_committed_files()
+    public async Task Enqueue_database_failure_returns_upload_id_and_rolls_back_all_files_and_job()
     {
         var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, company);
@@ -59,9 +59,9 @@ public sealed class ReviewHardeningTests(ApiFixture fixture)
             var error = await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
             var uploadId = error.GetProperty("uploadId").GetGuid();
             using var report = await client.GetAsync($"/companies/{company}/imports/{uploadId}", TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, report.StatusCode);
-            var stored = await report.Content.ReadFromJsonAsync<ImportReport>(TestContext.Current.CancellationToken);
-            Assert.Single(stored!.Files);
+            Assert.Equal(HttpStatusCode.NotFound, report.StatusCode);
+            Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM import_file WHERE upload_id=@uploadId", new { uploadId }));
+            Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM job WHERE input_ref=@uploadId", new { uploadId }));
             Assert.DoesNotContain("PostgresException", error.GetRawText(), StringComparison.Ordinal);
         }
         finally

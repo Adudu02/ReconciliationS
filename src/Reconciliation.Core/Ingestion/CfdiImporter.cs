@@ -11,7 +11,11 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
 {
     private sealed record ParsedUpload(UploadedFile File, ParsedCfdi? Cfdi, string? Error);
     private sealed record StoredCfdi(Guid Id, Guid ImportFileId);
-    public async Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default)
+    public Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, IReadOnlyList<UploadedFile> files, CancellationToken cancellationToken = default) =>
+        ImportAsync(companyId, actorId, files, null, null, cancellationToken);
+
+    public async Task<ImportReport> ImportAsync(Guid companyId, Guid actorId, IReadOnlyList<UploadedFile> files,
+        Guid? queuedUploadId, Func<int, Task>? progress, CancellationToken cancellationToken)
     {
         options.EnsureWithinLimits(files);
         var companyRfc = await companyRfcs.GetOrCreateAsync("company-rfc:" + companyId, async entry =>
@@ -20,7 +24,7 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
             return await companyScope.ExecuteAsync(companyId, (connection, transaction, transactionCancellationToken) =>
                 connection.QuerySingleAsync<string>(Command("SELECT rfc FROM company", transaction: transaction, cancellationToken: transactionCancellationToken)), cancellationToken);
         });
-        var uploadId = Guid.NewGuid();
+        var uploadId = queuedUploadId ?? Guid.NewGuid();
         var parsed = FlagBrokenInstallmentChains(ParseUploads(files, companyRfc));
         var fileOutcomes = new List<FileImportOutcome>();
         try
@@ -28,6 +32,7 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
             foreach (var upload in parsed)
             {
                 fileOutcomes.Add(await PersistCfdiAsync(companyId, actorId, uploadId, companyRfc, upload, cancellationToken));
+                if (progress is not null) await progress(fileOutcomes.Count);
             }
         }
         catch (Exception error) when (error is NpgsqlException or CompanyReadOnlyException)
@@ -88,6 +93,8 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
     private Task<FileImportOutcome> PersistCfdiAsync(Guid companyId, Guid actorId, Guid uploadId, string? companyRfc, ParsedUpload upload, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
+            var completed = await ImportFileStore.CompletedAsync(connection, transaction, upload.File, transactionCancellationToken);
+            if (completed is not null) return completed;
             var rejectionReason = upload.Error;
             var parsedCfdi = upload.Cfdi;
             var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
@@ -166,7 +173,7 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
     {
         var alreadyStored = await connection.QuerySingleAsync<StoredCfdi>(Command(
             "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid=@Uuid", parsedCfdi, transaction, cancellationToken: cancellationToken));
-        await connection.ExecuteAsync(Command("UPDATE import_file SET status='already_imported', reason=NULL, original_file_id=@ImportFileId WHERE id=@fileId",
+        await connection.ExecuteAsync(Command("UPDATE import_file SET status='already_imported', reason=NULL, pending_original=NULL, original_file_id=@ImportFileId WHERE id=@fileId",
             new { alreadyStored.ImportFileId, fileId }, transaction, cancellationToken: cancellationToken));
         await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + ImportStatus.AlreadyImported.ToDatabaseValue(), fileId, cancellationToken);
         return new FileImportOutcome(fileId, file.Name, ImportStatus.AlreadyImported.ToDatabaseValue(), null, alreadyStored.Id);

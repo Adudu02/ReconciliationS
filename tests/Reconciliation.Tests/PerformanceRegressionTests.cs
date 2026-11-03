@@ -29,7 +29,7 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
         Assert.Equal(10_001, report.Files[0].ImportedMovements);
         Assert.Equal(1, report.Files[0].DuplicateMovements);
         Assert.InRange(probe.MovementInserts, 1, 3);
-        Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM import_file WHERE company_id=@company AND status='importing'", new { company }));
+        Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM import_file WHERE company_id=@company AND status='processing'", new { company }));
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
         await using var transaction = await owner.BeginTransactionAsync(TestContext.Current.CancellationToken);
         var pending = await owner.QuerySingleAsync<Guid>(new CommandDefinition("""
             INSERT INTO import_file(company_id,upload_id,filename,kind,status,sha256)
-            VALUES(@company,gen_random_uuid(),'pending.csv','bank-statement','importing',sha256('\x02'::bytea)) RETURNING id
+            VALUES(@company,gen_random_uuid(),'pending.csv','bank-statement','processing',sha256('\x02'::bytea)) RETURNING id
             """, new { company }, transaction, cancellationToken: TestContext.Current.CancellationToken));
         var error = await Assert.ThrowsAsync<PostgresException>(() => owner.ExecuteAsync(new CommandDefinition("""
             UPDATE import_file SET status='imported', original='\x01', retained_until=now()+interval '10 years' WHERE id=@pending

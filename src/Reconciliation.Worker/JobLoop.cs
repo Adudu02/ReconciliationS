@@ -1,24 +1,34 @@
+using Npgsql;
+using Reconciliation.Core.Jobs;
+
 namespace Reconciliation.Worker;
 
-/// <summary>Placeholder for the job loop. The job-processing tasks (group 4) replace it.</summary>
-public sealed partial class JobLoop(ILogger<JobLoop> logger) : BackgroundService
+public sealed partial class JobLoop(JobDispatcher dispatcher, JobOptions options, TimeProvider clock, ILogger<JobLoop> logger) : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(Enumerable.Range(0, options.Concurrency).Select(lane => PollAsync(lane, stoppingToken)));
+
+    private async Task PollAsync(int lane, CancellationToken stoppingToken)
     {
-        LogStarted(logger);
+        var workerId = $"{Environment.MachineName}-{Guid.NewGuid():N}-{lane}";
+        Started(logger, workerId);
         try
         {
-            await Task.Delay(Timeout.Infinite, stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try { if (await dispatcher.RunOneAsync(workerId, stoppingToken)) continue; }
+                catch (NpgsqlException) { DatabaseUnavailable(logger, workerId); }
+                await Task.Delay(TimeSpan.FromMilliseconds(options.PollIntervalMilliseconds), clock, stoppingToken);
+            }
         }
-        catch (OperationCanceledException)
-        {
-            LogStopping(logger);
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        finally { Stopping(logger, workerId); }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Worker started; the job loop is not implemented yet.")]
-    private static partial void LogStarted(ILogger logger);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Worker stopping.")]
-    private static partial void LogStopping(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Worker polling lane started {WorkerId}")]
+    private static partial void Started(ILogger logger, string workerId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Queue database temporarily unavailable for {WorkerId}")]
+    private static partial void DatabaseUnavailable(ILogger logger, string workerId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Worker polling lane stopping {WorkerId}")]
+    private static partial void Stopping(ILogger logger, string workerId);
 }

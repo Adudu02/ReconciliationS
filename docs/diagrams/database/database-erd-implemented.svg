@@ -1,11 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1270" viewBox="0 0 1700 1270" font-family="Liberation Sans, Arial, sans-serif">
-<rect width="1700" height="1270" fill="#fff"/>
-<text x="850.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">As-built data model (migrations M0001 to M0006)</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1720" viewBox="0 0 1700 1720" font-family="Liberation Sans, Arial, sans-serif">
+<rect width="1700" height="1720" fill="#fff"/>
+<text x="850.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">As-built data model (migrations M0001 to M0007)</text>
 <text x="850.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company</text>
 <rect x="18" y="78" width="1002" height="480" rx="10" fill="#dbeafe" fill-opacity="0.35" stroke="#1d4ed8" stroke-dasharray="6 4"/>
 <text x="30" y="98" font-size="13.5" font-weight="bold" fill="#1d4ed8">Tenancy and access</text>
 <rect x="1028" y="78" width="662" height="480" rx="10" fill="#ede9fe" fill-opacity="0.35" stroke="#6d28d9" stroke-dasharray="6 4"/>
 <text x="1040" y="98" font-size="13.5" font-weight="bold" fill="#6d28d9">Sessions (per user, outside company RLS)</text>
+<rect x="18" y="1280" width="1672" height="420" rx="10" fill="#fff7ed" fill-opacity="0.35" stroke="#c2410c" stroke-dasharray="6 4"/>
+<text x="30" y="1300" font-size="13.5" font-weight="bold" fill="#c2410c">Jobs (forced RLS; cross-company claims through queue-only definer)</text>
 <rect x="18" y="600" width="1672" height="650" rx="10" fill="#dcfce7" fill-opacity="0.35" stroke="#15803d" stroke-dasharray="6 4"/>
 <text x="30" y="620" font-size="13.5" font-weight="bold" fill="#15803d">Ingestion (every table carries company_id and forced RLS)</text>
 <path d="M310.0 154.5 L340.0 154.5 L340.0 154.5 L370.0 154.5" fill="none" stroke="#475569" stroke-width="1.5"/>
@@ -50,6 +52,88 @@
 <path d="M1330.0 1044.5 L1360.0 1044.5 L1360.0 1078.5 L1390.0 1078.5" fill="none" stroke="#475569" stroke-width="1.5"/>
 <text x="1338.0" y="1039.5" font-size="12" font-weight="bold" fill="#111" text-anchor="start">1</text>
 <text x="1382.0" y="1073.5" font-size="12" font-weight="bold" fill="#111" text-anchor="end">N</text>
+<path d="M310.0 1354.5 L340.0 1354.5 L340.0 1371.5 L370.0 1371.5" fill="none" stroke="#475569" stroke-width="1.5"/>
+<text x="318.0" y="1349.5" font-size="12" font-weight="bold" fill="#111" text-anchor="start">1</text>
+<text x="362.0" y="1366.5" font-size="12" font-weight="bold" fill="#111" text-anchor="end">N</text>
+<text x="730" y="1360" font-size="12" fill="#222">cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.</text>
+<text x="730" y="1390" font-size="12" fill="#222">cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.</text>
+<rect x="30" y="1320" width="280" height="323" rx="6" fill="#fff" stroke="#c2410c" stroke-width="1.6"/>
+<path d="M30 1346 V1326 a6 6 0 0 1 6 -6 H304 a6 6 0 0 1 6 6 V1346 Z" fill="#fff7ed" stroke="#c2410c" stroke-width="1.6"/>
+<text x="40" y="1338" font-size="14" font-weight="bold" fill="#111">job</text>
+<rect x="266" y="1326" width="36" height="15" rx="7" fill="#fff4e0" stroke="#c77c00"/><text x="284" y="1337" font-size="10" font-weight="bold" fill="#8a5300" text-anchor="middle">RLS</text>
+<text x="40" y="1358.5" font-size="11.5" font-weight="bold" fill="#111">id</text>
+<text x="188" y="1358.5" font-size="10.5" fill="#555">uuid</text>
+<text x="302" y="1358.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">PK</text>
+<rect x="31" y="1363" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1375.5" font-size="11.5" fill="#111">company_id</text>
+<text x="188" y="1375.5" font-size="10.5" fill="#555">uuid</text>
+<text x="302" y="1375.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">FK</text>
+<text x="40" y="1392.5" font-size="11.5" fill="#111">type</text>
+<text x="188" y="1392.5" font-size="10.5" fill="#555">text (4 types)</text>
+<rect x="31" y="1397" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1409.5" font-size="11.5" fill="#111">state</text>
+<text x="188" y="1409.5" font-size="10.5" fill="#555">text (4 states)</text>
+<text x="40" y="1426.5" font-size="11.5" fill="#111">payload</text>
+<text x="188" y="1426.5" font-size="10.5" fill="#555">jsonb</text>
+<rect x="31" y="1431" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1443.5" font-size="11.5" fill="#111">input_ref</text>
+<text x="188" y="1443.5" font-size="10.5" fill="#555">uuid</text>
+<text x="302" y="1443.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">upload ref</text>
+<text x="40" y="1460.5" font-size="11.5" fill="#111">attempts</text>
+<text x="188" y="1460.5" font-size="10.5" fill="#555">int</text>
+<rect x="31" y="1465" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1477.5" font-size="11.5" fill="#111">max_attempts</text>
+<text x="188" y="1477.5" font-size="10.5" fill="#555">int</text>
+<text x="40" y="1494.5" font-size="11.5" fill="#111">run_after</text>
+<text x="188" y="1494.5" font-size="10.5" fill="#555">timestamptz</text>
+<rect x="31" y="1499" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1511.5" font-size="11.5" fill="#111">locked_by</text>
+<text x="188" y="1511.5" font-size="10.5" fill="#555">text</text>
+<text x="40" y="1528.5" font-size="11.5" fill="#111">locked_until</text>
+<text x="188" y="1528.5" font-size="10.5" fill="#555">timestamptz</text>
+<rect x="31" y="1533" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1545.5" font-size="11.5" fill="#111">progress_done</text>
+<text x="188" y="1545.5" font-size="10.5" fill="#555">int</text>
+<text x="40" y="1562.5" font-size="11.5" fill="#111">progress_total</text>
+<text x="188" y="1562.5" font-size="10.5" fill="#555">int</text>
+<rect x="31" y="1567" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1579.5" font-size="11.5" fill="#111">last_error</text>
+<text x="188" y="1579.5" font-size="10.5" fill="#555">text</text>
+<text x="40" y="1596.5" font-size="11.5" fill="#111">created_by</text>
+<text x="188" y="1596.5" font-size="10.5" fill="#555">uuid</text>
+<text x="302" y="1596.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">FK</text>
+<rect x="31" y="1601" width="278" height="17" fill="#f8fafc"/>
+<text x="40" y="1613.5" font-size="11.5" fill="#111">created_at</text>
+<text x="188" y="1613.5" font-size="10.5" fill="#555">timestamptz</text>
+<text x="40" y="1630.5" font-size="11.5" fill="#111">finished_at</text>
+<text x="188" y="1630.5" font-size="10.5" fill="#555">timestamptz</text>
+<rect x="370" y="1320" width="280" height="170" rx="6" fill="#fff" stroke="#c2410c" stroke-width="1.6"/>
+<path d="M370 1346 V1326 a6 6 0 0 1 6 -6 H644 a6 6 0 0 1 6 6 V1346 Z" fill="#fff7ed" stroke="#c2410c" stroke-width="1.6"/>
+<text x="380" y="1338" font-size="14" font-weight="bold" fill="#111">job_attempt</text>
+<rect x="606" y="1326" width="36" height="15" rx="7" fill="#fff4e0" stroke="#c77c00"/><text x="624" y="1337" font-size="10" font-weight="bold" fill="#8a5300" text-anchor="middle">RLS</text>
+<text x="380" y="1358.5" font-size="11.5" font-weight="bold" fill="#111">company_id</text>
+<text x="528" y="1358.5" font-size="10.5" fill="#555">uuid</text>
+<text x="642" y="1358.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">PK FK</text>
+<rect x="371" y="1363" width="278" height="17" fill="#f8fafc"/>
+<text x="380" y="1375.5" font-size="11.5" font-weight="bold" fill="#111">job_id</text>
+<text x="528" y="1375.5" font-size="10.5" fill="#555">uuid</text>
+<text x="642" y="1375.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">PK FK</text>
+<text x="380" y="1392.5" font-size="11.5" font-weight="bold" fill="#111">attempt_no</text>
+<text x="528" y="1392.5" font-size="10.5" fill="#555">int</text>
+<text x="642" y="1392.5" font-size="10" font-weight="bold" fill="#c2410c" text-anchor="end">PK</text>
+<rect x="371" y="1397" width="278" height="17" fill="#f8fafc"/>
+<text x="380" y="1409.5" font-size="11.5" fill="#111">started_at</text>
+<text x="528" y="1409.5" font-size="10.5" fill="#555">timestamptz</text>
+<text x="380" y="1426.5" font-size="11.5" fill="#111">finished_at</text>
+<text x="528" y="1426.5" font-size="10.5" fill="#555">timestamptz</text>
+<rect x="371" y="1431" width="278" height="17" fill="#f8fafc"/>
+<text x="380" y="1443.5" font-size="11.5" fill="#111">outcome</text>
+<text x="528" y="1443.5" font-size="10.5" fill="#555">text</text>
+<text x="380" y="1460.5" font-size="11.5" fill="#111">error_kind</text>
+<text x="528" y="1460.5" font-size="10.5" fill="#555">transient/permanent</text>
+<rect x="371" y="1465" width="278" height="17" fill="#f8fafc"/>
+<text x="380" y="1477.5" font-size="11.5" fill="#111">error</text>
+<text x="528" y="1477.5" font-size="10.5" fill="#555">text</text>
 <rect x="30" y="120" width="280" height="170" rx="6" fill="#fff" stroke="#1d4ed8" stroke-width="1.6"/>
 <path d="M30 146 V126 a6 6 0 0 1 6 -6 H304 a6 6 0 0 1 6 6 V146 Z" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.6"/>
 <text x="40" y="138" font-size="14" font-weight="bold" fill="#111">company</text>
@@ -253,7 +337,7 @@
 <text x="528" y="841.5" font-size="10.5" fill="#555">text</text>
 <text x="380" y="858.5" font-size="11.5" fill="#111">classification</text>
 <text x="528" y="858.5" font-size="10.5" fill="#555">text</text>
-<rect x="710" y="650" width="280" height="272" rx="6" fill="#fff" stroke="#15803d" stroke-width="1.6"/>
+<rect x="710" y="650" width="280" height="306" rx="6" fill="#fff" stroke="#15803d" stroke-width="1.6"/>
 <path d="M710 676 V656 a6 6 0 0 1 6 -6 H984 a6 6 0 0 1 6 6 V676 Z" fill="#dcfce7" stroke="#15803d" stroke-width="1.6"/>
 <text x="720" y="668" font-size="14" font-weight="bold" fill="#111">import_file</text>
 <rect x="946" y="656" width="36" height="15" rx="7" fill="#fff4e0" stroke="#c77c00"/><text x="964" y="667" font-size="10" font-weight="bold" fill="#8a5300" text-anchor="middle">RLS</text>
@@ -272,29 +356,35 @@
 <text x="720" y="756.5" font-size="11.5" fill="#111">kind</text>
 <text x="868" y="756.5" font-size="10.5" fill="#555">text</text>
 <rect x="711" y="761" width="278" height="17" fill="#f8fafc"/>
-<text x="720" y="773.5" font-size="11.5" fill="#111">status</text>
-<text x="868" y="773.5" font-size="10.5" fill="#555">text</text>
-<text x="720" y="790.5" font-size="11.5" fill="#111">reason</text>
+<text x="720" y="773.5" font-size="11.5" fill="#111">file_index</text>
+<text x="868" y="773.5" font-size="10.5" fill="#555">int</text>
+<text x="720" y="790.5" font-size="11.5" fill="#111">status</text>
 <text x="868" y="790.5" font-size="10.5" fill="#555">text</text>
 <rect x="711" y="795" width="278" height="17" fill="#f8fafc"/>
-<text x="720" y="807.5" font-size="11.5" fill="#111">original</text>
-<text x="868" y="807.5" font-size="10.5" fill="#555">bytea</text>
-<text x="720" y="824.5" font-size="11.5" fill="#111">sha256</text>
+<text x="720" y="807.5" font-size="11.5" fill="#111">reason</text>
+<text x="868" y="807.5" font-size="10.5" fill="#555">text</text>
+<text x="720" y="824.5" font-size="11.5" fill="#111">pending_original</text>
 <text x="868" y="824.5" font-size="10.5" fill="#555">bytea</text>
+<text x="982" y="824.5" font-size="10" font-weight="bold" fill="#15803d" text-anchor="end">transient</text>
 <rect x="711" y="829" width="278" height="17" fill="#f8fafc"/>
-<text x="720" y="841.5" font-size="11.5" fill="#111">original_file_id</text>
-<text x="868" y="841.5" font-size="10.5" fill="#555">uuid</text>
-<text x="982" y="841.5" font-size="10" font-weight="bold" fill="#15803d" text-anchor="end">FK self</text>
-<text x="720" y="858.5" font-size="11.5" fill="#111">retained_until</text>
-<text x="868" y="858.5" font-size="10.5" fill="#555">timestamptz</text>
+<text x="720" y="841.5" font-size="11.5" fill="#111">original</text>
+<text x="868" y="841.5" font-size="10.5" fill="#555">bytea</text>
+<text x="720" y="858.5" font-size="11.5" fill="#111">sha256</text>
+<text x="868" y="858.5" font-size="10.5" fill="#555">bytea</text>
 <rect x="711" y="863" width="278" height="17" fill="#f8fafc"/>
-<text x="720" y="875.5" font-size="11.5" fill="#111">imported_movements</text>
-<text x="868" y="875.5" font-size="10.5" fill="#555">int</text>
-<text x="720" y="892.5" font-size="11.5" fill="#111">duplicate_movements</text>
-<text x="868" y="892.5" font-size="10.5" fill="#555">int</text>
+<text x="720" y="875.5" font-size="11.5" fill="#111">original_file_id</text>
+<text x="868" y="875.5" font-size="10.5" fill="#555">uuid</text>
+<text x="982" y="875.5" font-size="10" font-weight="bold" fill="#15803d" text-anchor="end">FK self</text>
+<text x="720" y="892.5" font-size="11.5" fill="#111">retained_until</text>
+<text x="868" y="892.5" font-size="10.5" fill="#555">timestamptz</text>
 <rect x="711" y="897" width="278" height="17" fill="#f8fafc"/>
-<text x="720" y="909.5" font-size="11.5" fill="#111">created_at</text>
-<text x="868" y="909.5" font-size="10.5" fill="#555">timestamptz</text>
+<text x="720" y="909.5" font-size="11.5" fill="#111">imported_movements</text>
+<text x="868" y="909.5" font-size="10.5" fill="#555">int</text>
+<text x="720" y="926.5" font-size="11.5" fill="#111">duplicate_movements</text>
+<text x="868" y="926.5" font-size="10.5" fill="#555">int</text>
+<rect x="711" y="931" width="278" height="17" fill="#f8fafc"/>
+<text x="720" y="943.5" font-size="11.5" fill="#111">created_at</text>
+<text x="868" y="943.5" font-size="10.5" fill="#555">timestamptz</text>
 <rect x="1050" y="650" width="280" height="306" rx="6" fill="#fff" stroke="#15803d" stroke-width="1.6"/>
 <path d="M1050 676 V656 a6 6 0 0 1 6 -6 H1324 a6 6 0 0 1 6 6 V676 Z" fill="#dcfce7" stroke="#15803d" stroke-width="1.6"/>
 <text x="1060" y="668" font-size="14" font-weight="bold" fill="#111">cfdi</text>
