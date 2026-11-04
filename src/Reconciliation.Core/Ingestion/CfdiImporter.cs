@@ -164,7 +164,7 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
                 }
                 await ImportFileStore.FinalizeAsync(connection, transaction, fileId, upload.File, options.RetentionYears, 0, 0, transactionCancellationToken);
             }
-            await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
+            await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken, parsedCfdi?.Uuid, lease: upload.File.Lease);
             return new FileImportOutcome(fileId, upload.File.Name, importStatus.ToDatabaseValue(), rejectionReason ?? parsedCfdi?.ReviewReason, cfdiId);
         }, cancellationToken);
 
@@ -175,7 +175,7 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
             "SELECT id, import_file_id AS ImportFileId FROM cfdi WHERE uuid=@Uuid", parsedCfdi, transaction, cancellationToken: cancellationToken));
         await connection.ExecuteAsync(Command("UPDATE import_file SET status='already_imported', reason=NULL, pending_original=NULL, original_file_id=@ImportFileId WHERE id=@fileId",
             new { alreadyStored.ImportFileId, fileId }, transaction, cancellationToken: cancellationToken));
-        await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + ImportStatus.AlreadyImported.ToDatabaseValue(), fileId, cancellationToken);
+        await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + ImportStatus.AlreadyImported.ToDatabaseValue(), fileId, cancellationToken, parsedCfdi.Uuid, lease: file.Lease);
         return new FileImportOutcome(fileId, file.Name, ImportStatus.AlreadyImported.ToDatabaseValue(), null, alreadyStored.Id);
     }
 

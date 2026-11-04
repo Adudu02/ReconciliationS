@@ -10,10 +10,12 @@ public sealed class M0008AuditChain : Migration
         GRANT USAGE ON SCHEMA public TO cfdi_audit_owner;
         ALTER TABLE audit_entry ALTER COLUMN actor_id DROP NOT NULL;
         ALTER TABLE audit_entry ADD COLUMN company_seq bigint, ADD COLUMN prev_hash bytea, ADD COLUMN hash bytea,
-          ADD COLUMN actor_type text NOT NULL DEFAULT 'user', ADD COLUMN items jsonb NOT NULL DEFAULT '{}',
+          ADD COLUMN actor_type text NOT NULL DEFAULT 'user', ADD COLUMN items jsonb NOT NULL DEFAULT '[]',
           ADD COLUMN detail jsonb, ADD COLUMN occurred_at timestamptz, ADD COLUMN canonical text;
         UPDATE audit_entry SET detail=jsonb_build_object('old',old_values,'new',new_values),occurred_at=created_at,
-          items=jsonb_strip_nulls(jsonb_build_object('import_file_id',new_values->'fileId','job_id',new_values->'jobId','user_id',new_values->'userId'));
+          items=(SELECT coalesce(jsonb_agg(jsonb_build_object('kind',ref.kind,'id',ref.id)),'[]')
+            FROM (VALUES ('import_file',new_values->>'fileId'),('job',new_values->>'jobId'),('user',new_values->>'userId')) ref(kind,id)
+            WHERE ref.id IS NOT NULL);
         ALTER TABLE audit_entry DROP COLUMN old_values, DROP COLUMN new_values, DROP COLUMN created_at;
         ALTER TABLE audit_entry ADD COLUMN old_values jsonb GENERATED ALWAYS AS (nullif(detail->'old','null'::jsonb)) STORED,
           ADD COLUMN new_values jsonb GENERATED ALWAYS AS (nullif(detail->'new','null'::jsonb)) STORED,
@@ -53,7 +55,7 @@ public sealed class M0008AuditChain : Migration
         ALTER TABLE audit_entry ADD CONSTRAINT audit_actor CHECK(actor_type IN ('user','system') AND (actor_type='user')=(actor_id IS NOT NULL)),
           ADD CONSTRAINT audit_sequence CHECK(company_seq>0),
           ADD CONSTRAINT audit_hash_lengths CHECK(octet_length(prev_hash)=32 AND octet_length(hash)=32),
-          ADD CONSTRAINT audit_items_object CHECK(jsonb_typeof(items)='object'),
+          ADD CONSTRAINT audit_items_array CHECK(jsonb_typeof(items)='array'),
           ADD CONSTRAINT audit_detail_object CHECK(jsonb_typeof(detail)='object'),
           ADD CONSTRAINT audit_system_source CHECK(actor_type<>'system' OR detail ? 'jobId' OR detail ? 'source'),
           ADD CONSTRAINT audit_company_sequence UNIQUE(company_id,company_seq);
@@ -69,6 +71,12 @@ public sealed class M0008AuditChain : Migration
         BEGIN
           IF p_company IS DISTINCT FROM nullif(current_setting('app.company_id',true),'')::uuid OR p_company IS NULL THEN
             RAISE EXCEPTION 'Audit company context mismatch' USING ERRCODE='42501';
+          END IF;
+          IF jsonb_typeof(p_items) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Audit items must be typed references' USING ERRCODE='23514'; END IF;
+          IF EXISTS(SELECT FROM jsonb_array_elements(p_items) ref WHERE jsonb_typeof(ref) IS DISTINCT FROM 'object'
+            OR jsonb_typeof(ref->'kind') IS DISTINCT FROM 'string' OR jsonb_typeof(ref->'id') IS DISTINCT FROM 'string'
+            OR ref->>'kind'='' OR ref->>'id'='') THEN
+            RAISE EXCEPTION 'Audit items must have string kind and id' USING ERRCODE='23514';
           END IF;
           INSERT INTO public.audit_chain_head VALUES(p_company,0,decode(repeat('00',32),'hex')) ON CONFLICT(company_id) DO NOTHING;
           SELECT * INTO STRICT head FROM public.audit_chain_head WHERE company_id=p_company FOR UPDATE;

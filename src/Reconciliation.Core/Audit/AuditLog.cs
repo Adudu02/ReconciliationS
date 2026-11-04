@@ -6,6 +6,8 @@ using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Audit;
 
+public sealed record AuditItem(string Kind, string Id);
+
 public static class AuditLog
 {
     internal static Task RecordModificationRefusedAsync(CompanyScope scope, Guid companyId, Guid actorId, long targetSeq,
@@ -24,15 +26,16 @@ public static class AuditLog
     }
 
     public static Task<int> WriteAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid actorId,
-        string auditAction, object? previousValues, object currentValues, CancellationToken cancellationToken) =>
+        string auditAction, object? previousValues, object currentValues, CancellationToken cancellationToken, IReadOnlyList<AuditItem>? items = null) =>
         connection.ExecuteAsync(Command("""
-            SELECT append_audit_entry(@companyId,'user',@actorId,@auditAction,'{}'::jsonb,
+            SELECT append_audit_entry(@companyId,'user',@actorId,@auditAction,@items::jsonb,
               jsonb_build_object('old',@oldValues::jsonb,'new',@newValues::jsonb))
             """, new
         {
             companyId,
             actorId,
             auditAction,
+            items = JsonSerializer.Serialize(items ?? [], JsonSerializerOptions.Web),
             oldValues = previousValues is null ? null : JsonSerializer.Serialize(previousValues, JsonSerializerOptions.Web),
             newValues = JsonSerializer.Serialize(currentValues, JsonSerializerOptions.Web)
         }, transaction, cancellationToken: cancellationToken));

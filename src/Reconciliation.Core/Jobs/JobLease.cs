@@ -6,6 +6,8 @@ namespace Reconciliation.Core.Jobs;
 
 public sealed class JobLease(JobRecord job, TimeProvider clock)
 {
+    public Guid JobId => job.Id;
+    public string? WorkerId => job.LockedBy;
     public DateTimeOffset UtcNow => clock.GetUtcNow();
     public async Task CheckAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
     {

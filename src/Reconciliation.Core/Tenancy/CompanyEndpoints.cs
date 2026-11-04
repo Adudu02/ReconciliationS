@@ -2,6 +2,7 @@ using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Reconciliation.Core.Audit;
 using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Tenancy;
@@ -28,7 +29,7 @@ public static class CompanyEndpoints
                     "SELECT user_id AS UserId, role::text AS Role FROM membership", transaction: transaction, cancellationToken: transactionCancellationToken))), cancellationToken))
             .RequireAuthorization(Policies.CompanyMember);
 
-        routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, CompanyScope companyScope, CancellationToken cancellationToken) =>
+        routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, HttpContext httpContext, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteWriteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 if (membershipChange.Role is not (MembershipRoles.Administrator or MembershipRoles.Accountant or MembershipRoles.Viewer))
@@ -44,10 +45,16 @@ public static class CompanyEndpoints
                         """, membershipChange, transaction, cancellationToken: transactionCancellationToken));
                     if (wouldRemoveLastAdministrator) return Results.Conflict(new { error = "The company must retain at least one administrator." });
                 }
+                var before = await connection.QuerySingleOrDefaultAsync<string>(Command("SELECT role::text FROM membership WHERE user_id=@UserId",
+                    membershipChange, transaction, cancellationToken: transactionCancellationToken));
+                if (before == membershipChange.Role) return Results.NoContent();
                 await connection.ExecuteAsync(Command("""
                     INSERT INTO membership(company_id, user_id, role) VALUES (@id, @UserId, @Role::membership_role)
                     ON CONFLICT (company_id, user_id) DO UPDATE SET role = excluded.role
                     """, new { id = companyId, membershipChange.UserId, membershipChange.Role }, transaction, cancellationToken: transactionCancellationToken));
+                await AuditLog.WriteAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value,
+                    before is null ? "member.added" : "member.changed", before is null ? null : new { role = before },
+                    new { membershipChange.UserId, membershipChange.Role }, transactionCancellationToken, [new("user", membershipChange.UserId.ToString())]);
                 return Results.NoContent();
             }, cancellationToken)).RequireAuthorization(Policies.Administrator);
         return routes;

@@ -73,7 +73,7 @@ public static partial class CompanyAdminEndpoints
                 INSERT INTO membership(company_id, user_id, role) VALUES (@id, @admin, 'administrator');
                 """, new { id = companyId, companyToCreate.Rfc, companyToCreate.Name, admin = adminUserId }, transaction, cancellationToken: transactionCancellationToken));
             var company = new CompanyResponse(companyId, companyToCreate.Rfc, companyToCreate.Name, null);
-            await AuditLog.WriteAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value, "company.created", null, company, transactionCancellationToken);
+            await AuditLog.WriteAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value, "company.created", null, company, transactionCancellationToken, [new("user", adminUserId.Value.ToString())]);
             return Results.Created($"/companies/{companyId}", company);
         }, cancellationToken);
     }
