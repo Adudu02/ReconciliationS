@@ -167,4 +167,30 @@ public sealed class HeuristicMatchingTests
         Assert.True(result.CandidateComparisons <= 2 * MatchingEngine.MaxCandidatesPerMovement + payments.Length);
     }
 
+    [Fact]
+    public void Amount_RFC_sub_index_reaches_the_true_best_beyond_K_nearer_candidates()
+    {
+        var invoice = SyntheticMatching.Invoice(100) with { Date = new(2026, 10, 9), ReceiverRfc = "CCC010101CCC" };
+        var nearer = Enumerable.Range(1, 60).Select(i => invoice with
+        {
+            Id = Guid.Parse($"00000000-0000-0000-0001-{i:D12}"), Uuid = Guid.Parse($"00000000-0000-0000-0001-{i:D12}")
+        }).ToArray();
+        var far = invoice with { Id = SyntheticMatching.InvoiceId, Date = new(2026, 10, 7), ReceiverRfc = "BBB010101BBB" };
+        var movement = SyntheticMatching.FirstMovement(100) with { Description = "BBB010101BBB" };
+        var result = MatchingEngine.Run([movement], [.. nearer, far], [], [], Settings, maxCandidates: 2);
+        Assert.Equal(far.Id, Assert.Single(result.Changes).InvoiceId);
+        Assert.True(result.CandidateComparisons <= 3 * 2 * 2);
+    }
+
+    [Theory]
+    [InlineData(1, 27)]
+    [InlineData(2, 23)]
+    [InlineData(3, 20)]
+    public void Date_proximity_bonus_rounds_to_integer_points(int distance, int expected)
+    {
+        var invoice = SyntheticMatching.Invoice(100) with { Date = new DateOnly(2026, 10, 10).AddDays(-distance) };
+        var link = Assert.Single(MatchingEngine.Run([SyntheticMatching.FirstMovement(100)], [invoice], [], [], Settings).Changes);
+        Assert.Equal(expected, Assert.Single(link.Criteria, criterion => criterion.Code == "date-proximity").Points);
+    }
+
 }
