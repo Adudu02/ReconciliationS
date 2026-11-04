@@ -7,12 +7,11 @@ namespace Reconciliation.Core.Audit;
 
 public static class AuditLog
 {
-    // shortcut: transactional audit only; group 5 adds hash chaining and rejection triggers.
     public static Task<int> WriteAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid actorId,
         string auditAction, object? previousValues, object currentValues, CancellationToken cancellationToken) =>
         connection.ExecuteAsync(Command("""
-            INSERT INTO audit_entry(company_id, actor_id, action, old_values, new_values)
-            VALUES (@companyId, @actorId, @auditAction, @oldValues::jsonb, @newValues::jsonb)
+            SELECT append_audit_entry(@companyId,'user',@actorId,@auditAction,'{}'::jsonb,
+              jsonb_build_object('old',@oldValues::jsonb,'new',@newValues::jsonb))
             """, new
         {
             companyId,
