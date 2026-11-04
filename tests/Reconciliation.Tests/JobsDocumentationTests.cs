@@ -12,7 +12,7 @@ public sealed class JobsDocumentationTests
             "claim_next_job", "NOLOGIN", "BYPASSRLS", "p_now", "TimeProvider", "100 jobs/minute", "docker compose kill worker", "202", "backoff" })
             Assert.Contains(required, text, StringComparison.Ordinal);
         var readme = await File.ReadAllTextAsync(Path.Combine(RepoPaths.Root, "README.md"), TestContext.Current.CancellationToken);
-        foreach (var required in new[] { "202", "jobId", "uploadId", "reconciliation-runs", "Jobs__LeaseSeconds", "not implemented until group 6" })
+        foreach (var required in new[] { "202", "jobId", "uploadId", "reconciliation-runs", "Jobs__LeaseSeconds", "not implemented until group 7" })
             Assert.Contains(required, readme, StringComparison.Ordinal);
         var environment = await File.ReadAllTextAsync(Path.Combine(RepoPaths.Root, ".env.example"), TestContext.Current.CancellationToken);
         Assert.Contains("JOBS_LEASE_SECONDS=60", environment, StringComparison.Ordinal);
