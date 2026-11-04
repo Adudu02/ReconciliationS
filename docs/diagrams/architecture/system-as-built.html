@@ -5204,8 +5204,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="655" y="176" class="t-muted" font-size="9" text-anchor="middle">runs once, then exits</text>
         </g>
 
-        <g id="node-pg" data-node-id="pg" data-node-label="Company tables" tabindex="0" role="button" aria-label="Focus Company tables, forced RLS per company, Docker Compose network › PostgreSQL" aria-pressed="false" data-node-kind="database" data-node-sublabel="forced RLS per company" data-node-tag="cfdi_app: no BYPASSRLS" data-node-context="Docker Compose network › PostgreSQL">
-          <title>Company tables · forced RLS per company · Docker Compose network › PostgreSQL · cfdi_app: no BYPASSRLS</title>
+        <g id="node-pg" data-node-id="pg" data-node-label="Company tables" tabindex="0" role="button" aria-label="Focus Company tables, forced RLS; audit hash chain, Docker Compose network › PostgreSQL" aria-pressed="false" data-node-kind="database" data-node-sublabel="forced RLS; audit hash chain" data-node-tag="cfdi_app: no BYPASSRLS" data-node-context="Docker Compose network › PostgreSQL">
+          <title>Company tables · forced RLS; audit hash chain · Docker Compose network › PostgreSQL · cfdi_app: no BYPASSRLS</title>
           <rect x="540" y="340" width="170" height="64" rx="6" class="c-mask"/>
           <rect x="540" y="340" width="170" height="64" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(546 346) scale(0.6875)">
@@ -5213,7 +5213,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="625" y="370" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Company tables</text>
-        <text data-detail="context" x="625" y="386" class="t-muted" font-size="9" text-anchor="middle">forced RLS per company</text>
+        <text data-detail="context" x="625" y="386" class="t-muted" font-size="9" text-anchor="middle">forced RLS; audit hash chain</text>
         <text data-detail="fine" x="625" y="396" class="t-database" font-size="7" text-anchor="middle">cfdi_app: no BYPASSRLS</text>
         </g>
 
@@ -5521,8 +5521,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Isolation</h3>
         </div>
         <ul>
-          <li>&bull; API and worker connect as cfdi_app, which cannot bypass row-level security</li>
-          <li>&bull; Only the claim and finish functions run under a restricted queue role</li>
+          <li>&bull; API and worker use cfdi_app without an RLS bypass</li>
+          <li>&bull; Queue and audit append functions have separate restricted owners</li>
+          <li>&bull; audit_entry and audit_chain_head live inside PostgreSQL</li>
         </ul>
       </div>
     </div>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the AS-BUILT database diagrams (migrations M0001 to M0007) as SVG and PNG.
+"""Draw the AS-BUILT database diagrams (migrations M0001 to M0008) as SVG and PNG.
 
 Writes into docs/diagrams/database/:
   database-erd-implemented[-es]      tables, columns and foreign keys, grouped by area
@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / 'docs/diagrams/database'
 
 ES = {
-    'As-built data model (migrations M0001 to M0007)': 'Modelo de datos construido (migraciones M0001 a M0007)',
+    'As-built data model (migrations M0001 to M0008)': 'Modelo de datos construido (migraciones M0001 a M0008)',
     'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company':
         'PK clave primaria · FK clave foránea · UK único · RLS = seguridad a nivel de fila forzada por empresa',
     'Tenancy and access': 'Multiempresa y acceso',
@@ -89,6 +89,13 @@ ES.update({
         'cfdi_app: NOBYPASSRLS; funciones fijadas, sin EXECUTE para PUBLIC.',
 })
 
+ES.update({
+    'S; append_audit_entry EXECUTE': 'S; EXECUTE de append_audit_entry',
+    'S; head writes through append only': 'S; escritura de cabecera solo por append',
+    'company head lock; no app table writes': 'bloqueo por empresa; app no escribe la tabla',
+    'UPDATE / DELETE / TRUNCATE refused by triggers': 'triggers rechazan UPDATE / DELETE / TRUNCATE',
+})
+
 AREAS = {
     'jobs': ('#fff7ed', '#c2410c'),
     'tenancy': ('#dbeafe', '#1d4ed8'),
@@ -96,6 +103,7 @@ AREAS = {
     'ingestion': ('#dcfce7', '#15803d'),
 }
 
+# M0007 introduced jobs; M0008 adds audit chains and function-only appends.
 # name: (area, rls, [(column, type, flags)])
 TABLES = {
     'job': ('jobs', True, [
@@ -117,8 +125,13 @@ TABLES = {
     'app_user': ('tenancy', False, [
         ('id', 'uuid', 'PK'), ('email', 'text', 'UK'), ('password_hash', 'text', ''), ('created_at', 'timestamptz', '')]),
     'audit_entry': ('tenancy', True, [
-        ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('actor_id', 'uuid', 'FK'), ('action', 'text', ''),
-        ('old_values', 'jsonb', ''), ('new_values', 'jsonb', ''), ('created_at', 'timestamptz', '')]),
+        ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('company_seq', 'bigint', 'UK'),
+        ('actor_type', 'user / system', 'CHECK'), ('actor_id', 'uuid nullable', 'FK'), ('action', 'text', ''),
+        ('occurred_at', 'timestamptz UTC', ''), ('items', 'jsonb references[]', ''), ('detail', 'jsonb', ''),
+        ('canonical', 'text UTF-8', ''), ('prev_hash, hash', 'bytea SHA-256', ''),
+        ('old_values, new_values', 'jsonb', 'generated'), ('created_at', 'timestamptz', 'generated')]),
+    'audit_chain_head': ('tenancy', True, [
+        ('company_id', 'uuid', 'PK FK'), ('last_seq', 'bigint', ''), ('last_hash', 'bytea SHA-256', '')]),
     'auth_session': ('sessions', False, [
         ('id', 'uuid', 'PK'), ('user_id', 'uuid', 'FK'), ('created_at', 'timestamptz', ''), ('last_used_at', 'timestamptz', ''),
         ('absolute_expires_at', 'timestamptz', ''), ('revoked_at', 'timestamptz', ''), ('revoked_reason', 'text', '')]),
@@ -162,19 +175,21 @@ TABLES = {
 
 # privileges of role cfdi_app, and immutability rules (from the migrations)
 GRANTS = {
+    'audit_chain_head': 'S; head writes through append only',
     'job': 'S I U(state, max_attempts, run_after, ...)', 'job_attempt': 'S',
-    'company': 'S I U', 'membership': 'S I U', 'app_user': 'S I U(password_hash)', 'audit_entry': 'S I',
+    'company': 'S I U', 'membership': 'S I U', 'app_user': 'S I U(password_hash)', 'audit_entry': 'S; append_audit_entry EXECUTE',
     'auth_session': 'S I U(last_used_at, revoked_at, revoked_reason)', 'refresh_token': 'S I U(rotated_at, replaced_by)',
     'auth_event': 'S I', 'bank_account': 'S I', 'bank_movement': 'S I',
     'import_file': 'S I U(status, reason, original, sha256, ...)', 'cfdi': 'S I U(review_reason)',
     'cfdi_relation': 'S I', 'cfdi_payment': 'S I', 'cfdi_payment_doc': 'S I U(inconsistent_balance)',
 }
 NOTES = {
+    'audit_chain_head': 'company head lock; no app table writes',
     'job': 'claim/renew/finish through restricted definer',
     'job_attempt': 'attempt writes through restricted definer only',
     'company': 'rfc cannot change (trigger company_rfc_immutable)',
     'import_file': 'original, sha256 and retention frozen (trigger)',
-    'auth_event': 'append-only', 'audit_entry': 'append-only',
+    'auth_event': 'append-only', 'audit_entry': 'UPDATE / DELETE / TRUNCATE refused by triggers',
 }
 
 W = 280
@@ -294,21 +309,21 @@ def zone(x, y, w, h, area, label, ctx):
 def erd(ctx):
     c = [30, 370, 710, 1050, 1390]
     pos = {
-        'job': (c[0], 1320), 'job_attempt': (c[1], 1320),
+        'job': (c[0], 1410), 'job_attempt': (c[1], 1410),
         'company': (c[0], 120), 'membership': (c[1], 120), 'app_user': (c[2], 120),
-        'audit_entry': (c[1], 330),
+        'audit_entry': (c[1], 330), 'audit_chain_head': (c[2], 480),
         'auth_session': (c[3], 120), 'refresh_token': (c[4], 120), 'auth_event': (c[3], 360),
-        'bank_account': (c[0], 650), 'bank_movement': (c[1], 650), 'import_file': (c[2], 650), 'cfdi': (c[3], 650),
-        'cfdi_relation': (c[4], 650), 'cfdi_payment': (c[3], 1010), 'cfdi_payment_doc': (c[4], 1010),
+        'bank_account': (c[0], 740), 'bank_movement': (c[1], 740), 'import_file': (c[2], 740), 'cfdi': (c[3], 740),
+        'cfdi_relation': (c[4], 740), 'cfdi_payment': (c[3], 1100), 'cfdi_payment_doc': (c[4], 1100),
     }
     lay = Layout(pos)
-    width, height = 1700, 1720
-    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0007)',
+    width, height = 1700, 1810
+    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0008)',
                    'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company', ctx)
-    out += zone(18, 78, 1002, 480, 'tenancy', 'Tenancy and access', ctx)
+    out += zone(18, 78, 1002, 570, 'tenancy', 'Tenancy and access', ctx)
     out += zone(1028, 78, 662, 480, 'sessions', 'Sessions (per user, outside company RLS)', ctx)
-    out += zone(18, 1280, 1672, 420, 'jobs', 'Jobs (forced RLS; cross-company claims through queue-only definer)', ctx)
-    out += zone(18, 600, 1672, 650, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
+    out += zone(18, 1370, 1672, 420, 'jobs', 'Jobs (forced RLS; cross-company claims through queue-only definer)', ctx)
+    out += zone(18, 690, 1672, 650, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
     out += link(lay, 'company', 'id', 'right', 'membership', 'company_id', 'left')
     out += link(lay, 'app_user', 'id', 'left', 'membership', 'user_id', 'right')
     out += link(lay, 'company', 'id', 'bottom', 'audit_entry', 'company_id', 'left')
@@ -324,8 +339,8 @@ def erd(ctx):
     out += link(lay, 'cfdi', 'id', 'bottom', 'cfdi_payment', 'cfdi_id', 'top')
     out += link(lay, 'cfdi_payment', 'id', 'right', 'cfdi_payment_doc', 'payment_id', 'left')
     out += link(lay, 'job', 'id', 'right', 'job_attempt', 'job_id', 'left')
-    for y, text in [(1360, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
-                    (1390, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
+    for y, text in [(1450, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
+                    (1480, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
         out.append(f'<text x="730" y="{y}" font-size="12" fill="#222">{esc(ctx.tr(text))}</text>')
     for name in TABLES:
         out += draw_table(name, lay, ctx)
@@ -411,7 +426,7 @@ def states(ctx):
 
 
 def security(ctx):
-    order = ['company', 'membership', 'app_user', 'audit_entry', 'auth_session', 'refresh_token', 'auth_event',
+    order = ['company', 'membership', 'app_user', 'audit_entry', 'audit_chain_head', 'auth_session', 'refresh_token', 'auth_event',
              'import_file', 'cfdi', 'cfdi_relation', 'cfdi_payment', 'cfdi_payment_doc', 'bank_account', 'bank_movement', 'job', 'job_attempt']
     cols = [('Table', 180), ('Area', 110), ('Forced RLS', 100), ('Privileges of role cfdi_app', 430), ('Immutability / triggers', 380)]
     width = sum(w for _, w in cols) + 40
@@ -432,7 +447,7 @@ def security(ctx):
         ry = y + row_h * (i + 1)
         cx = x
         values = [name, ctx.tr(area), ctx.tr('yes') if rls else ctx.tr('no (per user)') if area == 'sessions' or name == 'app_user' else ctx.tr('no'),
-                  GRANTS[name], ctx.tr(NOTES.get(name, '')) if name in NOTES else '']
+                  ctx.tr(GRANTS[name]), ctx.tr(NOTES.get(name, '')) if name in NOTES else '']
         for (title, w), v in zip(cols, values):
             bg = fill if title == 'Area' else ('#fff4e0' if title == 'Forced RLS' and rls else '#fff')
             out.append(f'<rect x="{cx}" y="{ry}" width="{w}" height="{row_h}" fill="{bg}" stroke="#cbd5e1"/>')

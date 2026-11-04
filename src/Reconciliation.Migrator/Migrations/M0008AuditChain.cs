@@ -58,7 +58,9 @@ public sealed class M0008AuditChain : Migration
           ADD CONSTRAINT audit_hash_lengths CHECK(octet_length(prev_hash)=32 AND octet_length(hash)=32),
           ADD CONSTRAINT audit_items_array CHECK(jsonb_typeof(items)='array'),
           ADD CONSTRAINT audit_detail_object CHECK(jsonb_typeof(detail)='object'),
-          ADD CONSTRAINT audit_system_source CHECK(actor_type<>'system' OR detail ? 'jobId' OR detail ? 'source'),
+          ADD CONSTRAINT audit_system_source CHECK(actor_type<>'system' OR coalesce(
+            (jsonb_typeof(detail->'jobId')='string' AND detail->>'jobId'<>'') OR
+            (jsonb_typeof(detail->'source')='string' AND detail->>'source'<>''),false)),
           ADD CONSTRAINT audit_company_sequence UNIQUE(company_id,company_seq);
         CREATE INDEX audit_chronological_idx ON audit_entry(company_id,occurred_at,id);
         GRANT SELECT,INSERT ON audit_entry TO cfdi_audit_owner;
@@ -140,7 +142,7 @@ public sealed class M0008AuditChain : Migration
         ALTER TABLE audit_entry ALTER COLUMN old_values DROP EXPRESSION, ALTER COLUMN new_values DROP EXPRESSION, ALTER COLUMN created_at DROP EXPRESSION;
         ALTER TABLE audit_entry ALTER COLUMN created_at SET DEFAULT now();
         -- Preserve group-5 metadata for a subsequent Up while keeping legacy new-value fields readable.
-        UPDATE audit_entry SET new_values=coalesce(new_values,'{}') || jsonb_build_object('_audit_v8',
+        UPDATE audit_entry SET new_values=(CASE WHEN jsonb_typeof(new_values)='object' THEN new_values ELSE '{}' END) || jsonb_build_object('_audit_v8',
           jsonb_build_object('actorType',actor_type,'items',items,'detail',detail));
         ALTER TABLE audit_entry DROP COLUMN company_seq, DROP COLUMN prev_hash, DROP COLUMN hash,
           DROP COLUMN actor_type, DROP COLUMN items, DROP COLUMN detail, DROP COLUMN occurred_at, DROP COLUMN canonical;
