@@ -2,9 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using Dapper;
-using Reconciliation.Core.Jobs;
 using Microsoft.Extensions.DependencyInjection;
 using Reconciliation.Core.Ingestion;
+using Reconciliation.Core.Jobs;
 
 namespace Reconciliation.Tests;
 
