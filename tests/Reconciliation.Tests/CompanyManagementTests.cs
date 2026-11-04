@@ -34,7 +34,7 @@ public sealed class CompanyManagementTests(ApiFixture fixture)
         using var members = await admin.GetAsync($"/companies/{id}/members", TestContext.Current.CancellationToken);
         Assert.Contains("administrator", await members.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
         await using var owner = await fixture.Database.OpenOwnerAsync();
-        Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id = @id AND action = 'company.created'", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id = @id AND action = 'company.created' AND items @> (SELECT jsonb_build_array(jsonb_build_object('kind','user','id',user_id::text)) FROM membership WHERE company_id=@id)", new { id }, cancellationToken: TestContext.Current.CancellationToken)));
         var hash = await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT password_hash FROM app_user WHERE email = @email", new { email }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.NotEqual(ApiFixture.Password, hash);
         Assert.True(Convert.FromBase64String(hash).Length >= 49);

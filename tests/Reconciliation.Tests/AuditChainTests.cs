@@ -93,15 +93,15 @@ public sealed class AuditChainTests(ApiFixture fixture)
     public async Task Fixed_vector_freezes_canonical_UTF8_and_SHA256_with_binary_previous_hash()
     {
         const string canonical = """
-            ["00000000-0000-0000-0000-000000000001", "1", "1767225600123456", "user", "00000000-0000-0000-0000-000000000002", "synthetic.vector", {"z": [1, true], "cfdi_uuid": "00000000-0000-0000-0000-000000000003"}, {"new": {"n": 1.20}, "old": null}]
+            ["00000000-0000-0000-0000-000000000001", "1", "1767225600123456", "user", "00000000-0000-0000-0000-000000000002", "synthetic.vector", [{"id": "00000000-0000-0000-0000-000000000003", "kind": "cfdi"}], {"new": {"n": 1.20}, "old": null}]
             """;
         var actual = await fixture.Database.ScalarAsync<string>("""
             SELECT audit_canonical('00000000-0000-0000-0000-000000000001',1,'2026-01-01T00:00:00.123456Z','user',
               '00000000-0000-0000-0000-000000000002','synthetic.vector',
-              '{"cfdi_uuid":"00000000-0000-0000-0000-000000000003","z":[1,true]}','{"old":null,"new":{"n":1.20}}')
+              '[{"kind":"cfdi","id":"00000000-0000-0000-0000-000000000003"}]','{"old":null,"new":{"n":1.20}}')
             """);
         Assert.Equal(canonical, actual);
-        Assert.Equal("e77ed99f08ccbeb09c61a05f2cc260ae64a8f3995ae6032a20c760e1e7f04e19", await fixture.Database.ScalarAsync<string>(
+        Assert.Equal("6fe438cb1966bbf22f4db35bcdc14ff8a6de0c89c4b977e3edcce87ea301b2dd", await fixture.Database.ScalarAsync<string>(
             "SELECT encode(sha256(convert_to(@actual,'UTF8') || decode(repeat('00',32),'hex')),'hex')", new { actual }));
         // The verifier is required even when the canonical writer already matches the vector.
         Assert.True(await fixture.Database.ScalarAsync<bool>("SELECT EXISTS(SELECT FROM pg_proc WHERE proname='verify_audit_chain')"));
@@ -119,7 +119,7 @@ public sealed class AuditChainTests(ApiFixture fixture)
         await app.OpenAsync(TestContext.Current.CancellationToken);
         await using var tx = await app.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await AuditDatabaseTests.SetContextAsync(app, tx, company);
-        var command = new CommandDefinition("SELECT canonical FROM append_audit_entry(@company,@type,@actor,'synthetic.system','{}',@detail::jsonb)",
+        var command = new CommandDefinition("SELECT canonical FROM append_audit_entry(@company,@type,@actor,'synthetic.system','[]',@detail::jsonb)",
             new { company, type, actor = hasActor ? (Guid?)user.Id : null, detail }, tx, cancellationToken: TestContext.Current.CancellationToken);
         if (!accepted) await Assert.ThrowsAsync<PostgresException>(() => app.QuerySingleAsync<string>(command));
         else

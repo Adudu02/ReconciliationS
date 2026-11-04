@@ -11,7 +11,7 @@ public sealed class AuditDatabaseTests(ApiFixture fixture)
 {
     internal const string AppendSignature = "append_audit_entry(uuid,text,uuid,text,jsonb,jsonb)";
     internal static Task<long> AppendAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid company, Guid actor,
-        string action = "synthetic.action", string items = "{}", string detail = "{}") => connection.QuerySingleAsync<long>(new CommandDefinition(
+        string action = "synthetic.action", string items = "[]", string detail = "{}") => connection.QuerySingleAsync<long>(new CommandDefinition(
             "SELECT company_seq FROM append_audit_entry(@company,'user',@actor,@action,@items::jsonb,@detail::jsonb)",
             new { company, actor, action, items, detail }, transaction, cancellationToken: TestContext.Current.CancellationToken));
 
