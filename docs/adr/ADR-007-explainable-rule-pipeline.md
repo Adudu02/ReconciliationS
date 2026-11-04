@@ -95,7 +95,7 @@ criterion or lowered threshold is necessary.
 ### Bounded retrieval and cost
 
 Index invoices by exact cent amounts for total, gross and partial remainder, UUID, normalized serie/folio and UUID
-fragments. Each amount bucket has invoices sorted by date then stable id, and a second date-sorted sub-index per
+fragments. Normalization preserves RFC ampersands (A&A differs from AA&) so sub-index keys and scoring agree. Each amount bucket has invoices sorted by date then stable id, and a second date-sorted sub-index per
 issuer/receiver RFC. Payments have an amount/date index and operation-number postings. Tokenize each movement once;
 normalized serie+folio is indexed, a folio alone is indexed only when it has at least four digits, and UUID windows have
 at least eight hex characters. No database text index is needed. Pre-M0009 rows have NULL serie/folio, so they lack that

@@ -26,7 +26,7 @@ internal sealed partial class MatchingText
     public static string Normalize(string value)
     {
         var text = new StringBuilder(value.Length);
-        foreach (var character in value.ToUpperInvariant()) if (char.IsLetterOrDigit(character)) text.Append(character);
+        foreach (var character in value.ToUpperInvariant()) if (char.IsLetterOrDigit(character) || character == '&') text.Append(character);
         return text.ToString();
     }
 
