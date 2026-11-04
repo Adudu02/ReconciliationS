@@ -111,6 +111,9 @@ public sealed class AuditChainTests(ApiFixture fixture)
     [InlineData("user", false, "{}", false)]
     [InlineData("system", true, "{\"source\":\"synthetic\"}", false)]
     [InlineData("system", false, "{}", false)]
+    [InlineData("system", false, "{\"source\":null}", false)]
+    [InlineData("system", false, "{\"source\":\"\"}", false)]
+    [InlineData("system", false, "{\"jobId\":null}", false)]
     [InlineData("system", false, "{\"source\":\"synthetic-worker\"}", true)]
     public async Task Actors_require_a_user_id_or_the_literal_system_with_source(string type, bool hasActor, string detail, bool accepted)
     {
