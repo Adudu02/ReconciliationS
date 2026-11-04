@@ -77,7 +77,6 @@ public sealed class HeuristicMatchingTests
     [Theory]
     [InlineData("FC-488", "invoice-reference", 30)]
     [InlineData("0000000000004000", "invoice-reference", 30)]
-    [InlineData("AAA010101AAA", "rfc", 15)]
     public void Text_postings_reach_candidates_beyond_the_nearest_amount_bucket(string text, string code, int points)
     {
         var invoice = SyntheticMatching.Invoice(100) with { Date = new(2026, 10, 10), Serie = "FC", Folio = "488" };
@@ -104,4 +103,68 @@ public sealed class HeuristicMatchingTests
         Assert.Equal(invoice.Id, link.InvoiceId);
         Assert.Contains("1 other invoices matched equally", link.Explanation, StringComparison.Ordinal);
     }
+    [Theory]
+    [InlineData(100.01, 0, 0.01, 35, "gross-payment")]
+    [InlineData(99.99, 0.01, 0.01, 30, "amount-equals-remaining")]
+    [InlineData(100, 0, 0.01, 40, "amount-equals-total")]
+    [InlineData(100.99, 0, 1, 25, "amount-within-tolerance")]
+    [InlineData(49.99, 50, 0, 25, "amount-within-tolerance")]
+    public void Overlapping_amount_targets_never_double_count(decimal credit, decimal alreadyPaid, decimal retained, int points, string code)
+    {
+        var invoice = SyntheticMatching.Invoice(100) with { Retained = retained };
+        MatchingLink[] existing = alreadyPaid == 0 ? [] : [new(SyntheticMatching.SecondMovementId, invoice.Id, null, null, alreadyPaid,
+            "reconciled", "user", [], null, "Synthetic confirmed allocation")];
+        var movement = SyntheticMatching.FirstMovement(credit) with { Description = "SYNTHETIC" };
+        var link = Assert.Single(MatchingEngine.Run([movement], [invoice], [], existing, Settings).Changes);
+        var amount = Assert.Single(link.Criteria, criterion => criterion.Code.StartsWith("amount-", StringComparison.Ordinal) || criterion.Code == "gross-payment");
+        Assert.Equal(code, amount.Code);
+        Assert.Equal(points, amount.Points);
+        if (credit == 100.99m)
+        {
+            Assert.Contains("gross", amount.Detail, StringComparison.Ordinal);
+            Assert.Contains("1 cents", amount.Detail, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("SYNTHETIC")]
+    [InlineData("AAA010101AAA")]
+    public void Date_or_RFC_without_an_amount_or_strong_identifier_never_makes_a_candidate(string description)
+    {
+        var invoice = SyntheticMatching.Invoice(100) with { Date = new(2026, 10, 10) };
+        Assert.Empty(MatchingEngine.Run([SyntheticMatching.FirstMovement(50) with { Description = description }], [invoice], [], [], Settings).Changes);
+    }
+
+    [Fact]
+    public void A_strong_identifier_can_propose_a_partial_payment_and_RFC_adds_points_after_eligibility()
+    {
+        var invoice = SyntheticMatching.Invoice(100) with { Date = new(2026, 10, 10), Serie = "FC", Folio = "488" };
+        var movement = SyntheticMatching.FirstMovement(50) with { Description = "FC488 AAA010101AAA" };
+        var link = Assert.Single(MatchingEngine.Run([movement], [invoice], [], [], Settings).Changes);
+        Assert.Equal(50m, link.Amount);
+        Assert.Equal("suggested", link.State);
+        Assert.Contains(link.Criteria, criterion => criterion.Code == "rfc" && criterion.Points == 15);
+        Assert.Contains("identifier without amount match", link.Explanation, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Lazy_deletion_removes_stale_payments_and_continues_beyond_a_dense_dead_prefix()
+    {
+        var invoice = SyntheticMatching.Invoice(100);
+        var other = invoice with { Id = SyntheticMatching.PaymentCfdiId, Uuid = SyntheticMatching.PaymentCfdiId };
+        var payments = Enumerable.Range(1, 80).Select(i => SyntheticMatching.Payment(100) with
+        {
+            Id = Guid.Parse($"00000000-0000-0000-0001-{i:D12}"),
+            CfdiId = Guid.Parse($"00000000-0000-0000-0002-{i:D12}")
+        }).Append(SyntheticMatching.Payment(100) with
+        {
+            Id = Guid.Parse("00000000-0000-0000-0003-000000000001"), Date = new(2026, 10, 12),
+            Documents = [new(other.Uuid, 100)]
+        }).ToArray();
+        var second = SyntheticMatching.SecondMovement() with { Date = new(2026, 10, 11), Credit = 100 };
+        var result = MatchingEngine.Run([SyntheticMatching.FirstMovement(100), second], [invoice, other], payments, [], Settings);
+        Assert.Equal(2, result.Changes.Count(link => link.State == "reconciled"));
+        Assert.True(result.CandidateComparisons <= 2 * MatchingEngine.MaxCandidatesPerMovement + payments.Length);
+    }
+
 }
