@@ -14,7 +14,7 @@ internal sealed record CfdiPayment(DateTime PaidAt, string PaymentForm, string C
 internal sealed record ParsedCfdi(Guid Uuid, string Type, string IssuerRfc, string ReceiverRfc, DateTime IssuedAt,
     DateTime StampedAt, string Currency, string? PaymentMethod, decimal Subtotal, decimal Discount, decimal TransferredTax,
     decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal,
-    IReadOnlyList<CfdiRelation> Relations, IReadOnlyList<CfdiPayment> Payments)
+    IReadOnlyList<CfdiRelation> Relations, IReadOnlyList<CfdiPayment> Payments, string? Serie, string? Folio)
 {
     public string? ReviewReason => Payments.SelectMany(payment => payment.Documents).Any(paidInvoice => paidInvoice.InconsistentBalance) ? "inconsistent balance" : null;
 }
@@ -37,7 +37,7 @@ internal static class CfdiParser
         if (paymentMethod is not (null or "PUE" or "PPD")) throw new InvalidDataException("Invalid payment method.");
         return new ParsedCfdi(Uuid(stamp, "UUID"), type, issuerRfc, receiverRfc, Date(comprobante, "Fecha"), Date(stamp, "FechaTimbrado"),
             Required(comprobante, "Moneda"), paymentMethod, subtotal, discount, transferredTax, retainedTax, localTransferredTax, localRetainedTax, total,
-            receiverRfc == CfdiStandards.PublicGeneralRfc || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments);
+            receiverRfc == CfdiStandards.PublicGeneralRfc || comprobante.Element(Cfdi + "InformacionGlobal") is not null, relations, payments, (string?)comprobante.Attribute("Serie"), (string?)comprobante.Attribute("Folio"));
     }
 
     private sealed record Header(XElement Comprobante, XElement Complement, XElement Stamp, string Type,

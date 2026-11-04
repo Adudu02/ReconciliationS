@@ -17,6 +17,7 @@ public static class MatchingEngine
         var reservedMovements = active.GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var usedPayments = active.Where(link => link.PaymentRef.HasValue).Select(link => link.PaymentRef!.Value).ToHashSet();
         var blocked = existing.Where(link => !link.Reopened).Select(link => (link.MovementId, link.InvoiceId, link.PaymentCfdiId)).ToHashSet();
+        var tombstoneCounts = existing.Where(link => !link.Reopened).GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Count());
         var index = new AmountDateIndex<MatchingPayment>();
         var documents = new Dictionary<Guid, MatchingPaymentDocument[]>();
         foreach (var payment in payments)
@@ -34,23 +35,29 @@ public static class MatchingEngine
         {
             if (movement.Credit <= 0 || movement.Debit != 0 || movement.Classification is not null || reservedMovements.GetValueOrDefault(movement.Id) > 0) continue;
             MatchingPayment? selected = null;
-            var exhausted = new List<Guid>();
-            foreach (var payment in index.Nearest(movement.Credit, movement.Date, maxCandidates))
+            var tombstones = tombstoneCounts.GetValueOrDefault(movement.Id);
+            while (selected is null)
             {
-                comparisons++;
-                if (Math.Abs(payment.Date.DayNumber - movement.Date.DayNumber) > settings.DateToleranceDays) break;
-                var docs = documents[payment.Id];
-                if (docs.Any(doc => doc.Paid > eligible[doc.InvoiceUuid].Total - reservedInvoices.GetValueOrDefault(eligible[doc.InvoiceUuid].Id)))
+                var exhausted = new List<Guid>();
+                foreach (var payment in index.Nearest(movement.Credit, movement.Date, maxCandidates + tombstones))
                 {
-                    exhausted.Add(payment.Id);
-                    continue;
+                    if (Math.Abs(payment.Date.DayNumber - movement.Date.DayNumber) > settings.DateToleranceDays) break;
+                    var docs = documents[payment.Id];
+                    if (docs.Any(doc => doc.Paid > eligible[doc.InvoiceUuid].Total - reservedInvoices.GetValueOrDefault(eligible[doc.InvoiceUuid].Id)))
+                    {
+                        comparisons++;
+                        exhausted.Add(payment.Id);
+                        continue;
+                    }
+                    if (docs.Any(doc => blocked.Contains((movement.Id, eligible[doc.InvoiceUuid].Id, (Guid?)payment.CfdiId)))) continue;
+                    comparisons++;
+                    selected = payment;
+                    break;
                 }
-                if (docs.Any(doc => blocked.Contains((movement.Id, eligible[doc.InvoiceUuid].Id, (Guid?)payment.CfdiId)))) continue;
-                selected = payment;
-                break;
+                // Capacity only shrinks: each invalid payment is removed once, after disposing its lookup enumerators.
+                foreach (var id in exhausted) index.Remove(id);
+                if (selected is not null || exhausted.Count == 0) break;
             }
-            // Do not mutate a sorted bucket until its enumerators have been disposed.
-            foreach (var id in exhausted) index.Remove(id);
             if (selected is null) continue;
             index.Remove(selected.Id);
             foreach (var document in documents[selected.Id])
@@ -63,6 +70,15 @@ public static class MatchingEngine
                 reservedMovements[movement.Id] = reservedMovements.GetValueOrDefault(movement.Id) + document.Paid;
             }
         }
-        return new(changes, comparisons);
+        comparisons += HeuristicMatching.Apply(movements, eligible.Values.ToArray(), payments, existing, settings, maxCandidates,
+            changes, reservedInvoices, reservedMovements);
+        var allLinks = active.Concat(changes).ToArray();
+        var reconciled = allLinks.Where(link => link.State == "reconciled").GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
+        var suggested = allLinks.Where(link => link.State == "suggested").GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
+        var balances = eligible.Values.OrderBy(invoice => invoice.Id).Select(invoice => new MatchingBalance(invoice.Id,
+            reconciled.GetValueOrDefault(invoice.Id), suggested.GetValueOrDefault(invoice.Id),
+            Math.Max(0, invoice.Total - reconciled.GetValueOrDefault(invoice.Id)),
+            Math.Max(0, invoice.Total - reconciled.GetValueOrDefault(invoice.Id) - suggested.GetValueOrDefault(invoice.Id)))).ToArray();
+        return new(changes, comparisons, balances);
     }
 }

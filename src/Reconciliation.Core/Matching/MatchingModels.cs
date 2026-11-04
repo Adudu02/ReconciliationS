@@ -12,4 +12,5 @@ public sealed record MatchingSettings(int DateToleranceDays, decimal AmountToler
 public sealed record MatchingCriterion(string Code, int Points, string Detail);
 public sealed record MatchingLink(Guid MovementId, Guid InvoiceId, Guid? PaymentCfdiId, Guid? PaymentRef, decimal Amount,
     string State, string Origin, IReadOnlyList<MatchingCriterion> Criteria, string? Confidence, string Explanation, bool Reopened = false);
-public sealed record MatchingResult(IReadOnlyList<MatchingLink> Changes, long CandidateComparisons);
+public sealed record MatchingBalance(Guid InvoiceId, decimal ReconciledAmount, decimal SuggestedAmount, decimal PendingAmount, decimal UncoveredAmount);
+public sealed record MatchingResult(IReadOnlyList<MatchingLink> Changes, long CandidateComparisons, IReadOnlyList<MatchingBalance> Invoices);

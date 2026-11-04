@@ -158,7 +158,8 @@ public sealed class HeuristicMatchingTests
             CfdiId = Guid.Parse($"00000000-0000-0000-0002-{i:D12}")
         }).Append(SyntheticMatching.Payment(100) with
         {
-            Id = Guid.Parse("00000000-0000-0000-0003-000000000001"), Date = new(2026, 10, 12),
+            Id = Guid.Parse("00000000-0000-0000-0003-000000000001"),
+            Date = new(2026, 10, 12),
             Documents = [new(other.Uuid, 100)]
         }).ToArray();
         var second = SyntheticMatching.SecondMovement() with { Date = new(2026, 10, 11), Credit = 100 };
@@ -173,7 +174,8 @@ public sealed class HeuristicMatchingTests
         var invoice = SyntheticMatching.Invoice(100) with { Date = new(2026, 10, 9), ReceiverRfc = "CCC010101CCC" };
         var nearer = Enumerable.Range(1, 60).Select(i => invoice with
         {
-            Id = Guid.Parse($"00000000-0000-0000-0001-{i:D12}"), Uuid = Guid.Parse($"00000000-0000-0000-0001-{i:D12}")
+            Id = Guid.Parse($"00000000-0000-0000-0001-{i:D12}"),
+            Uuid = Guid.Parse($"00000000-0000-0000-0001-{i:D12}")
         }).ToArray();
         var far = invoice with { Id = SyntheticMatching.InvoiceId, Date = new(2026, 10, 7), ReceiverRfc = "BBB010101BBB" };
         var movement = SyntheticMatching.FirstMovement(100) with { Description = "BBB010101BBB" };

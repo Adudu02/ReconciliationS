@@ -6,6 +6,8 @@ namespace Reconciliation.Migrator.Migrations;
 public sealed class M0009Matching : Migration
 {
     public override void Up() => Execute.Sql($$"""
+        ALTER TABLE company ADD CONSTRAINT company_matching_tolerance CHECK(amount_tolerance<=1.00);
+        ALTER TABLE cfdi ADD COLUMN serie text, ADD COLUMN folio text;
         CREATE TABLE link (
           company_id uuid NOT NULL REFERENCES company(id), id uuid NOT NULL DEFAULT gen_random_uuid(),
           movement_id uuid NOT NULL, cfdi_id uuid NOT NULL, payment_cfdi_id uuid, payment_ref uuid,
@@ -73,5 +75,7 @@ public sealed class M0009Matching : Migration
         DROP FUNCTION movement_state();
         DROP FUNCTION cfdi_state();
         DROP TABLE link;
+        ALTER TABLE company DROP CONSTRAINT company_matching_tolerance;
+        ALTER TABLE cfdi DROP COLUMN serie, DROP COLUMN folio;
         """);
 }
