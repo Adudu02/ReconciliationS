@@ -96,7 +96,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
         var (user, id) = await fixture.SeedCompanyWithAdminAsync();
         using var client = await fixture.LoginAsync(user.Email, id);
         await using var owner = await fixture.Database.OpenOwnerAsync();
-        await owner.ExecuteAsync(new CommandDefinition("REVOKE INSERT ON audit_entry FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
+        await owner.ExecuteAsync(new CommandDefinition("REVOKE EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
         try
         {
             using var failed = await client.PatchAsJsonAsync($"/companies/{id}/settings", new { amountTolerance = 0.02m }, TestContext.Current.CancellationToken);
@@ -105,7 +105,7 @@ public sealed class CompanySettingsTests(ApiFixture fixture)
         }
         finally
         {
-            await owner.ExecuteAsync(new CommandDefinition("GRANT INSERT ON audit_entry TO cfdi_app", cancellationToken: CancellationToken.None));
+            await owner.ExecuteAsync(new CommandDefinition("GRANT EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) TO cfdi_app", cancellationToken: CancellationToken.None));
         }
     }
 }

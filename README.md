@@ -71,8 +71,8 @@ must have 12 characters for a new account; an existing account keeps its passwor
 `GET /companies/{companyId}`, `/companies/{companyId}/members`, and `/companies/{companyId}/settings`. Administrators can post a
 `{userId, role}` to the members route, patch settings, and `POST /companies/{companyId}/archive`. There are no DELETE routes.
 
-The initial audit table records company creation, settings and archival atomically. Group 5 adds the full audit
-contract. Three domain-dependent tenancy scenarios remain explicitly skipped; task 2.4 stays open. Real invoice isolation
+The hash-chained audit log records company creation, settings, membership changes and archival atomically.
+See the audit API below. Three domain-dependent tenancy scenarios remain explicitly skipped; task 2.4 stays open. Real invoice isolation
 and delete-retention checks now pass, completing 2.6 and 2.9.
 Compose uses synthetic local credentials; replace them and use invite/reset links for a production deployment.
 See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
@@ -202,3 +202,39 @@ For a manual recovery demonstration, upload synthetic input, observe the job as 
 verify a succeeded job with lease_expired history and one set of import effects. The controlled demo and observed
 counts are recorded in both PR-7 build logs. Use the SDK container command above for all development checks when no
 host SDK is installed.
+
+## Audit API
+
+Every company member (viewer, accountant, administrator) can read audit entries, including archived companies.
+The spec's auditor is the viewer role. Authenticate with Bearer and a matching X-Company-Id; absent and inaccessible
+companies produce the same empty 404. These routes expose no mutation methods.
+
+- `GET /companies/{companyId}/audit-entries` accepts inclusive UTC `from` / `to`, `actor` (user UUID or `system`),
+  `action`, `item` (any typed reference id), optional `itemKind`, `afterSeq` and `limit` (default 50, range 1–200).
+  It returns `{entries, nextAfterSeq}` in ascending `seq` order. Send `nextAfterSeq` as the next request's `afterSeq`;
+  null means no further page at that moment. Entries include occurredAt, actorType, actor, action, items, detail and hashes.
+- `GET /companies/{companyId}/audit/verification` returns `{consistent, entries, firstInconsistentSeq, reason}`.
+  entries is the total on success or the verified prefix count on inconsistency. Verification streams O(n) entries.
+
+The following examples use synthetic identifiers and a token already obtained from the login flow:
+
+```bash
+COMPANY_ID=00000000-0000-0000-0000-000000000001
+SYNTHETIC_CFDI_UUID=00000000-0000-0000-0000-000000000002
+curl -fsS --get "http://127.0.0.1:8080/companies/$COMPANY_ID/audit-entries" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "X-Company-Id: $COMPANY_ID" \
+  --data-urlencode "item=$SYNTHETIC_CFDI_UUID" --data-urlencode 'itemKind=cfdi' \
+  --data-urlencode 'from=2026-01-01T00:00:00Z' --data-urlencode 'limit=50' --data-urlencode 'afterSeq=0'
+curl -fsS "http://127.0.0.1:8080/companies/$COMPANY_ID/audit/verification" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "X-Company-Id: $COMPANY_ID"
+```
+
+Each audit append shares its action's transaction and locks only that company's chain head. Stored canonical bytes
+make the SHA-256 chain independently checkable; see [ADR-006](docs/adr/ADR-006-append-only-audit-log.md) for the fixed
+vector, restricted function owner, downgrade behavior and limits. The internal refusal-recording seam uses a separate
+transaction after a refused mutation rolls back; there is no audit-edit API. Session events stay in auth_event.
+Item containment narrows by company index and then filters O(n) company entries: PostgreSQL FORCE RLS prevents
+runtime use of the proposed non-LEAKPROOF JSON GIN predicate, so the unused GIN index is not installed. Opt-in
+`RUN_AUDIT_BENCHMARKS=1` measures 20k/100k entry lookup and verification using the SDK container (add
+`-e RUN_AUDIT_BENCHMARKS=1` to the Docker example and `--filter FullyQualifiedName~AuditBenchmarks` to dotnet test).
+Task 5.3 remains open for links, decisions/classification and SAT changes in groups 6/7/8. Member removal is not implemented.

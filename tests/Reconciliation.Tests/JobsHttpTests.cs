@@ -43,7 +43,7 @@ public sealed class JobsHttpTests(ApiFixture fixture)
         Assert.Equal(HttpStatusCode.Accepted, retried.StatusCode);
         Assert.Equal("queued", await owner.QuerySingleAsync<string>(new CommandDefinition("SELECT state FROM job WHERE id=@jobId", new { jobId }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM job_attempt WHERE job_id=@jobId", new { jobId }, cancellationToken: TestContext.Current.CancellationToken)));
-        Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id=@CompanyId AND action='job.retried' AND new_values->>'jobId'=@job", new { seeded.CompanyId, job = jobId.ToString() }, cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal(1, await owner.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM audit_entry WHERE company_id=@CompanyId AND action='job.retried' AND new_values->>'jobId'=@job AND items @> jsonb_build_array(jsonb_build_object('kind','job','id',@job))", new { seeded.CompanyId, job = jobId.ToString() }, cancellationToken: TestContext.Current.CancellationToken)));
         using var repeated = await admin.PostAsync($"/companies/{seeded.CompanyId}/jobs/{jobId}/retry", null, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
     }

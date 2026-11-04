@@ -66,7 +66,7 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
     {
         var (user, company) = await fixture.SeedCompanyWithAdminAsync();
         await using var owner = await fixture.Database.OpenOwnerAsync();
-        await owner.ExecuteAsync(new CommandDefinition("REVOKE INSERT ON audit_entry FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
+        await owner.ExecuteAsync(new CommandDefinition("REVOKE EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
         try
         {
             await Assert.ThrowsAsync<UploadFailedException>(() => fixture.App.Services.GetRequiredService<BankStatementImporter>().ImportAsync(company, user.Id, "reference", "Synthetic-1234",
@@ -74,7 +74,7 @@ public sealed class PerformanceRegressionTests(ApiFixture fixture)
             foreach (var table in new[] { "import_file", "bank_movement", "bank_account" })
                 Assert.Equal(0, await owner.ExecuteScalarAsync<int>(new CommandDefinition($"SELECT count(*) FROM {table} WHERE company_id=@company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         }
-        finally { await owner.ExecuteAsync(new CommandDefinition("GRANT INSERT ON audit_entry TO cfdi_app", cancellationToken: CancellationToken.None)); }
+        finally { await owner.ExecuteAsync(new CommandDefinition("GRANT EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) TO cfdi_app", cancellationToken: CancellationToken.None)); }
     }
 
     [Fact]

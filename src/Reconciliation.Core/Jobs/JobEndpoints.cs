@@ -47,7 +47,7 @@ public static class JobEndpoints
                 await connection.ExecuteAsync(Command("""
                     UPDATE job SET state='queued',max_attempts=attempts+@MaxAttempts,run_after=@now,finished_at=NULL,last_error=NULL WHERE id=@jobId
                     """, new { jobId, options.MaxAttempts, now = clock.GetUtcNow() }, transaction, cancellationToken: transactionCancellationToken));
-                await AuditLog.WriteAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value, "job.retried", new { job.State, job.Attempts }, new { jobId }, transactionCancellationToken);
+                await AuditLog.WriteAsync(connection, transaction, companyId, httpContext.User.UserId()!.Value, "job.retried", new { job.State, job.Attempts }, new { jobId }, transactionCancellationToken, [new("job", jobId.ToString())]);
                 return Results.Accepted($"/companies/{companyId}/jobs/{jobId}", new { jobId });
             }, cancellationToken)).RequireAuthorization(Policies.Administrator);
         routes.MapPost("/companies/{companyId:guid}/reconciliation-runs", (Guid companyId, HttpContext httpContext, CompanyScope companyScope, JobOptions options, TimeProvider clock, CancellationToken cancellationToken) =>

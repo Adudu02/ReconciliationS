@@ -64,6 +64,7 @@ public sealed partial class BankStatementImporter(CompanyScope companyScope, IEn
             if (completed is not null) return completed;
             var importStatus = rejectionReason is null ? ImportStatus.Imported : ImportStatus.Rejected;
             var fileId = await ImportFileStore.InsertFileAsync(connection, transaction, companyId, uploadId, uploadedStatement, ImportFileKind.BankStatement, importStatus == ImportStatus.Imported ? ImportStatus.Importing : importStatus, rejectionReason, options.RetentionYears, transactionCancellationToken);
+            var affectedMovements = new List<Guid>();
             var newMovements = 0;
             var duplicateMovements = 0;
             if (parsedLines is not null)
@@ -76,12 +77,7 @@ public sealed partial class BankStatementImporter(CompanyScope companyScope, IEn
                     "SELECT id FROM bank_account WHERE bank = @bank AND account_reference = @accountReference", new { bank, accountReference }, transaction, cancellationToken: transactionCancellationToken));
                 foreach (var chunk in parsedLines.Chunk(5000))
                 {
-                    newMovements += await connection.ExecuteAsync(Command("""
-                    INSERT INTO bank_movement(company_id, bank_account_id, import_file_id, movement_date, description, credit, debit, balance, reference)
-                    SELECT @companyId, @accountId, @fileId, * FROM unnest(@dates::date[], @descriptions::text[],
-                      @credits::numeric[], @debits::numeric[], @balances::numeric[], @references::text[])
-                    ON CONFLICT (company_id, bank_account_id, movement_date, description, credit, debit, balance) DO NOTHING
-                    """, new
+                    var rows = new
                     {
                         companyId,
                         accountId = bankAccountId,
@@ -92,12 +88,25 @@ public sealed partial class BankStatementImporter(CompanyScope companyScope, IEn
                         debits = chunk.Select(statementLine => statementLine.Debit).ToArray(),
                         balances = chunk.Select(statementLine => statementLine.Balance).ToArray(),
                         references = chunk.Select(statementLine => statementLine.Reference).ToArray()
-                    }, transaction, cancellationToken: transactionCancellationToken));
+                    };
+                    newMovements += await connection.ExecuteAsync(Command("""
+                    INSERT INTO bank_movement(company_id, bank_account_id, import_file_id, movement_date, description, credit, debit, balance, reference)
+                    SELECT @companyId, @accountId, @fileId, * FROM unnest(@dates::date[], @descriptions::text[],
+                      @credits::numeric[], @debits::numeric[], @balances::numeric[], @references::text[])
+                    ON CONFLICT (company_id, bank_account_id, movement_date, description, credit, debit, balance) DO NOTHING
+                    """, rows, transaction, cancellationToken: transactionCancellationToken));
+                    affectedMovements.AddRange(await connection.QueryAsync<Guid>(Command("""
+                        SELECT id FROM bank_movement WHERE bank_account_id=@accountId AND
+                          (movement_date,description,credit,debit,balance) IN
+                          (SELECT * FROM unnest(@dates::date[],@descriptions::text[],@credits::numeric[],@debits::numeric[],@balances::numeric[]))
+                        """, rows, transaction, cancellationToken: transactionCancellationToken)));
+
                 }
                 duplicateMovements = parsedLines.Count - newMovements;
                 await ImportFileStore.FinalizeAsync(connection, transaction, fileId, uploadedStatement, options.RetentionYears, newMovements, duplicateMovements, transactionCancellationToken);
             }
-            await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.BankStatement.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken);
+            await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.BankStatement.ToDatabaseValue() + "." + (newMovements == 0 && duplicateMovements > 0 ? ImportStatus.AlreadyImported : importStatus).ToDatabaseValue(),
+                fileId, transactionCancellationToken, movementIds: affectedMovements, lease: uploadedStatement.Lease);
             return new FileImportOutcome(fileId, uploadedStatement.Name, importStatus.ToDatabaseValue(), rejectionReason, ImportedMovements: newMovements, DuplicateMovements: duplicateMovements);
         }, cancellationToken);
 

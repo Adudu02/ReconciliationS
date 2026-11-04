@@ -27,6 +27,7 @@ internal static class TenantIsolationChecks
     public static async Task VerifyTablesAsync(NpgsqlConnection owner)
     {
         await JobsDatabaseTests.AssertQueueRoleBoundaryAsync(owner);
+        await AuditDatabaseTests.AssertAuditRoleBoundaryAsync(owner);
         foreach (var table in await TenantTablesAsync(owner))
         {
             var state = await owner.QuerySingleAsync<(bool Enabled, bool Forced, long Policies)>(new CommandDefinition("""
@@ -139,6 +140,8 @@ internal static class TenantIsolationChecks
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
+            case "GET /companies/{companyId:guid}/audit-entries":
+            case "GET /companies/{companyId:guid}/audit/verification":
             case "GET /companies/{companyId:guid}/jobs/{jobId:guid}":
             case "POST /companies/{companyId:guid}/jobs/{jobId:guid}/retry":
             case "GET /companies/{companyId:guid}":

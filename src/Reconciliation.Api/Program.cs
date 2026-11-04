@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics;
+using Reconciliation.Core.Audit;
 using Reconciliation.Core.Common;
 using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Jobs;
@@ -34,6 +35,7 @@ app.MapCompanies();
 app.MapCompanyManagement();
 app.MapIngestion();
 app.MapJobs();
+app.MapAudit();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();
 app.Run();

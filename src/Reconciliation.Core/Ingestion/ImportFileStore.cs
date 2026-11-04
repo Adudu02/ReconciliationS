@@ -3,6 +3,7 @@ using Dapper;
 using Npgsql;
 using NpgsqlTypes;
 using Reconciliation.Core.Audit;
+using Reconciliation.Core.Jobs;
 using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Ingestion;
@@ -67,8 +68,16 @@ internal static class ImportFileStore
             bytes = new Bytea(file.Error is null && file.ContentLength <= maxFileBytes ? file.ContentMemory : null)
         }, transaction, cancellationToken: cancellationToken));
 
-    public static Task<int> AuditAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid actorId, string auditAction, Guid fileId, CancellationToken cancellationToken) =>
-        AuditLog.WriteAsync(connection, transaction, companyId, actorId, auditAction, null, new { fileId }, cancellationToken);
+    public static Task<int> AuditAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid actorId, string auditAction, Guid fileId, CancellationToken cancellationToken,
+        Guid? cfdiUuid = null, IReadOnlyList<Guid>? movementIds = null, JobLease? lease = null)
+    {
+        var items = new List<AuditItem> { new("import_file", fileId.ToString()) };
+        if (cfdiUuid.HasValue) items.Add(new("cfdi", cfdiUuid.Value.ToString()));
+        if (movementIds is not null) items.AddRange(movementIds.Select(id => new AuditItem("movement", id.ToString())));
+        if (lease is not null) items.Add(new("job", lease.JobId.ToString()));
+        return AuditLog.WriteAsync(connection, transaction, companyId, actorId, auditAction, null,
+            new { fileId, jobId = lease?.JobId, source = lease?.WorkerId }, cancellationToken, items);
+    }
 
     private sealed class Bytea(ReadOnlyMemory<byte>? bytes) : SqlMapper.ICustomQueryParameter
     {

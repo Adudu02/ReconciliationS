@@ -27,7 +27,7 @@ leen `docs/adr/`, `docs/reference/` y `docs/build-log/`), y usa `git mv` para co
 
 ![Mapa de estado de la construcción](../diagrams/progress/status-map-es.png)
 
-**32 de 85 tareas completas. Grupos 3 y 4 completos; del grupo 2 solo queda 2.4 para decisiones reales del grupo 8.**
+**35 de 85 tareas completas. Grupos 3 y 4 completos; auditoría 5.1/5.2/5.4 completa, mientras 5.3 espera grupos 6/7/8. La tarea 2.4 también espera decisiones reales.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -179,7 +179,8 @@ Se verifica/finaliza el original una vez; los avances actualizan job sin recalcu
 | `company` | Cada cliente (empresa) del sistema | `rfc` (inmutable, validado), `date_tolerance_days` (0–366), `amount_tolerance`, `archived_at` |
 | `app_user` | Personas que inician sesión | `email` (único sin distinguir mayúsculas), `password_hash` |
 | `membership` | Une usuario, empresa y rol | PK `(company_id, user_id)`, `role` (`administrator`, `accountant`, `viewer`) |
-| `audit_entry` | Qué hizo quién y cuándo | `actor_id`, `action`, `old_values`, `new_values` (jsonb) |
+| `audit_entry` | Cadena inmutable por empresa | `company_seq`, `occurred_at`, `actor_type`, `actor_id`, `items`, `detail`, `canonical`, `prev_hash`, `hash` |
+| `audit_chain_head` | Posición de append y cabecera para verificar la cola | `company_id`, `last_seq`, `last_hash` |
 | `import_file` | Un archivo subido y su resultado | `upload_id`, `status`, `reason`, `original` (bytes), `pending_original`, `file_index`, `sha256`, `retained_until`, `original_file_id` |
 | `cfdi` | Una factura importada | `uuid`, `type` (I/P/E), `direction`, importes `numeric(18,2)`, `is_global`, `review_reason` |
 | `cfdi_relation` | Relaciones entre CFDI (por ejemplo, nota de crédito) | `related_uuid`, `relation_code` |
@@ -192,7 +193,7 @@ Convenciones de empresa: `id uuid` generado por la base (job_attempt usa clave c
 RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
 por empresa que empiezan con `company_id` (`M0005`); el worker global además necesita índices de vencimiento/lease.
 
-El esquema construido (migraciones M0001 a M0007), dibujado a partir de las propias migraciones:
+El esquema construido (migraciones M0001 a M0008), dibujado a partir de las propias migraciones:
 
 ![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
 
@@ -220,8 +221,8 @@ fuera del RLS por empresa: no tienen `company_id` ni usan `CompanyScope`. Se con
 
 Los índices cubren digest único, familia y usuario. `cfdi_app` tiene SELECT/INSERT y UPDATE solo en columnas mutables
 concretas, sin DELETE ni UPDATE de eventos. `app_user` recibe únicamente UPDATE(password_hash). Down elimina las tablas
-nuevas y ese permiso. Los tiempos de sesión son UTC explícitos de TimeProvider. El grupo 5 integrará los eventos en la
-auditoría encadenada; la purga espera a trabajos. El acceso emitido puede sobrevivir a la revocación hasta su caducidad.
+nuevas y ese permiso. Los tiempos de sesión son UTC explícitos de TimeProvider. Los eventos auth_event siguen separados de la
+auditoría por empresa; la purga queda pendiente. El acceso emitido puede sobrevivir a la revocación hasta su caducidad.
 
 ### 2.7 Trabajos duraderos
 
@@ -356,7 +357,7 @@ aceptación. Un rechazo conserva solo hash/motivo.
 | `date_tolerance_days` | Días de diferencia admitidos entre fecha bancaria y fiscal al conciliar (por defecto 3, máximo 366: `company_date_tolerance_max`) |
 | `amount_tolerance` | Diferencia de importe admitida al conciliar (por defecto 0.01) |
 | `complement_next_biz_day` | Regla de plazo para complementos de pago; se usará en el grupo 6 |
-| `VersionInfo` | Tabla de FluentMigrator con las versiones aplicadas (hoy 1 a 7) |
+| `VersionInfo` | Tabla de FluentMigrator con las versiones aplicadas (hoy 1 a 8) |
 | `numeric(18,2)` | Dinero con 18 dígitos y 2 decimales exactos |
 | `numeric(20,10)` | Tipo de cambio con hasta 10 decimales |
 
@@ -380,7 +381,11 @@ aceptación. Un rechazo conserva solo hash/motivo.
 | `CompanyHeader.Name` | El nombre de la cabecera `X-Company-Id` en un solo lugar |
 | `DummyPasswordHash` | Hash ficticio creado al arrancar para igualar el trabajo cuando el correo no existe |
 | `LoginProtection` | Límites por correo/IP de login y política IP con nombre para `/auth/refresh` y `/auth/logout` |
-| `AuditLog.WriteAsync` | Única función que escribe en `audit_entry`; la usan todas las acciones |
+| `AuditLog.WriteAsync` | Escritor transaccional que llama append_audit_entry |
+| `AuditItem` | Referencia tipada kind/id en items, cubierta por hash |
+| `append_audit_entry` | Valida contexto, bloquea cabecera y calcula secuencia/hash |
+| `verify_audit_chain` | Cursor SQL que verifica contenido, continuidad y cabecera bajo RLS |
+| `AuditEndpoints` | Lectura por empresa con filtros, paginación y verificación |
 | `DapperExtensions` | Ayudas para armar comandos Dapper con alias de parámetros explícitos |
 | `ImportFileStore` | Guarda los archivos originales y sus metadatos |
 
@@ -390,17 +395,17 @@ aceptación. Un rechazo conserva solo hash/motivo.
 |---|---|---|---|
 | Archivo de solución | Compilación | Agrupa los seis proyectos para que un solo `dotnet build` compile todo | `Reconciliation.slnx` |
 | Reglas de compilación compartidas | Compilación | Todos los proyectos usan la misma configuración: .NET 10, verificación de nulos, las advertencias son errores | `Directory.Build.props`, `.editorconfig`, `global.json` |
-| **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts: multiempresa, ingesta, auditoría mínima y código común de base de datos y salud | `src/Reconciliation.Core` |
+| **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts: multiempresa, ingesta, auditoría encadenada y código común de base de datos y salud | `src/Reconciliation.Core` |
 | **Host de la API** | Host | La API web que llamarán los usuarios. Atiende autenticación, empresas, miembros, configuración, archivo, importaciones, salud y OpenAPI | `src/Reconciliation.Api` |
 | **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0007` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0008` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS, diagramas y el cambio de OpenSpec que define el trabajo | `docs/requirements/`, `docs/diagrams/`, `openspec/` |
-| Pruebas | Pruebas | 227 casos xUnit: 223 aprobados, 3 escenarios pendientes y 1 benchmark optativo; PostgreSQL real | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 283 casos xUnit: 275 aprobados, 6 escenarios pendientes y 2 benchmarks optativos; PostgreSQL real | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 5. Registro de pull requests
@@ -408,6 +413,26 @@ aceptación. Un rechazo conserva solo hash/motivo.
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
+
+### PR-8: Audit log
+
+**Propósito.** Dar a cada empresa una bitácora inmutable y con evidencia de alteraciones, legible por todos sus miembros. El grupo 5 completa 5.1, 5.2 y 5.4; 5.3 sigue abierta por vínculos reales, decisiones/clasificación y cambios del SAT en grupos 6/7/8. El auditor de la especificación corresponde al rol viewer. Aún no existe baja de miembros; cuando se agregue, acción y auditoría usarán la misma función append y transacción. No se agregó una ruta que cambie accesos.
+
+**Cómo funciona.** M0008 encadena las filas audit_entry existentes por empresa en orden created_at/id. AuditLog.WriteAsync llama append_audit_entry dentro de la misma transacción CompanyScope que importaciones, creación/configuración/archivo de empresa, altas/cambios de miembros y reintentos. audit_chain_head conserva last_seq/last_hash; FOR UPDATE serializa escritores de una empresa, mientras otras avanzan de forma independiente. company_seq no tiene huecos entre entradas confirmadas. Un fallo después de acción y auditoría revierte también entrada y cabecera. Cada archivo aceptado, duplicado o rechazado tiene evento; las referencias de movimientos incluyen los ya existentes de estados solapados. Las importaciones del worker conservan al usuario iniciador e incluyen procedencia de job/worker.
+
+items es un arreglo de referencias tipadas, por ejemplo [{"kind":"cfdi","id":"uuid-sintetico"},{"kind":"movement","id":"id-sintetico"}]. Los ids son cadenas; varios movimientos son varios elementos. El arreglo JSON canonical incluye empresa, secuencia, microsegundos UTC, tipo/id de actor, acción, items y detail. SHA-256 recibe el texto canonical UTF-8 exacto guardado seguido por los 32 bytes binarios de prev_hash. La verificación calcula sobre esos bytes y compara los campos JSON con las columnas: detecta editar una columna sin cambiar canonical y evita depender del formato textual de JSON en otras versiones PostgreSQL. ADR-006 documenta el formato completo y el vector fijo calculado de forma independiente.
+
+cfdi_audit_owner es NOLOGIN y NOBYPASSRLS; posee la función SECURITY DEFINER append y solo permisos sobre tablas de auditoría. Se revoca EXECUTE de PUBLIC, search_path comienza con pg_catalog y termina con pg_temp, y app.company_id debe coincidir. cfdi_app tiene SELECT con FORCE RLS y carece de INSERT/UPDATE/DELETE/TRUNCATE. Los triggers rechazan cambios incluso del dueño. old_values/new_values/created_at se generan desde detail/occurred_at, que sí están cubiertos por el hash. Down conserva actor/items/detail completos en new_values._audit_v8 para el siguiente Up, incluidos actores system con actor_id nulo.
+
+verify_audit_chain es STABLE y SECURITY INVOKER bajo RLS del llamador; recorre una empresa por secuencia y comprueba contenido, hashes, continuidad, huecos y cola contra cabecera. Las lecturas son GET /companies/{companyId}/audit-entries (from/to, actor, action, item, itemKind opcional, afterSeq, limit 1–200) y GET /companies/{companyId}/audit/verification. La paginación devuelve nextAfterSeq y lee como máximo limit+1 entradas. Empresas archivadas siguen legibles. Las rutas validan membresía actual y X-Company-Id en la transacción: empresas inexistentes o inaccesibles dan el mismo 404 vacío. TenantIsolationChecks cubre ambas rutas y ambas tablas automáticamente.
+
+**Qué aprendí.** Insertar desde el propio trigger que después lanza error no conserva el intento: todo revierte. AuditLog.RecordModificationRefusedAsync es por ello una entrada interna protegida que agrega audit.modification_refused en otra transacción después del rechazo. Ninguna ruta HTTP modifica auditoría: es defensa y un punto probado para futuros manejadores, no registro automático de todo SQL rechazado. Sesiones y autenticación permanecen en auth_event; se sustituye la idea anterior de integrarlas aquí.
+
+**Decisiones y rendimiento.** La revisión con Claude eligió referencias tipadas en lugar de ids duplicados o un índice de expresión adicional. EXPLAIN con cfdi_app mostró después que la contención jsonb no LEAKPROOF no usa GIN(items jsonb_path_ops) bajo FORCE RLS, ni tras ANALYZE. Eliminamos ese índice inutilizable para no encarecer escrituras. Permanecen (company_id, company_seq) y (company_id, occurred_at, id). El filtro por item usa primero índice de empresa y después evalúa contención: O(n) en las entradas de esa empresa. La prueba CI usa más de 20,000 entradas en tres empresas y exige índice de empresa sin escaneo secuencial. No marcamos funciones internas LEAKPROOF ni debilitamos RLS. Una demostración transaccional del dueño prueba que GIN sí sirve sin RLS y luego revierte el índice. Si una instalación requiere búsqueda indexada, se evaluará una función de lectura SECURITY DEFINER limitada a auditoría o particiones por empresa; no se construyó aquí.
+
+AuditBenchmarks se activa con RUN_AUDIT_BENCHMARKS=1 usando el contenedor SDK del README. Mide peticiones HTTP reales por item a una empresa con 20,000 y 100,000 entradas: un calentamiento, tres muestras y una verificación completa. PostgreSQL 17 local: mediana de búsqueda 9.77 ms / 38.33 ms y verificación completa 244.94 ms / 1,166.16 ms con 20,000 / 100,000 entradas respectivamente. Muestras de búsqueda: 14.00/9.77/9.31 ms y 38.33/38.42/37.10 ms. Son observaciones locales, no garantías de capacidad.
+
+**Validación y límites.** El build final en contenedor SDK terminó con 0 advertencias y 0 errores. La suite completa pasó 275 pruebas y mantuvo 8 skips explícitos (283 en total); dotnet format --verify-no-changes pasó. docker compose up --build --wait dejó PostgreSQL/API/worker/SAT saludables y el migrador terminó correctamente. PostgreSQL desechable en el puerto local 55439 demostró up/down/up con tres entradas anteriores más una nueva de system: las cuatro verificaron después de reaplicar. Al alterar action de seq 2 sin cambiar canonical, el endpoint HTTP devolvió {consistent:false, entries:1, firstInconsistentSeq:2, reason:canonical_mismatch}; restaurar devolvió {consistent:true, entries:4}. Solo se usaron datos sintéticos. Las pruebas cubren vector fijo, 24 conexiones concurrentes, empresas independientes, alteración privilegiada con canonical intacto, borrado intermedio/cola, intentos registrados tras rollback, atomicidad, cada llamador actual, filtros/paginación, viewer archivado y aislamiento automático. Los tres nuevos skips son User confirms a link, Automatic link y SAT status change, con motivos pending group 6/7/8; siguen tres skips de multiempresa y dos benchmarks optativos. Verificar cuesta O(n), con cursor PostgreSQL sin cargar toda la bitácora en memoria de la aplicación. Agregar cuesta O(1) respecto a la longitud, más el tamaño del payload. Un superusuario puede reescribir cadena y cabecera; anclar el hash fuera de la base queda pendiente. Down/Up reconstruye hashes y no sirve como archivo de evidencia inalterada. Solo commits locales; sin push ni merge.
 
 ### PR-7: Trabajos
 
@@ -941,11 +966,9 @@ migración subir/bajar/subir en una base de datos real y la ejecución `41122200
   silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 6. Siguiente trabajo: grupo 5, Auditoría
+## 6. Siguiente trabajo: grupo 6, Conciliación
 
-Agregar cadena de hash append-only y verificación. La cola del grupo 4 está completa; los manejadores reales de
-conciliación/SAT esperan grupos 6/7. La tarea 2.4 espera decisiones del grupo 8 y el escenario configuración/corrida
-espera el grupo 6. El mapa mantiene visibles esos pendientes; ninguna omisión los marca como completos.
+Cadena, verificación y lecturas filtradas ya funcionan. 5.3 sigue abierta por eventos de grupos 6/7/8. La cola del grupo 4 está completa; conciliación y SAT reales esperan los grupos 6/7. Los escenarios previos de multiempresa mantienen sus skips y tareas abiertas.
 
 ## 7. El resto del camino
 
