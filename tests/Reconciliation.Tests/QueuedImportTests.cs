@@ -72,9 +72,9 @@ public sealed class QueuedImportTests(PostgresFixture database) : IClassFixture<
         var queued = await services.GetRequiredService<ImportJobService>().EnqueueAsync(companyId, actorId, "import_statement",
             [UploadedFile.FromBytes("synthetic.csv", Encoding.UTF8.GetBytes("fecha,concepto,abono,cargo,saldo\n2026-10-10,SYNTHETIC,1,0,1\n"))], "reference", "Synthetic-1234", TestContext.Current.CancellationToken);
         await using var owner = await database.OpenOwnerAsync();
-        await owner.ExecuteAsync(new CommandDefinition("REVOKE INSERT ON audit_entry FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
+        await owner.ExecuteAsync(new CommandDefinition("REVOKE EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) FROM cfdi_app", cancellationToken: TestContext.Current.CancellationToken));
         try { Assert.True(await services.GetRequiredService<JobDispatcher>().RunOneAsync("synthetic-failure", TestContext.Current.CancellationToken)); }
-        finally { await owner.ExecuteAsync(new CommandDefinition("GRANT INSERT ON audit_entry TO cfdi_app", cancellationToken: CancellationToken.None)); }
+        finally { await owner.ExecuteAsync(new CommandDefinition("GRANT EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) TO cfdi_app", cancellationToken: CancellationToken.None)); }
         Assert.Equal("failed", await database.ScalarAsync<string>("SELECT state FROM job WHERE id=@JobId", new { queued.JobId }));
         Assert.True(await database.ScalarAsync<bool>("SELECT status='queued' AND pending_original IS NOT NULL AND original IS NULL FROM import_file WHERE upload_id=@UploadId", new { queued.UploadId }));
         Assert.Equal(0, await database.ScalarAsync<int>("SELECT count(*) FROM bank_movement WHERE company_id=@companyId", new { companyId }));

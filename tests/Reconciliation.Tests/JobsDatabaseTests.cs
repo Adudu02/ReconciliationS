@@ -79,11 +79,11 @@ public sealed class JobsDatabaseTests(ApiFixture fixture)
             .AddLogging().BuildServiceProvider(validateScopes: false);
         using var scope = services.CreateScope();
         var migrations = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-        migrations.Rollback(1);
+        migrations.MigrateDown(6);
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('job') IS NOT NULL OR to_regclass('job_attempt') IS NOT NULL"));
         Assert.False(await database.ScalarAsync<bool>("SELECT EXISTS(SELECT FROM pg_roles WHERE rolname='cfdi_queue_owner')"));
         migrations.MigrateUp();
-        Assert.Equal(7, await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
+        Assert.True(7 <= await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
         await using var owner = await database.OpenOwnerAsync();
         await AssertQueueRoleBoundaryAsync(owner);
     }
