@@ -125,6 +125,21 @@ public sealed class AuditDatabaseTests(ApiFixture fixture)
             await AssertAuditRoleBoundaryAsync(owner);
             if (pass == 0) migrations.MigrateDown(7);
         }
+        await using (var tx = await owner.BeginTransactionAsync(TestContext.Current.CancellationToken))
+        {
+            await SetContextAsync(owner, tx, company);
+            await owner.ExecuteAsync(new CommandDefinition("""
+                SELECT append_audit_entry(@company,'system',NULL,'synthetic.system',
+                  '[{"kind":"movement","id":"Synthetic-1"}]','{"source":"synthetic-worker","note":"retained on downgrade"}')
+                """, new { company }, tx, cancellationToken: TestContext.Current.CancellationToken));
+            await tx.CommitAsync(TestContext.Current.CancellationToken);
+        }
+        migrations.MigrateDown(7);
+        migrations.MigrateUp();
+        Assert.True(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("""
+            SELECT actor_type='system' AND actor_id IS NULL AND detail->>'source'='synthetic-worker'
+              AND items='[{"kind":"movement","id":"Synthetic-1"}]'::jsonb FROM audit_entry WHERE action='synthetic.system'
+            """, cancellationToken: TestContext.Current.CancellationToken)));
     }
 
     internal static Task SetContextAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid company) => connection.ExecuteAsync(new CommandDefinition(

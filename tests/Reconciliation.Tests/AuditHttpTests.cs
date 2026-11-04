@@ -150,7 +150,7 @@ public sealed class AuditHttpTests(ApiFixture fixture)
     }
 
     [Fact]
-    public async Task Maximum_page_is_200_and_item_containment_uses_the_GIN_index_on_20000_rows()
+    public async Task Maximum_page_is_200_and_item_filter_uses_a_company_index_across_20000_plus_rows()
     {
         var seed = await SeedAsync();
         await using var owner = await fixture.Database.OpenOwnerAsync();
@@ -163,6 +163,15 @@ public sealed class AuditHttpTests(ApiFixture fixture)
                 """, new { company = seed.Company, actor = seed.Actor }, tx, commandTimeout: 60, cancellationToken: TestContext.Current.CancellationToken));
             await tx.CommitAsync(TestContext.Current.CancellationToken);
         }
+        foreach (var other in new[] { await fixture.SeedCompanyAsync(seed.Actor), await fixture.SeedCompanyAsync(seed.Actor) })
+        {
+            await using var tx = await owner.BeginTransactionAsync(TestContext.Current.CancellationToken);
+            await AuditDatabaseTests.SetContextAsync(owner, tx, other);
+            await owner.ExecuteAsync(new CommandDefinition("SELECT append_audit_entry(@other,'user',@actor,'synthetic.other','[]','{}') FROM generate_series(1,1000)",
+                new { other, actor = seed.Actor }, tx, cancellationToken: TestContext.Current.CancellationToken));
+            await tx.CommitAsync(TestContext.Current.CancellationToken);
+        }
+        await owner.ExecuteAsync(new CommandDefinition("ANALYZE audit_entry", cancellationToken: TestContext.Current.CancellationToken));
         using var client = await fixture.LoginAsync(seed.Email, seed.Company);
         var page = await GetAsync(client, $"/companies/{seed.Company}/audit-entries?limit=200");
         Assert.Equal(200, page.GetProperty("entries").GetArrayLength());
@@ -171,9 +180,13 @@ public sealed class AuditHttpTests(ApiFixture fixture)
         await app.OpenAsync(TestContext.Current.CancellationToken);
         await using var transaction = await app.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await AuditDatabaseTests.SetContextAsync(app, transaction, seed.Company);
-        await app.ExecuteAsync(new CommandDefinition("SET LOCAL enable_seqscan=off; SET LOCAL enable_indexscan=off", transaction: transaction, cancellationToken: TestContext.Current.CancellationToken));
+        await app.ExecuteAsync(new CommandDefinition("SET LOCAL enable_seqscan=off", transaction: transaction, cancellationToken: TestContext.Current.CancellationToken));
         var plan = await app.QueryAsync<string>(new CommandDefinition("EXPLAIN SELECT id FROM audit_entry WHERE items @> '[{\"id\":\"19999\"}]'", transaction: transaction, cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains("audit_items_idx", string.Join('\n', plan), StringComparison.Ordinal);
+        var text = string.Join('\n', plan);
+        Assert.True(text.Contains("audit_company_sequence", StringComparison.Ordinal) || text.Contains("audit_chronological_idx", StringComparison.Ordinal), text);
+        Assert.DoesNotContain("Seq Scan", text, StringComparison.Ordinal);
+        Assert.Contains("Filter:", text, StringComparison.Ordinal);
         Assert.True((await AuditChainTests.VerifyAsync(app, transaction, seed.Company)).Consistent);
+        Assert.False(await fixture.Database.ScalarAsync<bool>("SELECT to_regclass('audit_items_idx') IS NOT NULL"), "Do not maintain an unused GIN index under FORCE RLS.");
     }
 }
