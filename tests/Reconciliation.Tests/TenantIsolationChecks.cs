@@ -16,7 +16,7 @@ namespace Reconciliation.Tests;
 
 internal static class TenantIsolationChecks
 {
-    private sealed record Resources(Guid InvoiceId, Guid UploadId, Guid FileId, Guid JobId);
+    private sealed record Resources(Guid InvoiceId, Guid UploadId, Guid FileId, Guid JobId, Guid MovementId);
     public static async Task<IEnumerable<string>> TenantTablesAsync(NpgsqlConnection owner) =>
         await owner.QueryAsync<string>(new CommandDefinition("""
             SELECT DISTINCT table_name FROM information_schema.columns
@@ -94,7 +94,7 @@ internal static class TenantIsolationChecks
                 }
                 client.DefaultRequestHeaders.Remove("X-Company-Id");
                 client.DefaultRequestHeaders.Add("X-Company-Id", a.ToString());
-                if (route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal))
+                if (route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal) || route.Contains("{movementId:", StringComparison.Ordinal))
                 {
                     using var foreignResource = Request(method, route, a, other.Id, resourceB);
                     using var hidden = await client.SendAsync(foreignResource, TestContext.Current.CancellationToken);
@@ -104,6 +104,8 @@ internal static class TenantIsolationChecks
             }
         }
         Assert.Equal(before, await SnapshotAsync(owner, b));
+        Assert.Contains("GET /companies/{companyId:guid}/movements", exercised);
+        Assert.Contains("PATCH /companies/{companyId:guid}/movements/{movementId:guid}", exercised);
         Assert.Contains("GET /companies/{companyId:guid}", exercised);
         Assert.Contains("POST /companies/{companyId:guid}/members", exercised);
     }
@@ -112,7 +114,12 @@ internal static class TenantIsolationChecks
     {
         var report = await importer.ImportAsync(company, actor, [UploadedFile.FromBytes("synthetic.xml", SyntheticCfdi.Invoice())], TestContext.Current.CancellationToken);
         var jobId = await owner.QuerySingleAsync<Guid>(new CommandDefinition("INSERT INTO job(company_id,type,state,created_by) VALUES(@company,'status_check','failed',@actor) RETURNING id", new { company, actor }, cancellationToken: TestContext.Current.CancellationToken));
-        return new Resources(report.Files[0].CfdiId!.Value, report.UploadId, report.Files[0].FileId, jobId);
+        var movementId = await owner.QuerySingleAsync<Guid>(new CommandDefinition("""
+            WITH account AS (INSERT INTO bank_account(company_id,bank,account_reference) VALUES(@company,'reference','Synthetic-isolation') RETURNING id)
+            INSERT INTO bank_movement(company_id,bank_account_id,movement_date,description,credit,debit,balance)
+            SELECT @company,id,'2026-10-10','Synthetic isolation movement',1,0,1 FROM account RETURNING id
+            """, new { company }, cancellationToken: TestContext.Current.CancellationToken));
+        return new Resources(report.Files[0].CfdiId!.Value, report.UploadId, report.Files[0].FileId, jobId, movementId);
     }
 
     private static async Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company)
@@ -136,10 +143,12 @@ internal static class TenantIsolationChecks
             .Replace("{invoiceId:guid}", resources.InvoiceId.ToString(), StringComparison.Ordinal)
             .Replace("{uploadId:guid}", resources.UploadId.ToString(), StringComparison.Ordinal)
             .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal)
-            .Replace("{jobId:guid}", resources.JobId.ToString(), StringComparison.Ordinal));
+            .Replace("{jobId:guid}", resources.JobId.ToString(), StringComparison.Ordinal)
+            .Replace("{movementId:guid}", resources.MovementId.ToString(), StringComparison.Ordinal));
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
+            case "GET /companies/{companyId:guid}/movements":
             case "GET /companies/{companyId:guid}/audit-entries":
             case "GET /companies/{companyId:guid}/audit/verification":
             case "GET /companies/{companyId:guid}/jobs/{jobId:guid}":
@@ -171,6 +180,9 @@ internal static class TenantIsolationChecks
                 break;
             case "POST /companies":
                 request.Content = JsonContent.Create(new { rfc = "AAA010101AAA", name = "Synthetic isolated", adminEmail = $"isolation-admin-{Guid.NewGuid():N}@example.invalid", adminPassword = ApiFixture.Password });
+                break;
+            case "PATCH /companies/{companyId:guid}/movements/{movementId:guid}":
+                request.Content = JsonContent.Create(new { classification = "other", note = "Synthetic isolation baseline" });
                 break;
             case "PATCH /companies/{companyId:guid}/settings":
                 request.Content = JsonContent.Create(new { amountTolerance = 0.02m });
