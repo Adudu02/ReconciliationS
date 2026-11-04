@@ -3,6 +3,7 @@ using Reconciliation.Core.Audit;
 using Reconciliation.Core.Common;
 using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Jobs;
+using Reconciliation.Core.Matching;
 using Reconciliation.Core.Tenancy;
 using SessionOptions = Reconciliation.Core.Tenancy.SessionOptions;
 
@@ -36,6 +37,7 @@ app.MapCompanyManagement();
 app.MapIngestion();
 app.MapJobs();
 app.MapAudit();
+app.MapMovements();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();
 app.Run();

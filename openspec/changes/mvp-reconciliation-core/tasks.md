@@ -49,7 +49,7 @@
 - [x] 5.1 Create audit_entry with insert-only privileges and a trigger that rejects update and delete, and verify an update attempt fails and is itself recorded
 - [x] 5.2 Implement hash chaining per company and the verification operation, and verify an altered row is reported at the correct position
 - [ ] 5.3 Record audit entries inside the same transaction as imports, links, decisions and role changes, and verify a rolled-back action leaves no entry
-  - Imports, company administration, membership added/changed, job retry and automatic link creation/upgrades/closures are audited; classification, user link decisions and SAT changes remain pending groups 6/7/8.
+  - Imports, company administration, membership added/changed, job retry, automatic link creation/upgrades/closures and movement classification are audited; user link decisions and SAT changes remain pending groups 7/8.
 - [x] 5.4 Implement filtered read access for viewers and auditors and verify company isolation of the log
 
 ## 6. Matching engine (days 4–6)
@@ -59,7 +59,7 @@
 - [x] 6.2b Use the net total (after discount and retentions) as payable amount and verify a movement of 1,939.27 fully covers the synthetic sample invoice
 - [x] 6.3 Implement heuristics with criteria, confidence and explanation, and verify the second movement becomes suggested with its reasons
 - [ ] 6.4 Implement credit-note handling and verify the credit-note scenario shows nothing pending
-- [ ] 6.5 Implement classification of movements without CFDI and verify they leave the pending list
+- [x] 6.5 Implement classification of movements without CFDI and verify they leave the pending list
 - [x] 6.6 Make reconciliation idempotent and decision-preserving, and verify the rerun and rejected-link scenarios pass
 - [x] 6.7 Add property-based tests (rerun changes nothing, sums conserved, rejected link never reappears) and verify they run in CI
 - [ ] 6.8 Write ADR-005 (explainable rule pipeline) and verify it compares a single score and a learned model

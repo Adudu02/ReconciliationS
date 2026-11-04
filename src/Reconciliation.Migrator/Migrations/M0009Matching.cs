@@ -8,6 +8,11 @@ public sealed class M0009Matching : Migration
     public override void Up() => Execute.Sql($$"""
         ALTER TABLE company ADD CONSTRAINT company_matching_tolerance CHECK(amount_tolerance<=1.00);
         ALTER TABLE cfdi ADD COLUMN serie text, ADD COLUMN folio text;
+        ALTER TABLE bank_movement ADD COLUMN classification_note text,
+          ADD CONSTRAINT movement_classification_valid CHECK(classification IN ('loan','partner_contribution','tax_payment','late_invoicing','other')),
+          ADD CONSTRAINT movement_classification_note_valid CHECK(length(classification_note)<=2000 AND (classification IS NOT NULL OR classification_note IS NULL));
+        CREATE INDEX bank_movement_chronological_idx ON bank_movement(company_id,movement_date,id);
+        GRANT UPDATE(classification,classification_note) ON bank_movement TO cfdi_app;
         CREATE TABLE link (
           company_id uuid NOT NULL REFERENCES company(id), id uuid NOT NULL DEFAULT gen_random_uuid(),
           movement_id uuid NOT NULL, cfdi_id uuid NOT NULL, payment_cfdi_id uuid, payment_ref uuid,
@@ -75,6 +80,9 @@ public sealed class M0009Matching : Migration
         DROP FUNCTION movement_state();
         DROP FUNCTION cfdi_state();
         DROP TABLE link;
+        REVOKE UPDATE(classification) ON bank_movement FROM cfdi_app;
+        DROP INDEX bank_movement_chronological_idx;
+        ALTER TABLE bank_movement DROP CONSTRAINT movement_classification_valid, DROP CONSTRAINT movement_classification_note_valid, DROP COLUMN classification_note;
         ALTER TABLE company DROP CONSTRAINT company_matching_tolerance;
         ALTER TABLE cfdi DROP COLUMN serie, DROP COLUMN folio;
         """);
