@@ -60,8 +60,8 @@
 - [x] 6.3 Implement heuristics with criteria, confidence and explanation, and verify the second movement becomes suggested with its reasons
 - [ ] 6.4 Implement credit-note handling and verify the credit-note scenario shows nothing pending
 - [ ] 6.5 Implement classification of movements without CFDI and verify they leave the pending list
-- [ ] 6.6 Make reconciliation idempotent and decision-preserving, and verify the rerun and rejected-link scenarios pass
-- [ ] 6.7 Add property-based tests (rerun changes nothing, sums conserved, rejected link never reappears) and verify they run in CI
+- [x] 6.6 Make reconciliation idempotent and decision-preserving, and verify the rerun and rejected-link scenarios pass
+- [x] 6.7 Add property-based tests (rerun changes nothing, sums conserved, rejected link never reappears) and verify they run in CI
 - [ ] 6.8 Write ADR-005 (explainable rule pipeline) and verify it compares a single score and a learned model
 - [x] 6.9 Match only credit movements with issued income CFDI and verify a debit movement is not proposed
 - [x] 6.10 Add the gross-payment heuristic and the reference-equals-operation-number criterion, and verify both reasons appear

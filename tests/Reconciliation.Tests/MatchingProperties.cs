@@ -54,6 +54,9 @@ public sealed class MatchingProperties
         var second = MatchingEngine.Run([.. movements.Reverse()], [.. invoices.Reverse()], [.. payments.Reverse()], [.. suggestions.Reverse()], Settings, 2);
         Assert.Equal(JsonSerializer.Serialize(first.Changes), JsonSerializer.Serialize(second.Changes));
         Assert.Equal(JsonSerializer.Serialize(first.Updates), JsonSerializer.Serialize(second.Updates));
+        var rerun = MatchingEngine.Run(movements, invoices, payments, MatchingDecisionTests.Apply(suggestions, first), Settings, 2);
+        Assert.Empty(rerun.Changes);
+        Assert.Empty(rerun.Updates);
     }
 
     [Property(MaxTest = 150)]
@@ -72,8 +75,13 @@ public sealed class MatchingProperties
         var movement = SyntheticMatching.FirstMovement(100) with { Description = random.Next(2) == 0 ? "BBB010101BBB" : "FC0001", Reference = null };
         var invoices = Enumerable.Range(1, random.Next(3, 13)).Select(i => SyntheticMatching.Invoice(100 + random.Next(-2, 3) / 100m) with
         {
-            Id = Id(i), Uuid = Id(i), Date = movement.Date.AddDays(-random.Next(8)), Retained = random.Next(2) / 100m,
-            ReceiverRfc = random.Next(2) == 0 ? "BBB010101BBB" : "CCC010101CCC", Serie = "FC", Folio = i.ToString("D4")
+            Id = Id(i),
+            Uuid = Id(i),
+            Date = movement.Date.AddDays(-random.Next(8)),
+            Retained = random.Next(2) / 100m,
+            ReceiverRfc = random.Next(2) == 0 ? "BBB010101BBB" : "CCC010101CCC",
+            Serie = "FC",
+            Folio = i.ToString("D4")
         }).ToArray();
         // Independent full scan: no indexes, cap or production scoring helpers.
         var expected = invoices.Select(invoice =>
@@ -112,7 +120,12 @@ public sealed class MatchingProperties
         var random = new Random(seed);
         var invoices = Enumerable.Range(1, random.Next(2, 10)).Select(i => SyntheticMatching.Invoice(random.Next(1, 5) * 50m) with
         {
-            Id = Id(i), Uuid = Id(i), Date = new DateOnly(2026, 10, 10).AddDays(-random.Next(8)), Retained = random.Next(3), Serie = "FC", Folio = i.ToString("D4")
+            Id = Id(i),
+            Uuid = Id(i),
+            Date = new DateOnly(2026, 10, 10).AddDays(-random.Next(8)),
+            Retained = random.Next(3),
+            Serie = "FC",
+            Folio = i.ToString("D4")
         }).ToArray();
         var movements = Enumerable.Range(1, random.Next(2, 10)).Select(i =>
         {

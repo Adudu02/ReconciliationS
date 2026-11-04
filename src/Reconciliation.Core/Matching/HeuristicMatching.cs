@@ -41,11 +41,12 @@ internal static class HeuristicMatching
             .GroupBy(payment => payment.OperationNumber!, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
         var blocked = existing.Where(link => !link.Reopened).Select(link => (link.MovementId, link.InvoiceId)).ToHashSet();
         var blockCounts = blocked.GroupBy(pair => pair.MovementId).ToDictionary(group => group.Key, group => group.Count());
+        var occupiedMovements = existing.Where(link => link.State is "suggested" or "reconciled").Select(link => link.MovementId).ToHashSet();
         long comparisons = 0;
         foreach (var movement in movements.OrderBy(movement => movement.Date).ThenBy(movement => movement.Id))
         {
             var available = movement.Credit - reservedMovements.GetValueOrDefault(movement.Id);
-            if (available <= 0 || movement.Debit != 0 || movement.Classification is not null) continue;
+            if (occupiedMovements.Contains(movement.Id) || available <= 0 || movement.Debit != 0 || movement.Classification is not null) continue;
             var text = new MatchingText(movement);
             var direct = new HashSet<Guid>();
             foreach (var term in text.Terms) if (postings.TryGetValue(term, out var ids)) direct.UnionWith(ids);
