@@ -244,7 +244,8 @@ Task 5.3 remains open for links, decisions/classification and SAT changes in gro
 `POST /companies/{companyId}/reconciliation-runs` now runs matching 6A in the worker. It returns 202 with a jobId, or 200
 with the existing active run for that company. Poll the job until succeeded before reading derived movement states.
 Only exact issued payment-complement evidence auto-reconciles. Other eligible evidence creates a suggestion with
-criteria, confidence and explanation; high confidence never confirms a heuristic. In the synthetic worked example,
+criteria, confidence and explanation; high confidence never confirms a heuristic. A gross target adds both federal and
+local retained taxes to the declared net total; its persisted reason/audit lists the two components separately. In the synthetic worked example,
 invoice **11600** receives two **5800** payments: the first reconciles with its complement, the second is suggested from
 the remaining payable. [ADR-007](docs/adr/ADR-007-explainable-rule-pipeline.md) fixes the rubric and bounded-index design.
 

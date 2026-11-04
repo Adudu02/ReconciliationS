@@ -62,7 +62,7 @@ Exactly ONE amount criterion applies, in this precedence order. Independent evid
 | Criterion | Points | Meaning |
 |---|---:|---|
 | Exact net total | 40 | Credit equals CFDI total after discount and retentions |
-| Exact gross target | 35 | Credit equals total plus retained taxes |
+| Exact gross target | 35 | Credit equals total plus federal and local retained taxes |
 | Exact remaining payable | 30 | Credit equals a partial remainder strictly below total |
 | Within amount tolerance | 25 | Near total, gross or partial remainder when none matches exactly |
 | Date within tolerance | 20 + 0–10 | Integer proximity bonus rounded to nearest, maximum on the same date |
@@ -70,6 +70,10 @@ Exactly ONE amount criterion applies, in this precedence order. Independent evid
 | Serie/folio or UUID fragment in text | 30 | One identifier bonus |
 | Reference equals operation number | 30 | Complement payment amount must equal movement credit |
 
+The single Retained engine input is the exact numeric sum of declared retained_tax and local_retained_tax (COALESCE nulls to zero).
+At the SQL boundary, persisted gross criteria and explanations list both components separately, e.g. federal 0.00, local 10.00;
+the same detail is hashed into the system audit entry. “Payer did not withhold” means neither category was withheld,
+consistent with D14's stored net total. Local-only and mixed-retention integration tests fix this interpretation.
 Within-tolerance detail identifies the closest target and the exact difference in cents. The gross target, exact or
 near, includes the reason `amount equals total before retentions`; if retained taxes are zero, the total target wins
 and no gross reason appears. Amount targets are never added together. Confidence is high at 70+, medium at 45+, low at

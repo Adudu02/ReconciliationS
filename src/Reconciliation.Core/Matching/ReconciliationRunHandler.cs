@@ -20,14 +20,15 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
             """, new { companyId = job.CompanyId }, transaction, cancellationToken: cancellationToken));
         if (settings.Archived) throw new CompanyReadOnlyException();
         MatchingMovement[] movements;
-        MatchingInvoice[] invoices;
+        InvoiceRow[] invoiceRows;
         PaymentRow[] paymentRows;
         DocumentRow[] documents;
         LinkRow[] linkRows;
         using (var data = await connection.QueryMultipleAsync(Command("""
             SELECT id,movement_date AS Date,credit,debit,description,reference,classification FROM bank_movement;
-            SELECT id,uuid,issued_at::date AS Date,total,retained_tax AS Retained,issuer_rfc AS IssuerRfc,receiver_rfc AS ReceiverRfc,
-              type,direction,currency,serie,folio FROM cfdi WHERE type='I' AND direction='issued';
+            SELECT id,uuid,issued_at::date AS Date,total,coalesce(retained_tax,0)+coalesce(local_retained_tax,0) AS Retained,
+              issuer_rfc AS IssuerRfc,receiver_rfc AS ReceiverRfc,type,direction,currency,serie,folio,
+              coalesce(retained_tax,0) AS FederalRetained,coalesce(local_retained_tax,0) AS LocalRetained FROM cfdi WHERE type='I' AND direction='issued';
             SELECT p.id,p.cfdi_id AS CfdiId,p.paid_at::date AS Date,p.amount,p.operation_number AS OperationNumber,c.direction,p.currency
               FROM cfdi_payment p JOIN cfdi c ON c.company_id=p.company_id AND c.id=p.cfdi_id WHERE c.type='P';
             SELECT payment_id AS PaymentId,invoice_uuid AS InvoiceUuid,paid,currency,inconsistent_balance AS Inconsistent FROM cfdi_payment_doc;
@@ -36,11 +37,13 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
             """, transaction: transaction, cancellationToken: cancellationToken)))
         {
             movements = (await data.ReadAsync<MatchingMovement>()).ToArray();
-            invoices = (await data.ReadAsync<MatchingInvoice>()).ToArray();
+            invoiceRows = (await data.ReadAsync<InvoiceRow>()).ToArray();
             paymentRows = (await data.ReadAsync<PaymentRow>()).ToArray();
             documents = (await data.ReadAsync<DocumentRow>()).ToArray();
             linkRows = (await data.ReadAsync<LinkRow>()).ToArray();
         }
+        var invoices = invoiceRows.Select(row => row.Invoice).ToArray();
+        var invoicesById = invoiceRows.ToDictionary(row => row.Id);
         var lease = new JobLease(job, clock);
         await ReportProgressAsync(0);
         var paymentDocuments = documents.GroupBy(doc => doc.PaymentId).ToDictionary(group => group.Key,
@@ -53,12 +56,11 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
         var result = MatchingEngine.Run(movements, invoices, payments, existing, new(settings.DateToleranceDays, settings.AmountTolerance));
         var reopened = existing.Where(link => link.Reopened && link.State is "rejected" or "closed")
             .ToDictionary(link => (link.MovementId, link.InvoiceId, link.PaymentCfdiId));
-        var created = result.Changes.Select(link => reopened.TryGetValue((link.MovementId, link.InvoiceId, link.PaymentCfdiId), out var previous)
+        var created = result.Changes.Select(ExplainRetentions).Select(link => reopened.TryGetValue((link.MovementId, link.InvoiceId, link.PaymentCfdiId), out var previous)
             ? link with { Id = previous.Id, CreatedAt = previous.CreatedAt }
             : link with { Id = Guid.NewGuid(), CreatedAt = clock.GetUtcNow() }).ToArray();
         var writes = result.Updates.Select(update => update.After).Concat(created).ToArray();
         foreach (var batch in writes.Chunk(500)) await PersistAsync(batch);
-        var invoiceUuids = invoices.ToDictionary(invoice => invoice.Id, invoice => invoice.Uuid);
         foreach (var update in result.Updates) await AuditAsync(update.After, update.Action, update.Before);
         foreach (var link in created) await AuditAsync(link, "link.created", null);
         await ReportProgressAsync(movements.Length);
@@ -74,7 +76,22 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
 
         Task<int> AuditAsync(MatchingLink link, string action, MatchingLink? previous) => AuditLog.WriteSystemAsync(connection, transaction,
             job.CompanyId, job.Id, Type, action, previous, link,
-            [new("movement", link.MovementId.ToString()), new("cfdi", invoiceUuids[link.InvoiceId].ToString()), new("link", link.Id!.Value.ToString())], cancellationToken);
+            [new("movement", link.MovementId.ToString()), new("cfdi", invoicesById[link.InvoiceId].Uuid.ToString()), new("link", link.Id!.Value.ToString())], cancellationToken);
+
+        MatchingLink ExplainRetentions(MatchingLink link)
+        {
+            const string grossReason = "amount equals total before retentions";
+            if (!link.Criteria.Any(criterion => criterion.Detail.Contains(grossReason, StringComparison.Ordinal))) return link;
+            var invoice = invoicesById[link.InvoiceId];
+            var components = FormattableString.Invariant($"retentions: federal {invoice.FederalRetained:0.00}, local {invoice.LocalRetained:0.00}");
+            // Provenance belongs to the SQL boundary; the pure engine keeps one exact retained total.
+            return link with
+            {
+                Criteria = link.Criteria.Select(criterion => criterion.Detail.Contains(grossReason, StringComparison.Ordinal)
+                    ? criterion with { Detail = criterion.Detail + "; " + components } : criterion).ToArray(),
+                Explanation = link.Explanation + "; " + components
+            };
+        }
 
         async Task PersistAsync(MatchingLink[] rows)
         {
@@ -109,6 +126,11 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
     }
 
     private sealed record SettingsRow(bool Archived, int DateToleranceDays, decimal AmountTolerance);
+    private sealed record InvoiceRow(Guid Id, Guid Uuid, DateOnly Date, decimal Total, decimal Retained, string IssuerRfc, string ReceiverRfc,
+        string Type, string Direction, string Currency, string? Serie, string? Folio, decimal FederalRetained, decimal LocalRetained)
+    {
+        public MatchingInvoice Invoice => new(Id, Uuid, Date, Total, Retained, IssuerRfc, ReceiverRfc, Type, Direction, Currency, Serie, Folio);
+    }
     private sealed record PaymentRow(Guid Id, Guid CfdiId, DateOnly Date, decimal Amount, string? OperationNumber, string Direction, string Currency);
     private sealed record DocumentRow(Guid PaymentId, Guid InvoiceUuid, decimal Paid, string Currency, bool Inconsistent);
     private sealed record LinkRow(Guid Id, Guid MovementId, Guid InvoiceId, Guid? PaymentCfdiId, Guid? PaymentRef, decimal Amount,
