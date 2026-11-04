@@ -55,7 +55,7 @@
 ## 6. Matching engine (days 4–6)
 
 - [x] 6.1 Implement the link model and derived item states and verify the partial and N:M scenarios pass
-- [ ] 6.2 Implement deterministic rules (payment complement, amount, date tolerance) and verify the worked example's first movement becomes reconciled
+- [x] 6.2 Implement deterministic rules (payment complement, amount, date tolerance) and verify the worked example's first movement becomes reconciled
 - [ ] 6.2b Use the net total (after discount and retentions) as payable amount and verify a movement of 1,939.27 fully covers the synthetic sample invoice
 - [ ] 6.3 Implement heuristics with criteria, confidence and explanation, and verify the second movement becomes suggested with its reasons
 - [ ] 6.4 Implement credit-note handling and verify the credit-note scenario shows nothing pending
@@ -63,7 +63,7 @@
 - [ ] 6.6 Make reconciliation idempotent and decision-preserving, and verify the rerun and rejected-link scenarios pass
 - [ ] 6.7 Add property-based tests (rerun changes nothing, sums conserved, rejected link never reappears) and verify they run in CI
 - [ ] 6.8 Write ADR-005 (explainable rule pipeline) and verify it compares a single score and a learned model
-- [ ] 6.9 Match only credit movements with issued income CFDI and verify a debit movement is not proposed
+- [x] 6.9 Match only credit movements with issued income CFDI and verify a debit movement is not proposed
 - [ ] 6.10 Add the gross-payment heuristic and the reference-equals-operation-number criterion, and verify both reasons appear
 - [ ] 6.11 (stretch if time is short) Record invoice-currency amount, movement amount and declared rate on links, and verify the dollar-invoice scenario
 - [ ] 6.12 Compute the complement due date and the overdue state with the weekend setting, and verify both scenarios

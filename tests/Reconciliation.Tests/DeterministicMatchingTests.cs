@@ -11,7 +11,7 @@ public sealed class DeterministicMatchingTests
     {
         var result = MatchingEngine.Run([SyntheticMatching.SecondMovement(), SyntheticMatching.FirstMovement()],
             [SyntheticMatching.Invoice()], [SyntheticMatching.Payment()], [], Settings);
-        var link = Assert.Single(result.Changes.Where(link => link.State == "reconciled"));
+        var link = Assert.Single(result.Changes, link => link.State == "reconciled");
         Assert.Equal(SyntheticMatching.FirstMovementId, link.MovementId);
         Assert.Equal(SyntheticMatching.InvoiceId, link.InvoiceId);
         Assert.Equal(SyntheticMatching.PaymentCfdiId, link.PaymentCfdiId);
