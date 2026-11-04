@@ -83,6 +83,8 @@ public sealed class MatchingModelTests(ApiFixture fixture)
         await using var app = new NpgsqlConnection(fixture.Database.AppConnectionString);
         await app.OpenAsync(TestContext.Current.CancellationToken);
         Assert.Empty(await app.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM link", cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Empty(await app.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM cfdi_state()", cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Empty(await app.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM movement_state()", cancellationToken: TestContext.Current.CancellationToken)));
         await using var tx = await app.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await AuditDatabaseTests.SetContextAsync(app, tx, seed.Company);
         await LinkAsync(app, tx, seed.Company, seed.Movement, seed.Invoice, 1, "rejected");
@@ -108,9 +110,16 @@ public sealed class MatchingModelTests(ApiFixture fixture)
             .WithGlobalConnectionString(database.OwnerConnectionString).ScanIn(typeof(M0001CompanyUserMembership).Assembly).For.Migrations()).AddLogging().BuildServiceProvider(validateScopes: false);
         using var scope = services.CreateScope();
         var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        await using var owner = await database.OpenOwnerAsync();
+        var company = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("INSERT INTO company(rfc,name) VALUES('AAA010101AAA','Synthetic migration') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
+        await owner.ExecuteAsync(new CommandDefinition("""
+            INSERT INTO import_file(company_id,upload_id,filename,kind,status,reason,sha256)
+            VALUES(@company,gen_random_uuid(),'synthetic.xml','cfdi','rejected','Synthetic invalid input',sha256(convert_to('synthetic','UTF8')))
+            """, new { company }, cancellationToken: TestContext.Current.CancellationToken));
         runner.MigrateDown(8);
         Assert.False(await database.ScalarAsync<bool>("SELECT to_regclass('link') IS NOT NULL"));
         runner.MigrateUp();
         Assert.True(await database.ScalarAsync<bool>("SELECT to_regclass('link') IS NOT NULL"));
+        Assert.Equal(1, await database.ScalarAsync<int>("SELECT count(*) FROM import_file WHERE company_id=@company", new { company }));
     }
 }

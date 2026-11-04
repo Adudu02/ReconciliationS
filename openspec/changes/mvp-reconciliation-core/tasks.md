@@ -54,7 +54,7 @@
 
 ## 6. Matching engine (days 4–6)
 
-- [ ] 6.1 Implement the link model and derived item states and verify the partial and N:M scenarios pass
+- [x] 6.1 Implement the link model and derived item states and verify the partial and N:M scenarios pass
 - [ ] 6.2 Implement deterministic rules (payment complement, amount, date tolerance) and verify the worked example's first movement becomes reconciled
 - [ ] 6.2b Use the net total (after discount and retentions) as payable amount and verify a movement of 1,939.27 fully covers the synthetic sample invoice
 - [ ] 6.3 Implement heuristics with criteria, confidence and explanation, and verify the second movement becomes suggested with its reasons
