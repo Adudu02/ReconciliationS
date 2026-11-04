@@ -168,8 +168,10 @@ public sealed class HeuristicMatchingTests
         Assert.True(result.CandidateComparisons <= 2 * MatchingEngine.MaxCandidatesPerMovement + payments.Length);
     }
 
-    [Fact]
-    public void Amount_RFC_sub_index_reaches_the_true_best_beyond_K_nearer_candidates()
+    [Theory]
+    [InlineData("BBB010101BBB")]
+    [InlineData("A&A010101AAA")]
+    public void Amount_RFC_sub_index_reaches_the_true_best_beyond_K_nearer_candidates(string rfc)
     {
         var invoice = SyntheticMatching.Invoice(100) with { Date = new(2026, 10, 9), ReceiverRfc = "CCC010101CCC" };
         var nearer = Enumerable.Range(1, 60).Select(i => invoice with
@@ -177,11 +179,20 @@ public sealed class HeuristicMatchingTests
             Id = Guid.Parse($"00000000-0000-0000-0001-{i:D12}"),
             Uuid = Guid.Parse($"00000000-0000-0000-0001-{i:D12}")
         }).ToArray();
-        var far = invoice with { Id = SyntheticMatching.InvoiceId, Date = new(2026, 10, 7), ReceiverRfc = "BBB010101BBB" };
-        var movement = SyntheticMatching.FirstMovement(100) with { Description = "BBB010101BBB" };
+        var far = invoice with { Id = SyntheticMatching.InvoiceId, Date = new(2026, 10, 7), ReceiverRfc = rfc };
+        var movement = SyntheticMatching.FirstMovement(100) with { Description = rfc };
         var result = MatchingEngine.Run([movement], [.. nearer, far], [], [], Settings, maxCandidates: 2);
         Assert.Equal(far.Id, Assert.Single(result.Changes).InvoiceId);
         Assert.True(result.CandidateComparisons <= 3 * 2 * 2);
+    }
+
+    [Fact]
+    public void RFC_ampersands_are_significant_and_do_not_collide_after_normalization()
+    {
+        var invoice = SyntheticMatching.Invoice(100) with { ReceiverRfc = "A&A010101AAA" };
+        var movement = SyntheticMatching.FirstMovement(100) with { Description = "AA&010101AAA" };
+        var link = Assert.Single(MatchingEngine.Run([movement], [invoice], [], [], Settings).Changes);
+        Assert.DoesNotContain(link.Criteria, criterion => criterion.Code == "rfc");
     }
 
     [Theory]

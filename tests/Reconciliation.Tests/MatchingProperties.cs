@@ -72,14 +72,14 @@ public sealed class MatchingProperties
     public void Small_K_best_equals_brute_force_full_scan(int seed)
     {
         var random = new Random(seed);
-        var movement = SyntheticMatching.FirstMovement(100) with { Description = random.Next(2) == 0 ? "BBB010101BBB" : "FC0001", Reference = null };
+        var movement = SyntheticMatching.FirstMovement(100) with { Description = random.Next(3) switch { 0 => "BBB010101BBB", 1 => "A&A010101AAA", _ => "FC0001" }, Reference = null };
         var invoices = Enumerable.Range(1, random.Next(3, 13)).Select(i => SyntheticMatching.Invoice(100 + random.Next(-2, 3) / 100m) with
         {
             Id = Id(i),
             Uuid = Id(i),
             Date = movement.Date.AddDays(-random.Next(8)),
             Retained = random.Next(2) / 100m,
-            ReceiverRfc = random.Next(2) == 0 ? "BBB010101BBB" : "CCC010101CCC",
+            ReceiverRfc = random.Next(3) switch { 0 => "BBB010101BBB", 1 => "A&A010101AAA", _ => "CCC010101CCC" },
             Serie = "FC",
             Folio = i.ToString("D4")
         }).ToArray();
