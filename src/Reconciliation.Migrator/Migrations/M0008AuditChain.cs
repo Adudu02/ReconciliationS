@@ -83,6 +83,37 @@ public sealed class M0008AuditChain : Migration
         ALTER FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) OWNER TO cfdi_audit_owner;
         REVOKE ALL ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) FROM PUBLIC;
         GRANT EXECUTE ON FUNCTION append_audit_entry(uuid,text,uuid,text,jsonb,jsonb) TO cfdi_app;
+        CREATE FUNCTION verify_audit_chain(p_company uuid)
+        RETURNS TABLE(consistent boolean,entries bigint,first_inconsistent_seq bigint,reason text)
+        LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+        DECLARE entry public.audit_entry; head public.audit_chain_head; counted bigint:=0;
+          previous_hash bytea:=decode(repeat('00',32),'hex'); parsed jsonb; problem text;
+        BEGIN
+          FOR entry IN SELECT * FROM public.audit_entry WHERE company_id=p_company ORDER BY company_seq LOOP
+            problem:=NULL;
+            IF entry.company_seq<>counted+1 THEN problem:='sequence_gap';
+            ELSIF entry.prev_hash<>previous_hash THEN problem:='previous_hash_mismatch';
+            ELSE
+              BEGIN parsed:=entry.canonical::jsonb;
+              EXCEPTION WHEN invalid_text_representation THEN problem:='canonical_invalid'; END;
+              IF problem IS NULL AND parsed IS DISTINCT FROM public.audit_canonical(entry.company_id,entry.company_seq,
+                entry.occurred_at,entry.actor_type,entry.actor_id,entry.action,entry.items,entry.detail)::jsonb THEN
+                problem:='canonical_mismatch';
+              END IF;
+              IF problem IS NULL AND sha256(convert_to(entry.canonical,'UTF8') || entry.prev_hash)<>entry.hash THEN problem:='hash_mismatch'; END IF;
+            END IF;
+            IF problem IS NOT NULL THEN RETURN QUERY SELECT false,counted,counted+1,problem; RETURN; END IF;
+            counted:=counted+1; previous_hash:=entry.hash;
+          END LOOP;
+          SELECT * INTO head FROM public.audit_chain_head WHERE company_id=p_company;
+          IF (head.company_id IS NULL AND counted>0) OR
+            (head.company_id IS NOT NULL AND (head.last_seq<>counted OR head.last_hash<>previous_hash)) THEN
+            RETURN QUERY SELECT false,counted,CASE WHEN head.last_seq>counted THEN counted+1 ELSE greatest(counted,1) END,'head_mismatch'::text;
+          ELSE RETURN QUERY SELECT true,counted,NULL::bigint,NULL::text;
+          END IF;
+        END $$;
+        REVOKE ALL ON FUNCTION verify_audit_chain(uuid) FROM PUBLIC;
+        GRANT EXECUTE ON FUNCTION verify_audit_chain(uuid) TO cfdi_app;
         CREATE FUNCTION refuse_audit_mutation() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
         BEGIN RAISE EXCEPTION 'Audit entries are append-only'; END $$;
         CREATE TRIGGER audit_entry_immutable BEFORE UPDATE OR DELETE ON audit_entry FOR EACH ROW EXECUTE FUNCTION refuse_audit_mutation();
