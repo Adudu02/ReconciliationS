@@ -50,7 +50,7 @@
 - [x] 5.2 Implement hash chaining per company and the verification operation, and verify an altered row is reported at the correct position
 - [ ] 5.3 Record audit entries inside the same transaction as imports, links, decisions and role changes, and verify a rolled-back action leaves no entry
   - Imports, company administration, membership added/changed and job retry are audited; links, decisions, classification and SAT changes remain pending groups 6/7/8.
-- [ ] 5.4 Implement filtered read access for viewers and auditors and verify company isolation of the log
+- [x] 5.4 Implement filtered read access for viewers and auditors and verify company isolation of the log
 
 ## 6. Matching engine (days 4–6)
 
