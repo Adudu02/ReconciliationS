@@ -72,7 +72,7 @@ must have 12 characters for a new account; an existing account keeps its passwor
 `{userId, role}` to the members route, patch settings, and `POST /companies/{companyId}/archive`. There are no DELETE routes.
 
 The hash-chained audit log records company creation, settings, membership changes and archival atomically.
-See the audit API below. Three domain-dependent tenancy scenarios remain explicitly skipped; task 2.4 stays open. Real invoice isolation
+See the audit API below. Two domain-dependent tenancy scenarios remain explicitly skipped; task 2.4 stays open. Real invoice isolation
 and delete-retention checks now pass, completing 2.6 and 2.9.
 Compose uses synthetic local credentials; replace them and use invite/reset links for a production deployment.
 See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
@@ -182,8 +182,8 @@ Viewers can read jobs and reports. Accountants and administrators can import and
 /companies/{companyId}/reconciliation-runs`. That route returns a new job with 202, or the existing queued/running
 job with 200. Only administrators can `GET /companies/{companyId}/jobs?status=failed` or `POST
 /companies/{companyId}/jobs/{jobId}/retry`; retry is audited and retains history/input. Archived companies refuse
-these writes. The reconciliation/status handlers explicitly record `not implemented until group 6` / group 7 and
-succeed without matching or calling SAT; their registered presence is not a claim those later features exist.
+these writes. The reconciliation handler executes the matching pipeline described below. Only the SAT status handler
+still records `not implemented until group 7` and succeeds without calling SAT.
 
 The worker uses PostgreSQL SKIP LOCKED claims, heartbeat leases and capped exponential backoff with jitter. Each
 handler uses CompanyScope; cfdi_app still cannot bypass RLS. The queue-only NOLOGIN owner and SECURITY DEFINER
@@ -238,3 +238,57 @@ runtime use of the proposed non-LEAKPROOF JSON GIN predicate, so the unused GIN 
 `RUN_AUDIT_BENCHMARKS=1` measures 20k/100k entry lookup and verification using the SDK container (add
 `-e RUN_AUDIT_BENCHMARKS=1` to the Docker example and `--filter FullyQualifiedName~AuditBenchmarks` to dotnet test).
 Task 5.3 remains open for links, decisions/classification and SAT changes in groups 6/7/8. Member removal is not implemented.
+
+## Matching core and movement classification
+
+`POST /companies/{companyId}/reconciliation-runs` now runs matching 6A in the worker. It returns 202 with a jobId, or 200
+with the existing active run for that company. Poll the job until succeeded before reading derived movement states.
+Only exact issued payment-complement evidence auto-reconciles. Other eligible evidence creates a suggestion with
+criteria, confidence and explanation; high confidence never confirms a heuristic. In the synthetic worked example,
+invoice **11600** receives two **5800** payments: the first reconciles with its complement, the second is suggested from
+the remaining payable. [ADR-007](docs/adr/ADR-007-explainable-rule-pipeline.md) fixes the rubric and bounded-index design.
+
+All member roles can `GET /companies/{companyId}/movements?state=pending` (also suggested/reconciled) and optionally filter
+`classification=loan|partner_contribution|tax_payment|late_invoicing|other`. Pages return `movements`, `nextAfterDate` and
+`nextAfterId`; use both `afterDate` and `afterId` from the preceding page. Order is ascending movement date then id,
+limit defaults to 50 and must be 1–200. A movement exposes its derived state, classification/note, reason,
+reconciledAmount, suggestedAmount, pendingAmount and uncoveredAmount. pendingAmount subtracts confirmed amounts;
+uncoveredAmount also subtracts suggestions. The reference-only net-retention example covers 1939.27 as a suggestion,
+so uncoveredAmount is zero while pendingAmount remains 1939.27 until confirmation or a complement.
+
+Accountants and administrators can `PATCH /companies/{companyId}/movements/{movementId}` with an explicit classification
+and optional note (maximum 2000 characters). Classification excludes the movement from the pending list and matching;
+its state remains derived. Explicit null clears classification/note and reopens matching. Every actual change is audited
+as movement.classification_changed in the same transaction. Archived companies remain readable but reject these writes.
+Company settings reject amountTolerance above **1.00**; changing a tolerance affects the next run and keeps existing
+suggestions. User-origin decisions/rejections remain protected. Later deterministic evidence can upgrade an automatic
+suggestion; link.upgraded/link.closed entries retain its previous values in the audit chain.
+
+Synthetic curl examples, after logging in and importing synthetic data (TOKEN, COMPANY and MOVEMENT_ID come from your
+local API responses; JOB_ID is returned by the run request):
+
+```bash
+curl -sS -X POST "http://localhost:8080/companies/$COMPANY/reconciliation-runs" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "http://localhost:8080/companies/$COMPANY/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "http://localhost:8080/companies/$COMPANY/movements?state=pending&limit=50" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS -X PATCH "http://localhost:8080/companies/$COMPANY/movements/$MOVEMENT_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY" -H 'Content-Type: application/json' \
+  -d '{"classification":"loan","note":"Synthetic partner loan"}'
+curl -sS "http://localhost:8080/companies/$COMPANY/movements?classification=loan&limit=50" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS -X PATCH "http://localhost:8080/companies/$COMPANY/movements/$MOVEMENT_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY" -H 'Content-Type: application/json' \
+  -d '{"classification":null}'
+# Replace both cursor values with nextAfterDate/nextAfterId from the preceding response.
+curl -sS "http://localhost:8080/companies/$COMPANY/movements?limit=50&afterDate=2026-10-10&afterId=$MOVEMENT_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+```
+
+The pure-engine benchmark is opt-in: pass `-e RUN_BENCHMARKS=1` to the README SDK container and filter tests with
+`--filter 'FullyQualifiedName~MatchingBenchmarks'`. It measures 20,000 unique amounts and dense 5,000-by-5,000 inputs;
+PR-9 in the build log records warmup, samples and medians. CI runs capacity/idempotency/rejection/order properties and a
+small-K brute-force oracle without an environment flag. Credit notes, FX, due dates, overpaid/global flags and SAT
+cancellation cascades remain PR 6B; user link decisions and manual N:M allocation remain group 8.

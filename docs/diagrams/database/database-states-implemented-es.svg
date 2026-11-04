@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1270" viewBox="0 0 1300 1270" font-family="Liberation Sans, Arial, sans-serif">
-<rect width="1300" height="1270" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1630" viewBox="0 0 1300 1630" font-family="Liberation Sans, Arial, sans-serif">
+<rect width="1300" height="1630" fill="#fff"/>
 <text x="650.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Reglas de estado y ciclo de vida de los datos</text>
 <text x="650.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">import_file.status · auth_session / refresh_token · job.state</text>
 <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#475569"/></marker></defs>
@@ -78,4 +78,25 @@
 <text x="225" y="1120" font-size="11" fill="#222" text-anchor="start">reintento/backoff o lease vencido</text>
 <path d="M1060 1194 L1060 1225 L100 1225 L100 1094" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="500" y="1214" font-size="11" fill="#222" text-anchor="start">reintento de administrador (auditado)</text>
+<rect x="18" y="1280" width="1264" height="330" rx="10" fill="#fef9c3" fill-opacity="0.35" stroke="#a16207" stroke-dasharray="6 4"/>
+<text x="30" y="1300" font-size="13.5" font-weight="bold" fill="#a16207">Vínculos y estados derivados</text>
+<rect x="100" y="1360" width="240" height="80" rx="10" fill="#fef9c3" stroke="#a16207" stroke-width="2"/>
+<text x="220.0" y="1382" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">suggested</text>
+<text x="220.0" y="1400" text-anchor="middle" font-size="11" fill="#444">heurísticas; confianza + criterios</text>
+<rect x="650" y="1320" width="250" height="70" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="2"/>
+<text x="775.0" y="1342" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">reconciled</text>
+<text x="775.0" y="1360" text-anchor="middle" font-size="11" fill="#444">evidencia exacta de complemento</text>
+<rect x="650" y="1470" width="250" height="70" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="2"/>
+<text x="775.0" y="1492" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">closed</text>
+<text x="775.0" y="1510" text-anchor="middle" font-size="11" fill="#444">sustituido / excedente provisional</text>
+<rect x="1000" y="1360" width="240" height="90" rx="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="1120.0" y="1382" text-anchor="middle" font-size="14" font-weight="bold" fill="#111">rejected</text>
+<text x="1120.0" y="1400" text-anchor="middle" font-size="11" fill="#444">decisión del grupo 8; se conserva</text>
+<text x="1120.0" y="1414" text-anchor="middle" font-size="11" fill="#444">rechazo</text>
+<path d="M340 1390 L490 1390 L490 1355 L650 1355" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="360" y="1325" font-size="11" fill="#222" text-anchor="start">complemento posterior: mejora</text>
+<text x="360" y="1339" font-size="11" fill="#222" text-anchor="start">sugerencia automática en su lugar</text>
+<path d="M220 1440 L220 1505 L650 1505" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="270" y="1492" font-size="11" fill="#222" text-anchor="start">el sistema cierra sugerencia provisional</text>
+<text x="45" y="1582" font-size="12" fill="#222">movement_state() / cfdi_state(): reconciled, suggested o pending se calculan; nunca se guardan.</text>
 </svg>

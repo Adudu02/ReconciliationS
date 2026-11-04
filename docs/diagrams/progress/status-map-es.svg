@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1410" height="1056" viewBox="0 0 1410 1056" font-family="Liberation Sans, Arial, sans-serif">
 <rect width="1410" height="1056" fill="#fff"/>
 <text x="30" y="40" font-size="22" font-weight="bold" fill="#111">Mapa de estado de la construcción</text>
-<text x="30" y="64" font-size="13.5" fill="#444">35 de 85 tareas completas (41%) · actualizado 2026-11-03 · fuente: openspec/changes/mvp-reconciliation-core/tasks.md</text>
+<text x="30" y="64" font-size="13.5" fill="#444">45 de 85 tareas completas (52%) · actualizado 2026-11-04 · fuente: openspec/changes/mvp-reconciliation-core/tasks.md</text>
 <rect x="30" y="74" width="16" height="12" rx="3" fill="#d8f0d8" stroke="#2e7d32"/><text x="52" y="85" font-size="12" fill="#333">completo</text>
 <rect x="120" y="74" width="16" height="12" rx="3" fill="#fff1cc" stroke="#c77c00"/><text x="142" y="85" font-size="12" fill="#333">en curso</text>
 <rect x="235" y="74" width="16" height="12" rx="3" fill="#eeeeee" stroke="#8a8a8a"/><text x="257" y="85" font-size="12" fill="#333">sin empezar</text>
@@ -33,11 +33,11 @@
 <rect x="534" y="168" width="102" height="8" rx="4" fill="#ffffff" stroke="#bbb"/>
 <rect x="534" y="168" width="76.5" height="8" rx="4" fill="#c77c00"/>
 <text x="534" y="194" font-size="12" fill="#333">3 de 4</text>
-<rect x="650" y="136" width="118" height="74" rx="8" fill="#eeeeee" stroke-width="1.5" stroke="#8a8a8a"/>
+<rect x="650" y="136" width="118" height="74" rx="8" fill="#fff1cc" stroke-width="1.5" stroke="#c77c00"/>
 <text x="658" y="156" font-size="11.5" font-weight="bold" fill="#111">6. Conciliación</text>
 <rect x="658" y="168" width="102" height="8" rx="4" fill="#ffffff" stroke="#bbb"/>
-<rect x="658" y="168" width="0.0" height="8" rx="4" fill="#8a8a8a"/>
-<text x="658" y="194" font-size="12" fill="#333">0 de 16</text>
+<rect x="658" y="168" width="63.8" height="8" rx="4" fill="#c77c00"/>
+<text x="658" y="194" font-size="12" fill="#333">10 de 16</text>
 <rect x="774" y="136" width="118" height="74" rx="8" fill="#eeeeee" stroke-width="1.5" stroke="#8a8a8a"/>
 <text x="782" y="156" font-size="11.5" font-weight="bold" fill="#111">7. Estatus SAT</text>
 <rect x="782" y="168" width="102" height="8" rx="4" fill="#ffffff" stroke="#bbb"/>
@@ -106,11 +106,11 @@
 <text x="684" y="404" font-size="13.5" font-weight="bold" fill="#111">Auditoría</text>
 <text x="684" y="422" font-size="10.5" font-weight="bold" fill="#555">MÓDULO</text>
 <text x="684" y="442" font-size="11.5" fill="#333">en curso: 3 de 4 tareas</text>
-<rect x="878" y="382" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
-<rect x="878" y="382" width="8" height="78" rx="3" fill="#8a8a8a"/>
+<rect x="878" y="382" width="200" height="78" rx="8" fill="#fff1cc" stroke="#c77c00" stroke-width="1.5"/>
+<rect x="878" y="382" width="8" height="78" rx="3" fill="#c77c00"/>
 <text x="896" y="404" font-size="13.5" font-weight="bold" fill="#111">Conciliación</text>
 <text x="896" y="422" font-size="10.5" font-weight="bold" fill="#555">MÓDULO</text>
-<text x="896" y="442" font-size="11.5" fill="#333">sin empezar (15 tareas)</text>
+<text x="896" y="442" font-size="11.5" fill="#333">en curso: 9 de 15 tareas</text>
 <rect x="1090" y="382" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
 <rect x="1090" y="382" width="8" height="78" rx="3" fill="#8a8a8a"/>
 <text x="1108" y="404" font-size="13.5" font-weight="bold" fill="#111">Cliente SAT</text>
@@ -147,11 +147,11 @@
 <text x="896" y="618" font-size="13.5" font-weight="bold" fill="#111">Tabla de bitácora</text>
 <text x="896" y="636" font-size="10.5" font-weight="bold" fill="#555">BASE DE DATOS</text>
 <text x="896" y="656" font-size="11.5" fill="#333">completo (2 de 2 tareas)</text>
-<rect x="1090" y="596" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
-<rect x="1090" y="596" width="8" height="78" rx="3" fill="#8a8a8a"/>
+<rect x="1090" y="596" width="200" height="78" rx="8" fill="#d8f0d8" stroke="#2e7d32" stroke-width="1.5"/>
+<rect x="1090" y="596" width="8" height="78" rx="3" fill="#2e7d32"/>
 <text x="1108" y="618" font-size="13.5" font-weight="bold" fill="#111">Vínculos y conciliación</text>
 <text x="1108" y="636" font-size="10.5" font-weight="bold" fill="#555">BASE DE DATOS</text>
-<text x="1108" y="656" font-size="11.5" fill="#333">sin empezar (1 tarea)</text>
+<text x="1108" y="656" font-size="11.5" fill="#333">completo (1 de 1 tarea)</text>
 <rect x="30" y="684" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
 <rect x="30" y="684" width="8" height="78" rx="3" fill="#8a8a8a"/>
 <text x="48" y="706" font-size="13.5" font-weight="bold" fill="#111">Caché de estatus SAT</text>
@@ -172,7 +172,7 @@
 <rect x="454" y="810" width="8" height="78" rx="3" fill="#c77c00"/>
 <text x="472" y="832" font-size="13.5" font-weight="bold" fill="#111">ADR</text>
 <text x="472" y="850" font-size="10.5" font-weight="bold" fill="#555">DOCS</text>
-<text x="472" y="870" font-size="11.5" fill="#333">en curso: 3 de 6 tareas</text>
+<text x="472" y="870" font-size="11.5" fill="#333">en curso: 4 de 6 tareas</text>
 <rect x="666" y="810" width="200" height="78" rx="8" fill="#eeeeee" stroke="#8a8a8a" stroke-width="1.5"/>
 <rect x="666" y="810" width="8" height="78" rx="3" fill="#8a8a8a"/>
 <text x="684" y="832" font-size="13.5" font-weight="bold" fill="#111">Datos de prueba</text>

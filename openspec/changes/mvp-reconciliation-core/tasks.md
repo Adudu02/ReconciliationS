@@ -62,7 +62,7 @@
 - [x] 6.5 Implement classification of movements without CFDI and verify they leave the pending list
 - [x] 6.6 Make reconciliation idempotent and decision-preserving, and verify the rerun and rejected-link scenarios pass
 - [x] 6.7 Add property-based tests (rerun changes nothing, sums conserved, rejected link never reappears) and verify they run in CI
-- [ ] 6.8 Write ADR-005 (explainable rule pipeline) and verify it compares a single score and a learned model
+- [x] 6.8 Write ADR-005 (explainable rule pipeline) and verify it compares a single score and a learned model
 - [x] 6.9 Match only credit movements with issued income CFDI and verify a debit movement is not proposed
 - [x] 6.10 Add the gross-payment heuristic and the reference-equals-operation-number criterion, and verify both reasons appear
 - [ ] 6.11 (stretch if time is short) Record invoice-currency amount, movement amount and declared rate on links, and verify the dollar-invoice scenario
