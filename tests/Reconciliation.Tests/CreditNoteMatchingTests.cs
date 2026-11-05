@@ -135,6 +135,11 @@ public sealed class CreditNoteMatchingTests(ApiFixture fixture)
         runner.MigrateUp();
         Assert.Equal((10440m, "reconciled"), await owner.QuerySingleAsync<(decimal, string)>(new CommandDefinition("SELECT amount_applied,state FROM link WHERE company_id=@company AND id=@link", new { company, link }, cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Equal(hash, await owner.ExecuteScalarAsync<string>(new CommandDefinition("SELECT encode(hash,'hex') FROM audit_entry WHERE company_id=@company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
+        await owner.ExecuteAsync(new CommandDefinition("UPDATE cfdi SET sat_status='cancelled' WHERE company_id=@company; UPDATE link SET state='suggested',review_reason='cancelled invoice' WHERE id=@link", new { company, link }, cancellationToken: TestContext.Current.CancellationToken));
+        runner.MigrateDown(9);
+        runner.MigrateUp();
+        Assert.Equal("cancelled invoice", await owner.ExecuteScalarAsync<string>(new CommandDefinition("SELECT review_reason FROM link WHERE id=@link", new { link }, cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal(hash, await owner.ExecuteScalarAsync<string>(new CommandDefinition("SELECT encode(hash,'hex') FROM audit_entry WHERE company_id=@company", new { company }, cancellationToken: TestContext.Current.CancellationToken)));
         await using var app = new NpgsqlConnection(database.AppConnectionString);
         await app.OpenAsync(TestContext.Current.CancellationToken);
         Assert.Empty(await app.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM cfdi_payable()", cancellationToken: TestContext.Current.CancellationToken)));

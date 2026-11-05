@@ -183,6 +183,17 @@ public sealed class CancellationMatchingTests(ApiFixture fixture)
         Assert.Equal(100, Assert.Single(result.Invoices).SuggestedAmount);
     }
 
+    [Fact]
+    public async Task Cancelling_an_automatic_suggestion_marks_it_for_review_and_holds_its_capacity_free()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        await ApplyAsync(seed.Company, seed.Invoice, "cancelled");
+        Assert.Equal("cancelled invoice", await fixture.Database.ScalarAsync<string>("SELECT review_reason FROM link WHERE company_id=@company", new { company = seed.Company }));
+        Assert.Equal(0, await fixture.Database.ScalarAsync<decimal>("SELECT suggested_amount FROM movement_state() WHERE id=@movement", new { movement = seed.Movement }));
+    }
+
     private CompanyScope Scope => fixture.App.Services.GetRequiredService<CompanyScope>();
     private Task<int> ApplyAsync(Guid company, Guid cfdi, string status, string? cancellation = null) => Scope.ExecuteWriteAsync(company,
         (c, t, token) => InvokeAsync(c, t, cfdi, status, cancellation, token), TestContext.Current.CancellationToken);
