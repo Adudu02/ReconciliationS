@@ -11,8 +11,10 @@ public static class SatServiceCollectionExtensions
     public static IServiceCollection AddSat(this IServiceCollection services, IConfiguration configuration)
     {
         var options = configuration.GetSection("Sat").Get<SatOptions>() ?? new();
+        options.Validate();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(options);
+        services.AddHostedService<SatRecordingNotice>();
         services.AddHttpClient("sat", client => client.Timeout = options.RequestTimeout)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddSingleton<ISatClient>(provider =>

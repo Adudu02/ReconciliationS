@@ -63,6 +63,7 @@ public sealed partial class JobDispatcher(JobStore store, CompanyScope companySc
                     errorKind == "transient" ? backoff.Delay(job.Attempts) : TimeSpan.Zero, note, cancellationToken);
                 Finished(logger, job.Id, job.CompanyId, job.Type, errorKind ?? "succeeded", finished);
             }
+            else if (completedInTransaction) Finished(logger, job.Id, job.CompanyId, job.Type, "succeeded", true);
             return true;
         }
         finally

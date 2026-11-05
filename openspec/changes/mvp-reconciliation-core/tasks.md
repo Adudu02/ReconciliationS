@@ -80,8 +80,9 @@
 - [x] 7.3b Store cancellability, cancellation status and the raw EFOS value, and verify the in-process and deadline-expired scenarios
 - [x] 7.3c Implement the on-demand status check job and verify the unknown and cached-cancelled scenarios
 - [x] 7.4 Connect cancelled status to matching and audit, and verify a cancelled invoice's links move to review with an audit entry
-- [ ] 7.5 Implement record and replay keyed to anonymised records and verify replay makes no network call
+- [x] 7.5 Implement record and replay keyed to anonymised records and verify replay makes no network call
 - [ ] 7.6 Phase 2: implement the real SOAP adapter selected by configuration, test it with one real payment CFDI, and record whether the service answers for payment CFDI in the BRS open question
+  - Pending: one real anonymised payment CFDI and live SAT access are required; the configurable SOAP transport is implemented but has no live validation.
 
 ## 8. Review, summaries and API (days 6–8)
 

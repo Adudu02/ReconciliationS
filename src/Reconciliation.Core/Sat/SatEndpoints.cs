@@ -25,10 +25,11 @@ public static class SatEndpoints
             SatCheckRequest? request = null;
             if (http.Request.ContentLength is > 0 || http.Request.Headers.ContainsKey("Transfer-Encoding"))
             {
+                if (!http.Request.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
                 try { request = await http.Request.ReadFromJsonAsync<SatCheckRequest>(cancellationToken); }
                 catch (JsonException) { return Results.BadRequest(new { error = "Invalid anonymizedUuid." }); }
             }
-            if (request?.AnonymizedUuid == Guid.Empty || request?.AnonymizedUuid == uuid)
+            if (options.UsesAnonymizedKey && (request?.AnonymizedUuid == Guid.Empty || (options.RecordResponses && request?.AnonymizedUuid == uuid)))
                 return Results.BadRequest(new { error = "Anonymized UUID must be nonempty and different from the CFDI UUID." });
             return await scope.ExecuteWriteResultAsync(companyId, async (connection, transaction, token) =>
             {
@@ -38,7 +39,7 @@ public static class SatEndpoints
                 var id = await connection.QuerySingleOrDefaultAsync<Guid?>(Command("SELECT id FROM cfdi WHERE uuid=@uuid", new { uuid }, transaction, token));
                 if (id is null) return Results.NotFound();
                 var jobId = await JobStore.EnqueueAsync(connection, transaction, companyId, http.User.UserId()!.Value, "status_check",
-                    JsonSerializer.Serialize(new SatCheckPayload([id.Value], request?.AnonymizedUuid), JsonSerializerOptions.Web),
+                    JsonSerializer.Serialize(new SatCheckPayload([id.Value], options.UsesAnonymizedKey ? request?.AnonymizedUuid : null), JsonSerializerOptions.Web),
                     null, jobs.MaxAttempts, clock.GetUtcNow(), token, 1);
                 return Results.Accepted($"/companies/{companyId}/jobs/{jobId}", new { jobId });
             }, cancellationToken);

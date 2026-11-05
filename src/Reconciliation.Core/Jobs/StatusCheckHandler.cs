@@ -24,7 +24,10 @@ public sealed class StatusCheckHandler(SatStatusLookup lookup, SatOptions option
         {
             if (await connection.ExecuteScalarAsync<bool>(Command("SELECT archived_at IS NOT NULL FROM company", transaction: transaction, cancellationToken: token)))
                 throw new CompanyReadOnlyException();
-            return await LoadAsync(connection, transaction, payload.CfdiIds, token);
+            var snapshot = await LoadAsync(connection, transaction, payload.CfdiIds, token);
+            if (options.RecordResponses && snapshot.Rows.Any(row => row.Uuid == payload.AnonymizedUuid))
+                throw new InvalidDataException("Recording requires an anonymised key different from the CFDI UUID.");
+            return snapshot;
         }, cancellationToken);
         var completed = new List<Completed>();
         using (var budget = new CancellationTokenSource(options.JobBudget, clock))
@@ -132,11 +135,12 @@ public sealed class StatusCheckHandler(SatStatusLookup lookup, SatOptions option
             null, result.Attempts, options.Mode, reply.Code.Raw, reply.State.Raw, reply.Cancellability.Raw, reply.CancellationStatus.Raw, jobId);
     }
 
-    private static SatCheckPayload ParsePayload(string json)
+    private SatCheckPayload ParsePayload(string json)
     {
         try
         {
             var payload = JsonSerializer.Deserialize<SatCheckPayload>(json, JsonSerializerOptions.Web);
+            if (payload is not null && !options.UsesAnonymizedKey) payload = payload with { AnonymizedUuid = null };
             if (payload?.CfdiIds is not { Length: > 0 and <= 100 } || payload.CfdiIds.Any(id => id == Guid.Empty) ||
                 payload.CfdiIds.Distinct().Count() != payload.CfdiIds.Length || payload.FollowUpGeneration < 0 ||
                 payload.AnonymizedUuid == Guid.Empty || (payload.AnonymizedUuid is not null && payload.CfdiIds.Length != 1))
