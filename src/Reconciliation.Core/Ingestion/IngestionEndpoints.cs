@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Reconciliation.Core.Matching;
+using Reconciliation.Core.Sat;
 using Reconciliation.Core.Tenancy;
 using static Reconciliation.Core.Common.DapperExtensions;
 
@@ -16,6 +17,7 @@ public sealed record CfdiResponse(Guid Id, Guid Uuid, string Type, string Direct
     DateTime IssuedAt, DateTime StampedAt, string Currency, string? PaymentMethod, decimal Subtotal, decimal Discount,
     decimal TransferredTax, decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal, string? ReviewReason)
 {
+    public SatStatusView? Sat { get; init; }
     public InvoiceMatchingState? Matching { get; init; }
 }
 
@@ -66,6 +68,17 @@ public static class IngestionEndpoints
                         ) matching
                         """, new { cfdiId, today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime) }, transaction, cancellationToken: transactionCancellationToken));
                     storedCfdi = storedCfdi with { Matching = JsonSerializer.Deserialize<InvoiceMatchingState>(matchingJson!, JsonSerializerOptions.Web) };
+                }
+                if (storedCfdi is not null)
+                {
+                    var sat = await connection.QuerySingleAsync<SatStatusView>(Command("""
+                        SELECT c.sat_status AS State,s.cancellability,c.cancellation_status AS CancellationStatus,s.efos_raw AS EfosRaw,
+                          s.checked_at AS CheckedAt,s.expires_at AS ExpiresAt,s.last_error AS LastError,s.attempts,s.source,
+                          coalesce(s.code_raw=@success AND s.efos_raw<>'' AND s.efos_raw<>'200',false) AS EfosFlagged,
+                          s.code_raw AS CodeRaw,s.state_raw AS StateRaw,s.cancellability_raw AS CancellabilityRaw,s.cancellation_status_raw AS CancellationStatusRaw
+                        FROM cfdi c LEFT JOIN sat_status_cache s ON s.company_id=c.company_id AND s.uuid=c.uuid WHERE c.id=@cfdiId
+                        """, new { cfdiId, success = SatContract.SuccessCode }, transaction, cancellationToken: transactionCancellationToken));
+                    storedCfdi = storedCfdi with { Sat = sat };
                 }
                 return CompanyScope.OkOrNotFound(storedCfdi);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);

@@ -9,6 +9,7 @@ namespace Reconciliation.Core.Sat;
 
 public static partial class SatContract
 {
+    public const string SuccessCode = "S - Comprobante obtenido satisfactoriamente";
     public const string PublicEndpoint = "https://consultaqr.facturaelectronica.sat.gob.mx/ConsultaCFDIService.svc";
     public const string SoapAction = "http://tempuri.org/IConsultaCFDIService/Consulta";
     public static readonly XNamespace Soap = "http://schemas.xmlsoap.org/soap/envelope/";
@@ -18,7 +19,7 @@ public static partial class SatContract
     private static readonly SafeCfdiXmlReader Reader = new(new IngestionOptions { MaxFileBytes = MaxResponseBytes, MaxXmlDepth = 16, MaxXmlNodes = 1024 });
     private static readonly Dictionary<string, SatCode> Codes = new(StringComparer.Ordinal)
     {
-        ["S - Comprobante obtenido satisfactoriamente"] = SatCode.Success,
+        [SuccessCode] = SatCode.Success,
         ["N - 601: La expresión impresa proporcionada no es válida"] = SatCode.InvalidExpression,
         ["N - 602: Comprobante no encontrado"] = SatCode.NotFound
     };
@@ -95,6 +96,34 @@ public static partial class SatContract
 
     private static string Raw<T>(Dictionary<string, T> mappings, T value) where T : struct, Enum =>
         mappings.FirstOrDefault(pair => EqualityComparer<T>.Default.Equals(pair.Value, value)).Key ?? "";
+
+    public static string StorageState(SatStatusResponse response) => response is SatNotFound ? "not_found" :
+        response.Reply.Code.Value == SatCode.Success ? response.Reply.State.Value switch
+        {
+            SatState.Current => "current",
+            SatState.Cancelled => "cancelled",
+            SatState.NotFound => "not_found",
+            _ => "unknown"
+        } : "unknown";
+
+    public static string StorageCancellability(SatCancellability value) => value switch
+    {
+        SatCancellability.WithoutAcceptance => "without acceptance",
+        SatCancellability.WithAcceptance => "with acceptance",
+        SatCancellability.NotCancellable => "not cancellable",
+        _ => "unknown"
+    };
+
+    public static string? StorageCancellation(SatCancellationStatus value) => value switch
+    {
+        SatCancellationStatus.None => null,
+        SatCancellationStatus.InProcess => "in process",
+        SatCancellationStatus.DeadlineExpired => "deadline expired",
+        SatCancellationStatus.CancelledWithoutAcceptance => "cancelled without acceptance",
+        SatCancellationStatus.CancelledWithAcceptance => "cancelled with acceptance",
+        SatCancellationStatus.Rejected => "rejected",
+        _ => "unknown"
+    };
 
     public static bool IsEfosFlagged(SatReply reply) => reply.Code.Value == SatCode.Success && !string.IsNullOrEmpty(reply.EfosRaw) && reply.EfosRaw != "200";
 

@@ -1,13 +1,15 @@
+using System.Text.Json;
 using System.Xml;
 using Dapper;
 using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
+using Reconciliation.Core.Jobs;
 using Reconciliation.Core.Tenancy;
 using static Reconciliation.Core.Common.DapperExtensions;
 
 namespace Reconciliation.Core.Ingestion;
 
-public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xml, IngestionOptions options, IMemoryCache companyRfcs)
+public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xml, IngestionOptions options, IMemoryCache companyRfcs, JobOptions jobs)
 {
     private sealed record ParsedUpload(UploadedFile File, ParsedCfdi? Cfdi, string? Error);
     private sealed record StoredCfdi(Guid Id, Guid ImportFileId);
@@ -163,6 +165,10 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
                     }, transaction, cancellationToken: transactionCancellationToken));
                 }
                 await ImportFileStore.FinalizeAsync(connection, transaction, fileId, upload.File, options.RetentionYears, 0, 0, transactionCancellationToken);
+                if (upload.File.Lease is { } lease)
+                    await JobStore.EnqueueAsync(connection, transaction, companyId, actorId, "status_check",
+                        JsonSerializer.Serialize(new SatCheckPayload([cfdiId.Value]), JsonSerializerOptions.Web), null,
+                        jobs.MaxAttempts, lease.UtcNow, transactionCancellationToken, 1);
             }
             await ImportFileStore.AuditAsync(connection, transaction, companyId, actorId, ImportFileKind.Cfdi.ToDatabaseValue() + "." + importStatus.ToDatabaseValue(), fileId, transactionCancellationToken, parsedCfdi?.Uuid, lease: upload.File.Lease);
             return new FileImportOutcome(fileId, upload.File.Name, importStatus.ToDatabaseValue(), rejectionReason ?? parsedCfdi?.ReviewReason, cfdiId);

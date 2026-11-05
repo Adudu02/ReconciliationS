@@ -2,7 +2,7 @@ namespace Reconciliation.Core.Sat;
 
 public sealed record SatCacheEntry(Guid Uuid, string State, string? Cancellability, string? CancellationStatus, string? EfosRaw,
     DateTime CheckedAt, DateTime? ExpiresAt, string? LastError, int Attempts, string Source,
-    string? CodeRaw = null, string? StateRaw = null, string? CancellabilityRaw = null, string? CancellationStatusRaw = null);
+    string? CodeRaw = null, string? StateRaw = null, string? CancellabilityRaw = null, string? CancellationStatusRaw = null, Guid? LastJobId = null, string? LastErrorKind = null);
 
 public sealed record SatLookupResult(SatStatusResponse? Response, SatCacheEntry? Cache, int Attempts, string? Error, bool Retry)
 {

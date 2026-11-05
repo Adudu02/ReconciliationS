@@ -188,8 +188,27 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         Assert.Equal(parent, (await queue.ClaimAsync("synthetic-parent", 9, TestContext.Current.CancellationToken))!.Id);
         await scope.ExecuteWriteAsync(seeded.CompanyId, (c, t, ct) => JobStore.EnqueueAsync(c, t, seeded.CompanyId, seeded.UserId,
             "status_check", "{}", null, 5, clock.GetUtcNow(), ct), TestContext.Current.CancellationToken);
+        var originalSequence = await database.ScalarAsync<long>("SELECT seq FROM job WHERE id=@parent", new { parent });
         clock.Advance(TimeSpan.FromSeconds(10));
         Assert.Equal(parent, (await queue.ClaimAsync("synthetic-recovery", 9, TestContext.Current.CancellationToken))!.Id);
+        Assert.Equal(originalSequence, await database.ScalarAsync<long>("SELECT seq FROM job WHERE id=@parent", new { parent }));
+    }
+
+    [Fact]
+    public async Task Repeated_lease_expiry_still_stops_at_the_attempt_bound()
+    {
+        var seeded = await SeedAsync(); await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
+        var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance); var queue = new JobStore(source, clock);
+        var id = await scope.ExecuteWriteAsync(seeded.CompanyId, (c, t, ct) => JobStore.EnqueueAsync(c, t, seeded.CompanyId, seeded.UserId,
+            "status_check", "{}", null, 3, clock.GetUtcNow(), ct), TestContext.Current.CancellationToken);
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            Assert.Equal(attempt, (await queue.ClaimAsync("synthetic-crash-loop", 9, TestContext.Current.CancellationToken))!.Attempts);
+            clock.Advance(TimeSpan.FromSeconds(10));
+        }
+        Assert.Null(await queue.ClaimAsync("synthetic-recovery-bound", 9, TestContext.Current.CancellationToken));
+        Assert.Equal("failed", await database.ScalarAsync<string>("SELECT state FROM job WHERE id=@id", new { id }));
+        Assert.Equal(3, await database.ScalarAsync<int>("SELECT count(*) FROM job_attempt WHERE job_id=@id AND outcome='lease_expired'", new { id }));
     }
 
     private async Task<(Guid CompanyId, Guid UserId)> SeedAsync()

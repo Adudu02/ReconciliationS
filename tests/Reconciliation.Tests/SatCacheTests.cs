@@ -20,6 +20,8 @@ public sealed class SatCacheTests
         using var scope = services.CreateScope(); var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
         Assert.Equal(11, await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
         runner.MigrateDown(10);
+        Assert.Contains("run_after=p_now", await database.ScalarAsync<string>("SELECT pg_get_functiondef('claim_next_job(text,integer,timestamptz)'::regprocedure)"), StringComparison.Ordinal);
+        Assert.False(await database.ScalarAsync<bool>("SELECT EXISTS(SELECT FROM information_schema.columns WHERE table_name='job' AND column_name='seq')"));
         await using var owner = await database.OpenOwnerAsync();
         var company = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("INSERT INTO company(rfc,name) VALUES('AAA010101AAA','Synthetic SAT cache') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
         var uuid = Guid.Parse("00000000-0000-4000-8000-000000000711");
@@ -30,6 +32,7 @@ public sealed class SatCacheTests
             SELECT @company,id,@uuid,'I','issued','AAA010101AAA','BBB010101BBB','2026-10-10','2026-10-10','MXN',100,100,'cancelled','cancelled without acceptance' FROM f
             """, new { company, uuid }, cancellationToken: TestContext.Current.CancellationToken));
         runner.MigrateUp();
+        Assert.Contains("LEAST(run_after,p_now)", await database.ScalarAsync<string>("SELECT pg_get_functiondef('claim_next_job(text,integer,timestamptz)'::regprocedure)"), StringComparison.Ordinal);
         var row = await owner.QuerySingleAsync<(string State, string Source, DateTime? Expires, string? Code, string? Efos)>(new CommandDefinition(
             "SELECT state,source,expires_at,code_raw,efos_raw FROM sat_status_cache WHERE uuid=@uuid", new { uuid }, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(("cancelled", "backfill", null, null, null), row);
