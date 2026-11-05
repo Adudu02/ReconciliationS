@@ -25,6 +25,17 @@ public sealed class ManualTimeProvider : TimeProvider
         }
         foreach (var timer in due) timer.Fire();
     }
+    public async Task WaitForTimerAsync(TimeSpan maximumDelay)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            lock (gate) if (timers.Any(timer => timer.Due <= utcTicks + maximumDelay.Ticks)) return;
+            timeout.Token.ThrowIfCancellationRequested();
+            await Task.Yield();
+        }
+    }
     private sealed class ClockTimer(ManualTimeProvider clock, TimerCallback callback, object? state) : ITimer
     {
         public long Due { get; set; } = long.MaxValue;

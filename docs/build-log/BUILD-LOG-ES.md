@@ -13,7 +13,7 @@ Fuente de verdad de los elementos de trabajo: `openspec/changes/mvp-reconciliati
 
 | Carpeta | Qué contiene | Por qué está separada |
 |---|---|---|
-| `docs/adr/` | Registros de decisiones de arquitectura (ADR-001 a ADR-005) | Una decisión = un archivo; nunca se editan, se reemplazan por otro ADR |
+| `docs/adr/` | Registros de decisiones de arquitectura (ADR-001 a ADR-008) | Una decisión = un archivo; las enmiendas conservan historia; cambios mayores usan otro ADR |
 | `docs/build-log/` | Esta bitácora en español e inglés, y `exports/` con los PDF/Word generados | Lo que se actualiza en cada PR; los exportados no se mezclan con el texto fuente |
 | `docs/requirements/` | BRS y SRS (inglés y español) | Documentos de requisitos que casi no cambian |
 | `docs/reference/` | Formato CSV bancario de referencia y la ficha del proyecto con enlaces de consulta | Material de consulta que las pruebas leen o que se cita |
@@ -27,7 +27,7 @@ leen `docs/adr/`, `docs/reference/` y `docs/build-log/`), y usa `git mv` para co
 
 ![Mapa de estado de la construcción](../diagrams/progress/status-map-es.png)
 
-**50 de 85 tareas completas. Conciliación 6A/6B implementada salvo FX stretch 6.11; 5.3 y 2.4 esperan rutas/jobs de grupos 7/8.**
+**57 de 85 tareas completas. Conciliación 6A/6B salvo FX 6.11 y SAT sin conexión real están implementados; 7.6 espera evidencia real, 5.3 y 2.4 decisiones del grupo 8.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -60,7 +60,7 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
               +-------------------------------+
               | Reconciliation.Core           |   Tenancy | Ingestion | Audit
               | (siete módulos, sin Main)     |   Matching | Review | Sat | Jobs
-              +---------------+---------------+   (Review y Sat son marcadores)
+              +---------------+---------------+   (Review sigue como marcador)
                               | SQL con Npgsql + Dapper, CompanyScope para empresa; auth global
                               v
               +-------------------------------+        +----------------------+
@@ -69,28 +69,28 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
               | rol de la app: cfdi_app       |        | operador inicial     |
               +-------------------------------+        +----------------------+
 
- Stub del SAT (puerto 8081): contenedor aparte, hoy solo /health.
+ Stub SAT (8081 solo interno): SOAP Consulta + controles; worker libera DB durante HTTP.
 ```
 
 Cada flecha es una frontera con una razón de ser:
 
 - **Dos hosts, una biblioteca.** La API atiende personas y debe responder rápido; el worker ejecuta importación y conciliación
-  y después consultará al SAT. Comparten `Reconciliation.Core`, así la regla de negocio se escribe una sola vez
+  y consultas SAT acotadas. Comparten `Reconciliation.Core`, así la regla de negocio se escribe una sola vez
   (ADR-001: monolito modular con worker separado, en lugar de microservicios).
 - **Módulos con fronteras.** `Tenancy` (empresas, usuarios, roles, sesiones), `Ingestion` (lectura de CFDI y CSV), `Audit`
-  (bitácora), `Jobs` (cola/ejecución), `Matching` (reglas puras y orquestación), y los marcadores `Review` y `Sat`.
+  (bitácora), `Jobs` (cola/ejecución), `Matching` (reglas puras y orquestación), `Sat` (SOAP/política de estado) y el marcador `Review`.
   La orquestación lee tablas de ingesta/vínculos bajo RLS; el motor puro no conoce SQL.
 - **PostgreSQL como árbitro final.** Aunque el código olvide filtrar por empresa, la base de datos no entrega filas
   de otra empresa (sección 2.3).
 - **El migrador es un programa aparte** con otro rol de base de datos: el dueño del esquema (`cfdi`) crea y cambia
   tablas; la aplicación (`cfdi_app`) solo puede lo que se le concede.
 
-El diseño completo, incluido lo que aún no existe (cliente SAT, telemetría), es este:
+El diseño completo, incluido lo que aún no existe (UI de revisión, telemetría), es este:
 
 ![Vista de contenedores del diseño (Docker Compose)](../../openspec/changes/mvp-reconciliation-core/diagrams/containers.png)
 
-Existen API, worker de sondeo, tablas PostgreSQL de empresa/ingesta/sesiones/trabajos y stub de salud SAT.
-También existen la cadena de auditoría y conciliación 6A/6B. Faltan FX stretch 6.11, SAT, decisiones de revisión y OpenTelemetry.
+Existen API, worker de sondeo, tablas PostgreSQL de empresa/ingesta/sesiones/trabajos y stub SOAP SAT.
+También existen la cadena de auditoría y conciliación 6A/6B. SAT sin conexión real está implementado. Faltan FX 6.11, evidencia SAT real 7.6, decisiones y OpenTelemetry.
 
 ### 2.2 Ciclo de una solicitud autenticada
 
@@ -240,8 +240,8 @@ Los errores transitorios usan backoff exponencial con jitter y tope; una entrada
 Historial y entrada se conservan para un reintento administrativo auditado. Los archivos restantes quedan queued con
 pending_original hasta un reintento exitoso; no hay limpieza implementada. La comprobación del lease por archivo y
 sus ids estables evitan duplicar efectos y auditoría tras otra entrega. Los cuatro tipos son import_cfdi,
-import_statement, reconciliation_run y status_check; reconciliation_run ejecuta conciliación 6A y solo status_check
-registra el límite del grupo 7 sin efectos de dominio.
+import_statement, reconciliation_run y status_check; reconciliation_run ejecuta conciliación 6A/6B y status_check
+ejecuta la consulta SAT en tres fases con caché (ADR-008).
 
 ## 3. Diccionario de nombres y variables
 
@@ -399,8 +399,8 @@ aceptación. Un rechazo conserva solo hash/motivo.
 | **Host de la API** | Host | La API web que llamarán los usuarios. Atiende autenticación, empresas, miembros, configuración, archivo, importaciones, corridas de conciliación, lectura/clasificación de movimientos, salud y OpenAPI | `src/Reconciliation.Api` |
 | **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
-| **Stub del SAT** | Host | Simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0010` |
+| **Stub del SAT** | Host | SOAP Consulta con resultados controlados dentro de la red; no requiere SAT en vivo | `src/Reconciliation.SatStub` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0011` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
@@ -413,6 +413,30 @@ aceptación. Un rechazo conserva solo hash/motivo.
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
+
+### PR-11: SAT status check
+
+**Propósito.** Completar el flujo SAT sin conexión real del grupo 7 (7.1, 7.2, 7.3, 7.3b, 7.3c, 7.4, 7.5): un puerto ISatClient, transporte SOAP para stub/real, grabación privada/replay y la MISMA política compartida. ADR-008 fija el contrato y sus dudas. 7.6 sigue en Phase 2 (fase 2): requiere un CFDI de pago real anonimizado y acceso SAT en vivo. Conciliación no espera consultas. 5.3 queda abierta solo por decisiones de usuario del group 8; SAT status change ya es una prueba real de API/worker/cascada.
+
+**Cómo funciona.** SatContract concentra todos los textos españoles y la expresión impresa. Total usa cultura invariante, seis decimales y al menos diez enteros: 0000001939.270000 y 0000000000.000000. Rechaza negativos y más de seis decimales significativos sin redondear. Los valores desconocidos conservan su texto original. XML prohíbe DTD/resolución externa y limita tamaño/profundidad/nodos. Stub y real comparten SoapSatClient, endpoint configurado, sin redirecciones y timeout total de 10 segundos. Real exige HTTPS. El stub SOAP ofrece resultados/demoras forzados y /control/outcomes solo dentro de Compose; dejó de ser un marcador de salud.
+
+M0011 crea sat_status_cache con RLS forzado, clave/FK compuesta empresa/UUID, sin permiso DELETE e índice de caducidad con company_id primero. Current dura 24h, not_found 1h y cancelled es permanente. Solo CFDI ya cancelados reciben backfill, source=backfill y checked_at observado en migración, sin inventar respuestas/EFOS. Los aciertos de caché no llaman al servicio. 601 guarda error/intentos y conserva el estado del CFDI/caché, vence inmediatamente y no reintenta ni genera otro trabajo automáticamente. Una nueva petición explícita sí puede consultar; last_job_id/last_error_kind evitan repetir ese error permanente en el mismo lote mixto. Agotar fallos transitorios confirma unknown/error/intentos antes del backoff de la cola. En proceso y plazo vencido no convierten un vigente en cancelado.
+
+TimeProvider controla timeout, esperas, presupuesto y la pequeña puerta IRequestRateGate protegida por lock. Separa permisos a 2 solicitudes/segundo y no suelta ráfagas al saltar el reloj. Se rechazó el limitador estándar porque su reloj no se inyecta; la MISMA clase corre en pruebas y producción. El benchmark Large batch con reloj falso programa 1,000 solicitantes simultáneos separados exactamente 0.5 segundos: 499.5 segundos virtuales del primer al último permiso, sin más de dos permisos en ninguna ventana de un segundo. Mide la política, no latencia/rendimiento SAT. El límite es por proceso; varios workers multiplican la cuota.
+
+StatusCheckHandler divide el trabajo: lectura tenant corta y por lote; HTTP SIN conexión/ transacción reservada; aplicación corta con bloqueo de empresa, relectura por lote, descarte de respuestas superadas y fence de lease antes de confirmar. El heartbeat sigue durante HTTP. Dos sentencias UNNEST escriben caché y estados ordinarios por lote cuando hace falta; se añade auditoría por CFDI cambiado, por EFOS no claro cambiado y las sentencias de la cascada 6B por NUEVA cancelación. No hay lecturas/llamadas por vínculo. Refrescar la misma respuesta no añade ruido. El detalle auditable lleva antes/nuevo estado, cancelación/cancelabilidad/EFOS/jobId/source e items tipados de ADR-006. EFOS solo avisa con código S real, valor presente no vacío distinto de 200; NULL/vacío/backfill no avisan. cfdi_review_reasons devuelve efos warning con requiresReview=true.
+
+Cada trabajo admite hasta 100 ids. El presupuesto de 60 segundos detiene nuevas llamadas y cancela la pendiente. Si solo falta tiempo, crea exactamente un follow-up con ids pendientes y generación+1 y termina al padre con éxito en la MISMA transacción de caché/auditoría. Si también hay fallos transitorios reales, conserva el payload y reintenta normalmente; los ids ya resueltos usan caché. MaxFollowUpGenerations=20 limita la cadena y después usa intentos acotados de la cola. El índice único de padre activo y el fence impiden hijos duplicados. Importación/conciliación conservan su camino previo de dispatcher. La importación encola lotes de un id en cada transacción existente por archivo; UUID duplicado no encola. POST /companies/{companyId}/cfdi/{uuid}/sat-check devuelve 202 para accountant/admin; rechaza viewer, empresa archivada y UUID ajeno.
+
+**Qué aprendí.** Un reintento diferido es un resultado durable: lanzar fuera de la transacción borraría el unknown que necesita ver el usuario. Una llamada lenta debe liberar también la conexión, no solo el bloqueo. FIFO requiere secuencia real de encolado, no UUID aleatorio. job.seq de M0011 garantiza orden con timestamps iguales; recuperación conserva run_after=LEAST(run_after,p_now), created_at y seq para tomar al padre vencido antes que al hijo. Solo cambia recuperación por lease vencido; backoff transitorio programado queda intacto. Recuperar una caída sigue siendo inmediato, sin backoff nuevo, y termina failed al llegar a Jobs:MaxAttempts. Down restaura p_now/id. Pasan Worker killed mid-job sin cambiar, FIFO con empate, padre antes de hijo, espera de backoff y límite del ciclo de caídas.
+
+**Decisiones y privacidad.** Solo se graban campos de RESPUESTA más hora de consulta, bajo UUID anónimo explícito y diferente; nunca petición, SOAP crudo, RFC, total ni UUID real. El guard rechaza identificadores reflejados. Grabación automática ausente/insegura se omite, suma contador y emite un aviso limpio por proceso, sin perder la respuesta; RecordAsync explícito lanza error. .local/sat-recordings se excluye de git/build Docker y Compose usa volumen persistente escribible. Solo se versiona una grabación sintética permitida. Con grabación apagada se ignora la clave; enviarla en la ruta exige administrador. Solo replay permite igualdad y fallback al UUID ya anónimo importado; nunca resuelve HTTP. Archivo ausente/corrupto da no disponible/unknown. Group 9 define el mapeo real-anónimo. Grabar en real avisa al arrancar; replay+grabación se rechaza.
+
+**Validación y límites.** Cada corte tuvo commit rojo con fallos esperados y luego código con suite completa/format verdes en contenedor SDK. Verificación final SDK: build con 0 avisos/0 errores; 578 pruebas, 572 correctas y 6 omitidas (tres escenarios group 8 y tres benchmarks optativos); dotnet format --verify-no-changes pasó. docker compose up --build --wait dejó PostgreSQL/API/worker/SAT saludables. Subidas sintéticas por API y worker generaron un vínculo conciliado; forzar cancelled primero respondió de caché, luego acortar la caducidad sintética permitió cancelar y devolver el vínculo a suggested/revisión conservando su importe. Su cadena de diez entradas verificó; una consulta posterior mantuvo cancelled permanente. No hubo llamada SAT real: solo datos sintéticos y una preparación DB explícita para no esperar 24h. M0011 up/down/up en SDK preservó 47 entradas con huellas idénticas, 11 vínculos por 45,565.00 y 15 CFDI; Down restauró la función anterior y Up reconstruyó backfill cancelado. La arquitectura ya muestra SOAP real worker-stub: 9/9 checks showcase, cero errores/avisos; contención en cuatro tamaños y revisión visual en ambos temas. Se regeneran diagramas DB/progreso y exportados Word/PDF en ambos idiomas.
+
+Limpieza del smoke: al terminar, ejecutar `docker compose -p bnk-matching-smoke down -v` (con el mismo archivo de entorno) y `docker rm -f bnk-matching-sdk` para liberar puertos 5432/8080 y quitar volúmenes/red del smoke.
+
+Dudas del contrato: compatibilidad del total rellenado con respuestas reales; alias/puntuación exacta y valores futuros; significado de EFOS vacío/ausente; respuesta del servicio a CFDI de pago con total cero. ValidacionEFOS=200 claro es supuesto explícito hasta 7.6. Controles solo de desarrollo; cuota por proceso; presupuestos/intentos limitan trabajo, no garantizan disponibilidad remota. No se afirma validación SOAP en vivo, cuota distribuida ni bloqueo fiscal nuevo. FX 6.11 sigue diferido. Solo commits locales; sin push ni merge.
 
 ### PR-10: Matching rest
 
@@ -1010,12 +1034,12 @@ migración subir/bajar/subir en una base de datos real y la ejecución `41122200
   silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 6. Siguiente trabajo: grupo 7 y decisiones de revisión
+## 6. Siguiente trabajo: decisiones de revisión del grupo 8
 
-Conciliación 6A/6B está implementada salvo FX stretch 6.11, diferido por el contrato de cambio por documento.
-El cliente/job SAT sigue en grupo 7; decisiones, cola de revisión y acciones N:M manuales siguen en grupo 8.
-5.3 y 2.4 esperan esas rutas/jobs reales. La suite normal mantiene cuatro escenarios futuros y tres benchmarks
-optativos omitidos; la operación de dominio de cancelación se prueba directamente.
+Grupo 7 SAT sin conexión real está implementado, incluida cancelación por API/worker. Phase 2, tarea 7.6, requiere
+un CFDI de pago real anonimizado y respuesta SAT en vivo. FX 6.11 espera contrato de cambio por documento. Decisiones,
+cola y N:M manuales siguen en grupo 8; 5.3 y 2.4 esperan esas acciones. La suite normal mantiene tres escenarios
+futuros del grupo 8 y tres benchmarks optativos omitidos.
 
 ## 7. El resto del camino
 

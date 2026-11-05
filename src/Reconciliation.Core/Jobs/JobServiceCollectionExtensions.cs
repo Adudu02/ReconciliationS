@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reconciliation.Core.Ingestion;
 using Reconciliation.Core.Matching;
+using Reconciliation.Core.Sat;
 
 namespace Reconciliation.Core.Jobs;
 
@@ -14,6 +15,7 @@ public static class JobServiceCollectionExtensions
         var options = configuration.GetSection(JobOptions.SectionName).Get<JobOptions>() ?? new JobOptions();
         options.Validate();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddSat(configuration);
         services.AddSingleton(options);
         services.AddSingleton<JobStore>();
         services.AddSingleton<JobDispatcher>();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the AS-BUILT database diagrams (migrations M0001 to M0010) as SVG and PNG.
+"""Draw the AS-BUILT database diagrams (migrations M0001 to M0011) as SVG and PNG.
 
 Writes into docs/diagrams/database/:
   database-erd-implemented[-es]      tables, columns and foreign keys, grouped by area
@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / 'docs/diagrams/database'
 
 ES = {
-    'As-built data model (migrations M0001 to M0010)': 'Modelo de datos construido (migraciones M0001 a M0010)',
+    'As-built data model (migrations M0001 to M0011)': 'Modelo de datos construido (migraciones M0001 a M0011)',
     'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company':
         'PK clave primaria · FK clave foránea · UK único · RLS = seguridad a nivel de fila forzada por empresa',
     'Tenancy and access': 'Multiempresa y acceso',
@@ -64,6 +64,7 @@ ES = {
     'Row security, privileges and immutability': 'Seguridad de filas, privilegios e inmutabilidad',
     'S = SELECT · I = INSERT · U(columns) = UPDATE only on the named columns · no table grants DELETE':
         'S = SELECT · I = INSERT · U(columnas) = UPDATE solo en las columnas indicadas · ninguna tabla concede DELETE',
+    'sat': 'SAT', 'cancelled permanent; company expiry index': 'cancelled permanente; índice de caducidad por empresa',
     'tenancy': 'multiempresa', 'sessions': 'sesiones', 'ingestion': 'ingesta',
     'yes': 'sí', 'no (per user)': 'no (por usuario)', 'no': 'no',
     'rfc cannot change (trigger company_rfc_immutable)': 'rfc no cambia (trigger company_rfc_immutable)',
@@ -74,8 +75,8 @@ ES = {
 
 ES.update({
     'cancelled evidence: review; no capacity': 'evidencia cancelada: revisión; sin capacidad',
-    'jobs': 'trabajos', 'Jobs (forced RLS; cross-company claims through queue-only definer)':
-        'Trabajos (RLS forzado; claim global por dueño restringido de cola)',
+    'jobs': 'trabajos', 'Jobs and SAT cache (forced RLS; restricted global queue claims)':
+        'Trabajos y caché SAT (RLS forzado; claim global restringido)',
     'Durable jobs': 'Trabajos duraderos',
     'queued -> processing': 'queued -> processing',
     'pending_original; processing is transaction-local': 'pending_original; processing vive dentro de la transacción',
@@ -114,6 +115,7 @@ ES.update({
 })
 
 AREAS = {
+    'sat': ('#cffafe', '#0891b2'),
     'matching': ('#fef9c3', '#a16207'),
     'jobs': ('#fff7ed', '#c2410c'),
     'tenancy': ('#dbeafe', '#1d4ed8'),
@@ -123,9 +125,17 @@ AREAS = {
 
 # M0007 introduced jobs; M0008 adds audit chains and function-only appends.
 # name: (area, rls, [(column, type, flags)])
+# M0011 adds sat_status_cache, job.seq identity/FIFO and EFOS review reasons.
 # M0010 adds cancellation_status, link.review_reason and cfdi_payable()/cfdi_review_reasons().
 # M0009 adds link and derived movement_state()/cfdi_state(); item states are never stored.
 TABLES = {
+    'sat_status_cache': ('sat', True, [
+        ('company_id', 'uuid', 'PK FK'), ('uuid', 'uuid', 'PK FK'), ('state', '4 states', 'CHECK'),
+        ('cancellability', 'text nullable', ''), ('cancellation_status', 'text nullable', ''), ('efos_raw', 'text nullable', ''),
+        ('checked_at', 'timestamptz', ''), ('expires_at', 'timestamptz nullable', ''), ('last_error', 'text nullable', ''),
+        ('attempts', 'int', '>= 0'), ('source', 'backfill/stub/real/replay', ''), ('code_raw', 'text nullable', ''),
+        ('state_raw', 'text nullable', ''), ('cancellability_raw', 'text nullable', ''), ('cancellation_status_raw', 'text nullable', ''),
+        ('last_job_id', 'uuid nullable', ''), ('last_error_kind', 'text nullable', '')]),
     'link': ('matching', True, [
         ('company_id', 'uuid', 'PK FK'), ('id', 'uuid', 'PK'), ('movement_id', 'uuid', 'FK'), ('cfdi_id', 'uuid', 'FK'),
         ('payment_cfdi_id', 'uuid nullable', 'FK'), ('payment_ref', 'uuid nullable', 'FK'), ('amount_applied', 'numeric(18,2)', '> 0'),
@@ -133,7 +143,7 @@ TABLES = {
         ('confidence', 'high/medium/low', ''), ('explanation', 'text', ''), ('created_at', 'timestamptz', ''),
         ('decided_by', 'uuid nullable', 'FK'), ('decided_at', 'timestamptz', ''), ('reopened_at', 'timestamptz', ''), ('review_reason', 'text nullable', '')]),
     'job': ('jobs', True, [
-        ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('type', 'text (4 types)', ''),
+        ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('seq', 'bigint identity', 'FIFO'), ('type', 'text (4 types)', ''),
         ('state', 'text (4 states)', ''), ('payload', 'jsonb', ''), ('input_ref', 'uuid', 'upload ref'),
         ('attempts', 'int', ''), ('max_attempts', 'int', ''), ('run_after', 'timestamptz', ''), ('locked_by', 'text', ''),
         ('locked_until', 'timestamptz', ''), ('progress_done', 'int', ''), ('progress_total', 'int', ''), ('last_error', 'text', ''),
@@ -202,6 +212,7 @@ TABLES = {
 
 # privileges of role cfdi_app, and immutability rules (from the migrations)
 GRANTS = {
+    'sat_status_cache': 'S I U; no DELETE',
     'link': 'S I U; no DELETE',
     'audit_chain_head': 'S; head writes through append only',
     'job': 'S I U(state, max_attempts, run_after, ...)', 'job_attempt': 'S',
@@ -212,6 +223,7 @@ GRANTS = {
     'cfdi_relation': 'S I', 'cfdi_payment': 'S I', 'cfdi_payment_doc': 'S I U(inconsistent_balance)',
 }
 NOTES = {
+    'sat_status_cache': 'cancelled permanent; company expiry index',
     'link': 'movement_state / cfdi_state derive item states',
     'audit_chain_head': 'company head lock; no app table writes',
     'job': 'claim/renew/finish through restricted definer',
@@ -338,7 +350,7 @@ def zone(x, y, w, h, area, label, ctx):
 def erd(ctx):
     c = [30, 370, 710, 1050, 1390]
     pos = {
-        'link': (c[0], 940), 'job': (c[0], 1510), 'job_attempt': (c[1], 1510),
+        'sat_status_cache': (c[3], 1510), 'link': (c[0], 940), 'job': (c[0], 1510), 'job_attempt': (c[1], 1510),
         'company': (c[0], 120), 'membership': (c[1], 120), 'app_user': (c[2], 120),
         'audit_entry': (c[1], 330), 'audit_chain_head': (c[2], 480),
         'auth_session': (c[3], 120), 'refresh_token': (c[4], 120), 'auth_event': (c[3], 360),
@@ -347,11 +359,11 @@ def erd(ctx):
     }
     lay = Layout(pos)
     width, height = 1700, 1910
-    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0010)',
+    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0011)',
                    'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company', ctx)
     out += zone(18, 78, 1002, 570, 'tenancy', 'Tenancy and access', ctx)
     out += zone(1028, 78, 662, 480, 'sessions', 'Sessions (per user, outside company RLS)', ctx)
-    out += zone(18, 1470, 1672, 420, 'jobs', 'Jobs (forced RLS; cross-company claims through queue-only definer)', ctx)
+    out += zone(18, 1470, 1672, 420, 'jobs', 'Jobs and SAT cache (forced RLS; restricted global queue claims)', ctx)
     out += zone(18, 690, 1672, 750, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
     out += link(lay, 'company', 'id', 'right', 'membership', 'company_id', 'left')
     out += link(lay, 'app_user', 'id', 'left', 'membership', 'user_id', 'right')
@@ -374,9 +386,12 @@ def erd(ctx):
     out.append(f'<path d="M{px} {py} H1350 V1320 H{qx} V{qy}" fill="none" stroke="#a16207" stroke-width="1.5"/>')
     out.append(f'<text x="360" y="1305" font-size="11" fill="#444">{esc(ctx.tr("link FKs use company_id + id; payment_ref targets cfdi_payment"))}</text>')
     out += link(lay, 'job', 'id', 'right', 'job_attempt', 'job_id', 'left')
-    for y, text in [(1550, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
-                    (1580, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
+    for y, text in [(1850, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
+                    (1870, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
         out.append(f'<text x="730" y="{y}" font-size="12" fill="#222">{esc(ctx.tr(text))}</text>')
+    px, py = lay.anchor('cfdi', 'left', 'uuid')
+    qx, qy = lay.anchor('sat_status_cache', 'left', 'uuid')
+    out.append(f'<path d="M{px} {py} H1020 V{qy} H{qx}" fill="none" stroke="#0891b2" stroke-width="1.5"/>')
     for name in TABLES:
         out += draw_table(name, lay, ctx)
     note = ctx.tr('PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company')
@@ -473,7 +488,7 @@ def states(ctx):
 
 def security(ctx):
     order = ['company', 'membership', 'app_user', 'audit_entry', 'audit_chain_head', 'auth_session', 'refresh_token', 'auth_event',
-             'import_file', 'cfdi', 'cfdi_relation', 'cfdi_payment', 'cfdi_payment_doc', 'bank_account', 'bank_movement', 'link', 'job', 'job_attempt']
+             'import_file', 'cfdi', 'cfdi_relation', 'cfdi_payment', 'cfdi_payment_doc', 'bank_account', 'bank_movement', 'link', 'job', 'job_attempt', 'sat_status_cache']
     cols = [('Table', 180), ('Area', 110), ('Forced RLS', 100), ('Privileges of role cfdi_app', 430), ('Immutability / triggers', 380)]
     width = sum(w for _, w in cols) + 40
     row_h = 30

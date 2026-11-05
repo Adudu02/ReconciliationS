@@ -1,0 +1,49 @@
+{
+  "diagramType": "architecture",
+  "specification": {
+    "path": "system-as-built.architecture.json",
+    "sha256": "be9c636ac14a0b4fd26b05da3bd14bb83cea5aa0b3222479e7bc31154250013f",
+    "bytes": 2915
+  },
+  "artifact": {
+    "path": "system-as-built.html",
+    "sha256": "fe2ac97159ac62c338e56dbadaa06678673fbd6548f244ec2c2e3530ad65bdd9",
+    "bytes": 805560
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "browserEvidence": {
+    "status": "pass",
+    "receipt": "system-as-built.visual-check.json",
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        1600,
+        1000
+      ],
+      [
+        1920,
+        1080
+      ],
+      [
+        2048,
+        1320
+      ]
+    ]
+  },
+  "perceptualReview": {
+    "status": "passed",
+    "reviewer": "image-capable assistant",
+    "scope": "Inspected the delivered light/dark screenshots at 1440x900 and 2048x1320: labels, routes, cards, readable node fit and balanced desktop containment.",
+    "correctionRounds": 0
+  }
+}

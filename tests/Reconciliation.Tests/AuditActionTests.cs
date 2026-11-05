@@ -117,6 +117,28 @@ public sealed class AuditActionTests(ApiFixture fixture)
         }
     }
 
-    [Fact(DisplayName = "SAT status change", Skip = "pending group 7: SAT client/status-check job; group 6B domain cascade is tested directly")]
-    public void SAT_status_change() { }
+    [Fact(DisplayName = "SAT status change")]
+    public async Task SAT_status_change()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        await InvoiceReviewReasonTests.InsertManualLinkAsync(fixture, seed, 100, "reconciled");
+        fixture.Sat.Outcomes[seed.Uuid] = _ => Task.FromResult(SatJobTests.Answer("cancelled"));
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        var job = await SatJobTests.EnqueueAsync(client, seed);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken); deadline.CancelAfter(TimeSpan.FromSeconds(30));
+        while (!await fixture.Database.ScalarAsync<bool>("SELECT state='succeeded' FROM job WHERE id=@job", new { job }))
+        { deadline.Token.ThrowIfCancellationRequested(); await fixture.App.Services.GetRequiredService<JobDispatcher>().RunOneAsync("synthetic-sat-audit", deadline.Token); }
+        await using var owner = await fixture.Database.OpenOwnerAsync();
+        var row = await owner.QuerySingleAsync<(string Actor, Guid? ActorId, string Items, string Detail)>(new CommandDefinition(
+            "SELECT actor_type,actor_id,items::text,detail::text FROM audit_entry WHERE company_id=@company AND action='sat.status_changed'", new { company = seed.Company }, cancellationToken: deadline.Token));
+        Assert.Equal("system", row.Actor); Assert.Null(row.ActorId);
+        var detail = JsonSerializer.Deserialize<JsonElement>(row.Detail);
+        Assert.Equal(job, detail.GetProperty("jobId").GetGuid());
+        Assert.Equal("cancelled", detail.GetProperty("new").GetProperty("state").GetString());
+        Assert.Equal("200", detail.GetProperty("new").GetProperty("efosRaw").GetString());
+        Assert.DoesNotContain("issuerRfc", row.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("total", row.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(JsonSerializer.Deserialize<JsonElement>(row.Items).EnumerateArray(), item => item.GetProperty("kind").GetString() == "cfdi" && item.GetProperty("id").GetGuid() == seed.Uuid);
+        Assert.Equal("suggested", await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE company_id=@company", new { company = seed.Company }));
+    }
 }

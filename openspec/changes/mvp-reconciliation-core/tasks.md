@@ -49,7 +49,7 @@
 - [x] 5.1 Create audit_entry with insert-only privileges and a trigger that rejects update and delete, and verify an update attempt fails and is itself recorded
 - [x] 5.2 Implement hash chaining per company and the verification operation, and verify an altered row is reported at the correct position
 - [ ] 5.3 Record audit entries inside the same transaction as imports, links, decisions and role changes, and verify a rolled-back action leaves no entry
-  - Imports, company administration, membership added/changed, job retry, automatic links, classification and the 6B cancellation domain operation are audited; user decisions (group 8) and the real SAT status-check job (group 7) remain pending.
+  - Imports, company administration, membership added/changed, job retry, automatic links, classification and the 6B cancellation domain operation are audited; the SAT status-check job is audited; user decisions (group 8) remain pending.
 - [x] 5.4 Implement filtered read access for viewers and auditors and verify company isolation of the log
 
 ## 6. Matching engine (days 4–6)
@@ -74,14 +74,15 @@
 
 ## 7. SAT status check (days 5–6, real adapter in phase 2)
 
-- [ ] 7.1 Define the SAT client interface with the response model and verify unit tests cover all codes and states
-- [ ] 7.2 Implement the SAT stub service speaking the real SOAP contract with a control interface to force outcomes, and verify each outcome including timeout can be forced
-- [ ] 7.3 Implement caching, retries with backoff, rate limiting and the unknown-status degradation, and verify the service-down scenario completes a reconciliation run
-- [ ] 7.3b Store cancellability, cancellation status and the raw EFOS value, and verify the in-process and deadline-expired scenarios
-- [ ] 7.3c Implement the on-demand status check job and verify the unknown and cached-cancelled scenarios
-- [ ] 7.4 Connect cancelled status to matching and audit, and verify a cancelled invoice's links move to review with an audit entry
-- [ ] 7.5 Implement record and replay keyed to anonymised records and verify replay makes no network call
+- [x] 7.1 Define the SAT client interface with the response model and verify unit tests cover all codes and states
+- [x] 7.2 Implement the SAT stub service speaking the real SOAP contract with a control interface to force outcomes, and verify each outcome including timeout can be forced
+- [x] 7.3 Implement caching, retries with backoff, rate limiting and the unknown-status degradation, and verify the service-down scenario completes a reconciliation run
+- [x] 7.3b Store cancellability, cancellation status and the raw EFOS value, and verify the in-process and deadline-expired scenarios
+- [x] 7.3c Implement the on-demand status check job and verify the unknown and cached-cancelled scenarios
+- [x] 7.4 Connect cancelled status to matching and audit, and verify a cancelled invoice's links move to review with an audit entry
+- [x] 7.5 Implement record and replay keyed to anonymised records and verify replay makes no network call
 - [ ] 7.6 Phase 2: implement the real SOAP adapter selected by configuration, test it with one real payment CFDI, and record whether the service answers for payment CFDI in the BRS open question
+  - Pending: one real anonymised payment CFDI and live SAT access are required; the configurable SOAP transport is implemented but has no live validation.
 
 ## 8. Review, summaries and API (days 6–8)
 

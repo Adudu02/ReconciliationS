@@ -5164,9 +5164,9 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <path data-edge-from="users" data-edge-to="api" data-edge-label="HTTPS + JWT" data-edge-key="0" data-edge-id="client-to-api" data-composition-points="170,372;260,372" d="M 170 372 L 260 372" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="api" data-edge-to="pg" data-edge-label="company tx" data-edge-key="1" data-edge-id="api-to-pg" data-composition-points="430,372;540,372" d="M 430 372 L 540 372" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="migrator" data-edge-to="pg" data-edge-label="runs first: schema, roles" data-edge-key="2" data-edge-id="migrator-to-pg" data-composition-points="655,194;655,267;625,267;625,340" d="M 655 194 L 655 259 Q 655 267 647 267 L 633 267 Q 625 267 625 275 L 625 340" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="worker" data-edge-to="pg" data-edge-label="company-scoped import" data-edge-key="3" data-edge-id="worker-to-pg" data-composition-points="758,520;758,462;625,462;625,404" d="M 758 520 L 758 470 Q 758 462 750 462 L 633 462 Q 625 462 625 454 L 625 404" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="worker" data-edge-to="pg" data-edge-label="short company tx" data-edge-key="3" data-edge-id="worker-to-pg" data-composition-points="758,520;758,462;625,462;625,404" d="M 758 520 L 758 470 Q 758 462 750 462 L 633 462 Q 625 462 625 454 L 625 404" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="worker" data-edge-to="queue" data-edge-label="claim_next_job" data-edge-key="4" data-edge-id="worker-claim" data-composition-points="772,520;772,462;905,462;905,404" d="M 772 520 L 772 470 Q 772 462 780 462 L 897 462 Q 905 462 905 454 L 905 404" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="worker" data-edge-to="sat" data-edge-label="status check, planned" data-edge-key="5" data-edge-id="worker-to-sat" data-composition-points="850,552;960,552" d="M 850 552 L 960 552" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="worker" data-edge-to="sat" data-edge-label="SOAP Consulta" data-edge-key="5" data-edge-id="worker-to-sat" data-composition-points="850,552;960,552" d="M 850 552 L 960 552" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
         <g id="node-users" data-node-id="users" data-node-label="Client" tabindex="0" role="button" aria-label="Focus Client, browser / curl, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="browser / curl" data-node-context="Architecture component">
@@ -5241,8 +5241,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="765" y="566" class="t-muted" font-size="9" text-anchor="middle">polls, heartbeats, retries</text>
         </g>
 
-        <g id="node-sat" data-node-id="sat" data-node-label="SAT stub" tabindex="0" role="button" aria-label="Focus SAT stub, placeholder today, Docker Compose network" aria-pressed="false" data-node-kind="external" data-node-sublabel="placeholder today" data-node-tag="group 7" data-node-context="Docker Compose network">
-          <title>SAT stub · placeholder today · Docker Compose network · group 7</title>
+        <g id="node-sat" data-node-id="sat" data-node-label="SAT stub" tabindex="0" role="button" aria-label="Focus SAT stub, SOAP Consulta + local controls, Docker Compose network" aria-pressed="false" data-node-kind="external" data-node-sublabel="SOAP Consulta + local controls" data-node-tag="internal only" data-node-context="Docker Compose network">
+          <title>SAT stub · SOAP Consulta + local controls · Docker Compose network · internal only</title>
           <rect x="960" y="520" width="170" height="64" rx="6" class="c-mask"/>
           <rect x="960" y="520" width="170" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(966 526) scale(0.6875)">
@@ -5250,8 +5250,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="1045" y="550" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SAT stub</text>
-        <text data-detail="context" x="1045" y="566" class="t-muted" font-size="9" text-anchor="middle">placeholder today</text>
-        <text data-detail="fine" x="1045" y="576" class="t-external" font-size="7" text-anchor="middle">group 7</text>
+        <text data-detail="context" x="1045" y="566" class="t-muted" font-size="9" text-anchor="middle">SOAP Consulta + local controls</text>
+        <text data-detail="fine" x="1045" y="576" class="t-external" font-size="7" text-anchor="middle">internal only</text>
         </g>
 
         <!-- Connection labels -->
@@ -5267,17 +5267,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <rect x="575" y="247" width="130" height="14" rx="3" class="c-mask"/>
           <text x="640" y="257" class="t-security" font-size="8" text-anchor="middle">runs first: schema, roles</text>
         </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="pg" data-edge-label="company-scoped import" data-edge-key="3" data-edge-id="worker-to-pg">
-          <rect x="636.1" y="442" width="110.8" height="14" rx="3" class="c-mask"/>
-          <text x="691.5" y="452" class="t-muted" font-size="8" text-anchor="middle">company-scoped import</text>
+        <g data-detail="context" data-edge-from="worker" data-edge-to="pg" data-edge-label="short company tx" data-edge-key="3" data-edge-id="worker-to-pg">
+          <rect x="648.1" y="442" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="691.5" y="452" class="t-muted" font-size="8" text-anchor="middle">short company tx</text>
         </g>
         <g data-detail="context" data-edge-from="worker" data-edge-to="queue" data-edge-label="claim_next_job" data-edge-key="4" data-edge-id="worker-claim">
           <rect x="799.9" y="442" width="77.2" height="14" rx="3" class="c-mask"/>
           <text x="838.5" y="452" class="t-muted" font-size="8" text-anchor="middle">claim_next_job</text>
         </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="sat" data-edge-label="status check, planned" data-edge-key="5" data-edge-id="worker-to-sat">
-          <rect x="849.6" y="532" width="110.8" height="14" rx="3" class="c-mask"/>
-          <text x="905" y="542" class="t-messagebus" font-size="8" text-anchor="middle">status check, planned</text>
+        <g data-detail="context" data-edge-from="worker" data-edge-to="sat" data-edge-label="SOAP Consulta" data-edge-key="5" data-edge-id="worker-to-sat">
+          <rect x="868.8" y="532" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="905" y="542" class="t-muted" font-size="8" text-anchor="middle">SOAP Consulta</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
@@ -5499,7 +5499,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Request path</h3>
         </div>
         <ul>
-          <li>&bull; Every request runs in one company transaction</li>
+          <li>&bull; Company reads and writes use tenant transactions</li>
           <li>&bull; An upload stores its files and the job in that same transaction, then returns 202</li>
         </ul>
       </div>
@@ -5511,7 +5511,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>&bull; The queue is two PostgreSQL tables, no broker</li>
-          <li>&bull; A killed worker&#39;s job is reclaimed by another</li>
+          <li>&bull; status_check: read, HTTP without DB, fenced write</li>
         </ul>
       </div>
 
@@ -5523,7 +5523,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <ul>
           <li>&bull; API and worker use cfdi_app without an RLS bypass</li>
           <li>&bull; Queue and audit append functions have separate restricted owners</li>
-          <li>&bull; audit_entry and audit_chain_head live inside PostgreSQL</li>
+          <li>&bull; Audit chain and sat_status_cache live inside PostgreSQL</li>
         </ul>
       </div>
     </div>

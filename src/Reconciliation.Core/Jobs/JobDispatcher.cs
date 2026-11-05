@@ -26,12 +26,21 @@ public sealed partial class JobDispatcher(JobStore store, CompanyScope companySc
             string? note = null;
             string? errorKind = null;
             string? reason = null;
+            var completedInTransaction = false;
             try
             {
                 var handler = handlers.SingleOrDefault(candidate => candidate.Type == job.Type)
                     ?? throw new InvalidDataException("Unsupported job type.");
-                note = await companyScope.ExecuteAsync(job.CompanyId, (connection, transaction, transactionCancellationToken) =>
-                    handler.HandleAsync(job, connection, transaction, transactionCancellationToken), workCancellation.Token);
+                if (handler is IPhasedJobHandler phased)
+                {
+                    var result = await phased.HandlePhasedAsync(job, new JobHandlerContext(companyScope, job, clock), workCancellation.Token);
+                    note = result.Note;
+                    completedInTransaction = result.CompleteInTransaction;
+                    if (result.Retry) { errorKind = "transient"; reason = "SAT checks deferred; retry scheduled."; }
+                }
+                else
+                    note = await companyScope.ExecuteAsync(job.CompanyId, (connection, transaction, transactionCancellationToken) =>
+                        handler.HandleAsync(job, connection, transaction, transactionCancellationToken), workCancellation.Token);
             }
             catch (OperationCanceledException) when (workCancellation.IsCancellationRequested) { return true; }
 #pragma warning disable CA1031 // Worker boundary: retain unexpected failures without leaking exception details to clients.
@@ -48,12 +57,13 @@ public sealed partial class JobDispatcher(JobStore store, CompanyScope companySc
                     _ => transient ? "Temporary worker failure." : "Job handler failed."
                 };
             }
-            if (!workCancellation.IsCancellationRequested)
+            if (!workCancellation.IsCancellationRequested && !completedInTransaction)
             {
                 var finished = await store.FinishAsync(job, workerId, errorKind, reason,
                     errorKind == "transient" ? backoff.Delay(job.Attempts) : TimeSpan.Zero, note, cancellationToken);
                 Finished(logger, job.Id, job.CompanyId, job.Type, errorKind ?? "succeeded", finished);
             }
+            else if (completedInTransaction) Finished(logger, job.Id, job.CompanyId, job.Type, "succeeded", true);
             return true;
         }
         finally

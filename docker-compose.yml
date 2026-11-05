@@ -2,6 +2,18 @@
 x-database: &database
   ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi;Password=cfdi;Database=cfdi;GSS Encryption Mode=Disable
 
+x-sat: &sat
+  Sat__Mode: ${SAT_MODE:-stub}
+  Sat__Endpoint: ${SAT_ENDPOINT:-}
+  Sat__CurrentCacheTtl: ${SAT_CURRENT_CACHE_TTL:-1.00:00:00}
+  Sat__NotFoundCacheTtl: ${SAT_NOT_FOUND_CACHE_TTL:-01:00:00}
+  Sat__RequestTimeout: ${SAT_REQUEST_TIMEOUT:-00:00:10}
+  Sat__JobBudget: ${SAT_JOB_BUDGET:-00:01:00}
+  Sat__MaxAttempts: ${SAT_MAX_ATTEMPTS:-3}
+  Sat__MaxRequestsPerSecond: ${SAT_MAX_REQUESTS_PER_SECOND:-2}
+  Sat__MaxFollowUpGenerations: ${SAT_MAX_FOLLOW_UP_GENERATIONS:-20}
+  Sat__RecordResponses: ${SAT_RECORD_RESPONSES:-false}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -35,9 +47,12 @@ services:
   api:
     build: { context: ., target: api }
     environment:
+      <<: *sat
       Jobs__MaxAttempts: ${JOBS_MAX_ATTEMPTS:-5}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random secret of at least 32 bytes}
       ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
+    volumes:
+      - sat-recordings:/app/.local/sat-recordings
     ports:
       - '127.0.0.1:8080:3000'
     depends_on:
@@ -52,6 +67,7 @@ services:
   worker:
     build: { context: ., target: worker }
     environment:
+      <<: *sat
       Jobs__PollIntervalMilliseconds: ${JOBS_POLL_INTERVAL_MILLISECONDS:-500}
       Jobs__Concurrency: ${JOBS_CONCURRENCY:-2}
       Jobs__LeaseSeconds: ${JOBS_LEASE_SECONDS:-60}
@@ -59,9 +75,13 @@ services:
       Jobs__BackoffBaseSeconds: ${JOBS_BACKOFF_BASE_SECONDS:-2}
       Jobs__BackoffCapSeconds: ${JOBS_BACKOFF_CAP_SECONDS:-300}
       ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
+    volumes:
+      - sat-recordings:/app/.local/sat-recordings
     depends_on:
       migrate:
         condition: service_completed_successfully
+      sat-stub:
+        condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3001/health >/dev/null || exit 1']
       interval: 5s
@@ -70,8 +90,8 @@ services:
 
   sat-stub:
     build: { context: ., target: sat-stub }
-    ports:
-      - '127.0.0.1:8081:8081'
+    expose:
+      - '8081'
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8081/health >/dev/null || exit 1']
       interval: 5s
@@ -80,3 +100,4 @@ services:
 
 volumes:
   pgdata:
+  sat-recordings:
