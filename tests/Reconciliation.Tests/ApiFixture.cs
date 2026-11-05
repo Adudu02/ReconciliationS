@@ -11,12 +11,15 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Reconciliation.Core.Jobs;
+using Reconciliation.Core.Sat;
 using ApiProgram = api::Program;
 
 namespace Reconciliation.Tests;
 
 public sealed class ApiFixture : IAsyncLifetime
 {
+    public int JobLeaseSeconds { get; init; } = 60;
+    public SatTestClient Sat { get; } = new();
     public ManualTimeProvider Clock { get; } = new();
     public const string Password = "synthetic-password-123";
     public PostgresFixture Database { get; } = new();
@@ -31,8 +34,12 @@ public sealed class ApiFixture : IAsyncLifetime
             builder.ConfigureServices(services =>
             {
                 services.AddSingleton<TimeProvider>(Clock);
+                // SAT policy has dedicated fake-time tests; other integration scenarios use a controlled offline port.
+                services.AddSingleton<ISatClient>(Sat);
+                services.AddSingleton<IRequestRateGate, ImmediateSatRateGate>();
                 services.AddTransient<IStartupFilter, RoleProbeStartup>();
             });
+            builder.UseSetting("Jobs:LeaseSeconds", JobLeaseSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
             builder.UseSetting("RefreshRateLimit:IpPermitLimit", "10000");
             builder.UseSetting("LoginRateLimit:IpPermitLimit", "10000");
             builder.UseSetting("LoginRateLimit:EmailPermitLimit", "10000");

@@ -41,20 +41,19 @@ public sealed class ReconciliationJobsTests(ApiFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task Four_types_are_registered_and_only_status_check_is_still_a_placeholder()
+    public async Task Four_types_are_registered_and_run_real_handlers()
     {
         Assert.Equal(["import_cfdi", "import_statement", "reconciliation_run", "status_check"], fixture.App.Services.GetServices<IJobHandler>().Select(handler => handler.Type).Order());
-        var seeded = await fixture.SeedCompanyWithAdminAsync();
-        using var client = await fixture.LoginAsync(seeded.User.Email, seeded.CompanyId);
-        foreach (var (jobType, group) in new[] { ("reconciliation_run", 6), ("status_check", 7) })
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        foreach (var jobType in new[] { "reconciliation_run", "status_check" })
         {
-            var jobId = await fixture.App.Services.GetRequiredService<CompanyScope>().ExecuteWriteAsync(seeded.CompanyId, (connection, transaction, cancellationToken) =>
-                JobStore.EnqueueAsync(connection, transaction, seeded.CompanyId, seeded.User.Id, jobType, "{}", null, 5, fixture.Clock.GetUtcNow(), cancellationToken), TestContext.Current.CancellationToken);
+            var jobId = await fixture.App.Services.GetRequiredService<CompanyScope>().ExecuteWriteAsync(seed.Company, (connection, transaction, cancellationToken) =>
+                JobStore.EnqueueAsync(connection, transaction, seed.Company, seed.Actor, jobType, jobType == "status_check" ? JsonSerializer.Serialize(new { cfdiIds = new[] { seed.Invoice } }) : "{}", null, 5, fixture.Clock.GetUtcNow(), cancellationToken), TestContext.Current.CancellationToken);
             Assert.True(await fixture.App.Services.GetRequiredService<JobDispatcher>().RunOneAsync("synthetic-placeholder", TestContext.Current.CancellationToken));
-            var job = await client.GetFromJsonAsync<JsonElement>($"/companies/{seeded.CompanyId}/jobs/{jobId}", TestContext.Current.CancellationToken);
+            var job = await client.GetFromJsonAsync<JsonElement>($"/companies/{seed.Company}/jobs/{jobId}", TestContext.Current.CancellationToken);
             Assert.Equal("succeeded", job.GetProperty("state").GetString());
-            if (jobType == "status_check") Assert.Contains($"not implemented until group {group}", job.GetProperty("payload").GetString()!, StringComparison.Ordinal);
-            else Assert.DoesNotContain("not implemented", job.GetProperty("payload").GetString()!, StringComparison.Ordinal);
+            Assert.DoesNotContain("not implemented", job.GetProperty("payload").GetString()!, StringComparison.Ordinal);
             Assert.Equal(JsonValueKind.Null, job.GetProperty("lastError").ValueKind);
         }
     }

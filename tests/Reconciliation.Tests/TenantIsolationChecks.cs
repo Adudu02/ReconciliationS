@@ -16,7 +16,7 @@ namespace Reconciliation.Tests;
 
 internal static class TenantIsolationChecks
 {
-    private sealed record Resources(Guid InvoiceId, Guid UploadId, Guid FileId, Guid JobId, Guid MovementId);
+    private sealed record Resources(Guid InvoiceId, Guid InvoiceUuid, Guid UploadId, Guid FileId, Guid JobId, Guid MovementId);
     public static async Task<IEnumerable<string>> TenantTablesAsync(NpgsqlConnection owner) =>
         await owner.QueryAsync<string>(new CommandDefinition("""
             SELECT DISTINCT table_name FROM information_schema.columns
@@ -94,7 +94,7 @@ internal static class TenantIsolationChecks
                 }
                 client.DefaultRequestHeaders.Remove("X-Company-Id");
                 client.DefaultRequestHeaders.Add("X-Company-Id", a.ToString());
-                if (route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal) || route.Contains("{movementId:", StringComparison.Ordinal))
+                if (route.Contains("{uuid:", StringComparison.Ordinal) || route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal) || route.Contains("{movementId:", StringComparison.Ordinal))
                 {
                     using var foreignResource = Request(method, route, a, other.Id, resourceB);
                     using var hidden = await client.SendAsync(foreignResource, TestContext.Current.CancellationToken);
@@ -104,6 +104,7 @@ internal static class TenantIsolationChecks
             }
         }
         Assert.Equal(before, await SnapshotAsync(owner, b));
+        Assert.Contains("POST /companies/{companyId:guid}/cfdi/{uuid:guid}/sat-check", exercised);
         Assert.Contains("GET /companies/{companyId:guid}/movements", exercised);
         Assert.Contains("PATCH /companies/{companyId:guid}/movements/{movementId:guid}", exercised);
         Assert.Contains("GET /companies/{companyId:guid}", exercised);
@@ -119,7 +120,8 @@ internal static class TenantIsolationChecks
             INSERT INTO bank_movement(company_id,bank_account_id,movement_date,description,credit,debit,balance)
             SELECT @company,id,'2026-10-10','Synthetic isolation movement',1,0,1 FROM account RETURNING id
             """, new { company }, cancellationToken: TestContext.Current.CancellationToken));
-        return new Resources(report.Files[0].CfdiId!.Value, report.UploadId, report.Files[0].FileId, jobId, movementId);
+        var invoiceUuid = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("SELECT uuid FROM cfdi WHERE id=@id", new { id = report.Files[0].CfdiId!.Value }, cancellationToken: TestContext.Current.CancellationToken));
+        return new Resources(report.Files[0].CfdiId!.Value, invoiceUuid, report.UploadId, report.Files[0].FileId, jobId, movementId);
     }
 
     private static async Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company)
@@ -141,6 +143,7 @@ internal static class TenantIsolationChecks
     {
         var request = new HttpRequestMessage(new HttpMethod(method), route.Replace("{companyId:guid}", company.ToString(), StringComparison.Ordinal)
             .Replace("{invoiceId:guid}", resources.InvoiceId.ToString(), StringComparison.Ordinal)
+            .Replace("{uuid:guid}", resources.InvoiceUuid.ToString(), StringComparison.Ordinal)
             .Replace("{uploadId:guid}", resources.UploadId.ToString(), StringComparison.Ordinal)
             .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal)
             .Replace("{jobId:guid}", resources.JobId.ToString(), StringComparison.Ordinal)
@@ -158,6 +161,7 @@ internal static class TenantIsolationChecks
             case "GET /companies/{companyId:guid}/settings":
             case "POST /companies/{companyId:guid}/archive":
             case "POST /companies/{companyId:guid}/reconciliation-runs":
+            case "POST /companies/{companyId:guid}/cfdi/{uuid:guid}/sat-check":
             case "GET /companies/{companyId:guid}/banks":
             case "GET /companies/{companyId:guid}/imports/{uploadId:guid}":
             case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}":
