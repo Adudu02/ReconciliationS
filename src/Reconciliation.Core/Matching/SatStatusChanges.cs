@@ -35,7 +35,8 @@ public static class SatStatusChanges
                   SELECT l.*,invoice.uuid AS invoice_uuid,
                     CASE WHEN l.cfdi_id=@cfdiId THEN 'cancelled invoice' ELSE 'cancelled payment complement' END AS reason
                   FROM link l JOIN cfdi invoice ON invoice.company_id=l.company_id AND invoice.id=l.cfdi_id
-                  WHERE l.state='reconciled' AND (l.cfdi_id=@cfdiId OR l.payment_cfdi_id=@cfdiId) FOR UPDATE OF l
+                  WHERE l.state IN ('reconciled','suggested') AND (l.cfdi_id=@cfdiId OR l.payment_cfdi_id=@cfdiId)
+                    AND l.review_reason IS DISTINCT FROM CASE WHEN l.cfdi_id=@cfdiId THEN 'cancelled invoice' ELSE 'cancelled payment complement' END FOR UPDATE OF l
                 ), changed AS (
                   UPDATE link l SET state='suggested',review_reason=p.reason FROM previous p
                   WHERE l.company_id=p.company_id AND l.id=p.id

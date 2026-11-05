@@ -8,6 +8,11 @@ public sealed class M0010MatchingRest : Migration
     public override void Up() => Execute.Sql("""
         ALTER TABLE link ADD COLUMN review_reason text;
         ALTER TABLE cfdi ADD COLUMN cancellation_status text;
+        UPDATE link l SET review_reason=CASE WHEN invoice.sat_status='cancelled' THEN 'cancelled invoice' ELSE 'cancelled payment complement' END
+        FROM cfdi invoice
+        WHERE invoice.company_id=l.company_id AND invoice.id=l.cfdi_id AND l.state='suggested'
+          AND (invoice.sat_status='cancelled' OR EXISTS(SELECT FROM cfdi payment
+            WHERE payment.company_id=l.company_id AND payment.id=l.payment_cfdi_id AND payment.sat_status='cancelled'));
         GRANT UPDATE(sat_status,cancellation_status) ON cfdi TO cfdi_app;
         CREATE INDEX cfdi_relation_related_idx ON cfdi_relation(company_id,related_uuid,relation_code,cfdi_id);
         CREATE INDEX link_payment_claim_idx ON link(company_id,payment_ref,created_at,id) WHERE payment_ref IS NOT NULL;
