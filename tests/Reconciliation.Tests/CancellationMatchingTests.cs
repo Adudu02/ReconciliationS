@@ -164,8 +164,8 @@ public sealed class CancellationMatchingTests(ApiFixture fixture)
     public void Engine_excludes_cancelled_invoice_or_complement(bool payment)
     {
         var invoice = SyntheticMatching.Invoice(); var complement = SyntheticMatching.Payment();
-        if (payment) typeof(MatchingPayment).GetProperty("SatStatus")!.SetValue(complement, "cancelled");
-        else typeof(MatchingInvoice).GetProperty("SatStatus")!.SetValue(invoice, "cancelled");
+        if (payment) complement = complement with { SatStatus = "cancelled" };
+        else invoice = invoice with { SatStatus = "cancelled" };
         var result = MatchingEngine.Run([SyntheticMatching.FirstMovement()], [invoice], [complement], [], new(3, .01m));
         if (payment) Assert.DoesNotContain(result.Changes, link => link.State == "reconciled");
         else Assert.Empty(result.Changes);
@@ -176,7 +176,7 @@ public sealed class CancellationMatchingTests(ApiFixture fixture)
     {
         var invoice = SyntheticMatching.Invoice(100); var held = SyntheticMatching.FirstMovement(100); var free = held with { Id = Guid.NewGuid() };
         var link = new MatchingLink(held.Id, invoice.Id, null, null, 100, "suggested", "automatic", [], "high", "Cancelled history");
-        typeof(MatchingLink).GetProperty("ReviewReason")!.SetValue(link, "cancelled payment complement");
+        link = link with { ReviewReason = "cancelled payment complement" };
         var result = MatchingEngine.Run([held, free], [invoice], [], [link], new(3, .01m));
         Assert.Equal(free.Id, Assert.Single(result.Changes).MovementId);
         Assert.Empty(result.Updates);
@@ -187,8 +187,7 @@ public sealed class CancellationMatchingTests(ApiFixture fixture)
     private Task<int> ApplyAsync(Guid company, Guid cfdi, string status, string? cancellation = null) => Scope.ExecuteWriteAsync(company,
         (c, t, token) => InvokeAsync(c, t, cfdi, status, cancellation, token), TestContext.Current.CancellationToken);
     private Task<int> InvokeAsync(NpgsqlConnection c, NpgsqlTransaction t, Guid cfdi, string status, string? cancellation, CancellationToken token) =>
-        (Task<int>)typeof(MatchingEngine).Assembly.GetType("Reconciliation.Core.Matching.SatStatusChanges", true)!
-            .GetMethod("ApplySatStatusChangeAsync")!.Invoke(null, [c, t, cfdi, status, cancellation, fixture.Clock.GetUtcNow(), token])!;
+        SatStatusChanges.ApplySatStatusChangeAsync(c, t, cfdi, status, cancellation, fixture.Clock.GetUtcNow(), token);
     private Task<int> AuditCountAsync(Guid company) => fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@company", new { company });
 
     private async Task<Guid> ImportReplacementAsync(MatchingFiscalScenario.Seed seed, string variant = "valid")

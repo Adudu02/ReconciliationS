@@ -19,6 +19,7 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
             FROM company WHERE id=@companyId FOR UPDATE
             """, new { companyId = job.CompanyId }, transaction, cancellationToken: cancellationToken));
         if (settings.Archived) throw new CompanyReadOnlyException();
+        await SatStatusChanges.DiscoverReplacementsAsync(connection, transaction, clock.GetUtcNow(), cancellationToken, job.Id);
         MatchingMovement[] movements;
         InvoiceRow[] invoiceRows;
         PaymentRow[] paymentRows;
@@ -28,13 +29,13 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
             SELECT id,movement_date AS Date,credit,debit,description,reference,classification FROM bank_movement;
             SELECT c.id,c.uuid,c.issued_at::date AS Date,c.total,coalesce(retained_tax,0)+coalesce(local_retained_tax,0) AS Retained,
               issuer_rfc AS IssuerRfc,receiver_rfc AS ReceiverRfc,type,direction,currency,serie,folio,
-              coalesce(retained_tax,0) AS FederalRetained,coalesce(local_retained_tax,0) AS LocalRetained,p.credit_notes AS CreditNotes,c.is_global AS IsGlobal
+              coalesce(retained_tax,0) AS FederalRetained,coalesce(local_retained_tax,0) AS LocalRetained,p.credit_notes AS CreditNotes,c.is_global AS IsGlobal,c.sat_status AS SatStatus
               FROM cfdi c JOIN cfdi_payable() p ON p.company_id=c.company_id AND p.id=c.id WHERE c.type='I' AND c.direction='issued';
-            SELECT p.id,p.cfdi_id AS CfdiId,p.paid_at::date AS Date,p.amount,p.operation_number AS OperationNumber,c.direction,p.currency
+            SELECT p.id,p.cfdi_id AS CfdiId,p.paid_at::date AS Date,p.amount,p.operation_number AS OperationNumber,c.direction,p.currency,c.sat_status AS SatStatus
               FROM cfdi_payment p JOIN cfdi c ON c.company_id=p.company_id AND c.id=p.cfdi_id WHERE c.type='P';
             SELECT payment_id AS PaymentId,invoice_uuid AS InvoiceUuid,paid,currency,inconsistent_balance AS Inconsistent FROM cfdi_payment_doc;
             SELECT id,movement_id AS MovementId,cfdi_id AS InvoiceId,payment_cfdi_id AS PaymentCfdiId,payment_ref AS PaymentRef,
-              amount_applied AS Amount,state,origin,criteria::text AS Criteria,confidence,explanation,reopened_at IS NOT NULL AS Reopened,created_at AS CreatedAt FROM link;
+              amount_applied AS Amount,state,origin,criteria::text AS Criteria,confidence,explanation,reopened_at IS NOT NULL AS Reopened,created_at AS CreatedAt,review_reason AS ReviewReason FROM link;
             """, transaction: transaction, cancellationToken: cancellationToken)))
         {
             movements = (await data.ReadAsync<MatchingMovement>()).ToArray();
@@ -50,10 +51,10 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
         var paymentDocuments = documents.GroupBy(doc => doc.PaymentId).ToDictionary(group => group.Key,
             group => group.Select(doc => new MatchingPaymentDocument(doc.InvoiceUuid, doc.Paid, doc.Currency, doc.Inconsistent)).ToArray());
         var payments = paymentRows.Select(payment => new MatchingPayment(payment.Id, payment.CfdiId, payment.Date, payment.Amount,
-            payment.OperationNumber, paymentDocuments.GetValueOrDefault(payment.Id) ?? [], payment.Direction, payment.Currency)).ToArray();
+            payment.OperationNumber, paymentDocuments.GetValueOrDefault(payment.Id) ?? [], payment.Direction, payment.Currency, SatStatus: payment.SatStatus)).ToArray();
         var existing = linkRows.Select(link => new MatchingLink(link.MovementId, link.InvoiceId, link.PaymentCfdiId, link.PaymentRef,
             link.Amount, link.State, link.Origin, JsonSerializer.Deserialize<MatchingCriterion[]>(link.Criteria, JsonSerializerOptions.Web)!,
-            link.Confidence, link.Explanation, link.Reopened, link.Id, new DateTimeOffset(link.CreatedAt))).ToArray();
+            link.Confidence, link.Explanation, link.Reopened, link.Id, new DateTimeOffset(link.CreatedAt), link.ReviewReason)).ToArray();
         var result = MatchingEngine.Run(movements, invoices, payments, existing, new(settings.DateToleranceDays, settings.AmountTolerance));
         var reopened = existing.Where(link => link.Reopened && link.State is "rejected" or "closed")
             .ToDictionary(link => (link.MovementId, link.InvoiceId, link.PaymentCfdiId));
@@ -105,7 +106,7 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
                 ON CONFLICT(company_id,id) DO UPDATE SET payment_cfdi_id=EXCLUDED.payment_cfdi_id,payment_ref=EXCLUDED.payment_ref,
                   amount_applied=EXCLUDED.amount_applied,state=EXCLUDED.state,origin=EXCLUDED.origin,criteria=EXCLUDED.criteria,
                   confidence=EXCLUDED.confidence,explanation=EXCLUDED.explanation,decided_by=NULL,decided_at=NULL,reopened_at=NULL
-                WHERE (link.origin='automatic' AND link.state='suggested') OR (link.state IN ('rejected','closed') AND link.reopened_at IS NOT NULL)
+                WHERE (link.origin='automatic' AND link.state='suggested' AND link.review_reason IS NULL) OR (link.state IN ('rejected','closed') AND link.reopened_at IS NOT NULL)
                 """, new
             {
                 companyId = job.CompanyId,
@@ -128,12 +129,12 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
 
     private sealed record SettingsRow(bool Archived, int DateToleranceDays, decimal AmountTolerance);
     private sealed record InvoiceRow(Guid Id, Guid Uuid, DateOnly Date, decimal Total, decimal Retained, string IssuerRfc, string ReceiverRfc,
-        string Type, string Direction, string Currency, string? Serie, string? Folio, decimal FederalRetained, decimal LocalRetained, decimal CreditNotes, bool IsGlobal)
+        string Type, string Direction, string Currency, string? Serie, string? Folio, decimal FederalRetained, decimal LocalRetained, decimal CreditNotes, bool IsGlobal, string SatStatus)
     {
-        public MatchingInvoice Invoice => new(Id, Uuid, Date, Total, Retained, IssuerRfc, ReceiverRfc, Type, Direction, Currency, Serie, Folio, CreditNotes, IsGlobal);
+        public MatchingInvoice Invoice => new(Id, Uuid, Date, Total, Retained, IssuerRfc, ReceiverRfc, Type, Direction, Currency, Serie, Folio, CreditNotes, IsGlobal, SatStatus);
     }
-    private sealed record PaymentRow(Guid Id, Guid CfdiId, DateOnly Date, decimal Amount, string? OperationNumber, string Direction, string Currency);
+    private sealed record PaymentRow(Guid Id, Guid CfdiId, DateOnly Date, decimal Amount, string? OperationNumber, string Direction, string Currency, string SatStatus);
     private sealed record DocumentRow(Guid PaymentId, Guid InvoiceUuid, decimal Paid, string Currency, bool Inconsistent);
     private sealed record LinkRow(Guid Id, Guid MovementId, Guid InvoiceId, Guid? PaymentCfdiId, Guid? PaymentRef, decimal Amount,
-        string State, string Origin, string Criteria, string? Confidence, string Explanation, bool Reopened, DateTime CreatedAt);
+        string State, string Origin, string Criteria, string? Confidence, string Explanation, bool Reopened, DateTime CreatedAt, string? ReviewReason);
 }

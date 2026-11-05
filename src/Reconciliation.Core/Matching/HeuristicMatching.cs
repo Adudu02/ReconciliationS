@@ -37,7 +37,7 @@ internal static class HeuristicMatching
             }
             Add(invoice);
         }
-        var operations = payments.Where(payment => payment.Currency == "MXN" && payment.Direction == "issued" && payment.Version == "2.0" && !payment.Inconsistent && !string.IsNullOrEmpty(payment.OperationNumber))
+        var operations = payments.Where(payment => payment.SatStatus != "cancelled" && payment.Currency == "MXN" && payment.Direction == "issued" && payment.Version == "2.0" && !payment.Inconsistent && !string.IsNullOrEmpty(payment.OperationNumber))
             .GroupBy(payment => payment.OperationNumber!, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
         var blocked = existing.Where(link => !link.Reopened).Select(link => (link.MovementId, link.InvoiceId)).ToHashSet();
         var blockCounts = blocked.GroupBy(pair => pair.MovementId).ToDictionary(group => group.Key, group => group.Count());

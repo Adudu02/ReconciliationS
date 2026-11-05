@@ -117,6 +117,6 @@ public sealed class AuditActionTests(ApiFixture fixture)
         }
     }
 
-    [Fact(DisplayName = "SAT status change", Skip = "pending group 7: real SAT status transitions do not exist yet")]
+    [Fact(DisplayName = "SAT status change", Skip = "pending group 7: SAT client/status-check job; group 6B domain cascade is tested directly")]
     public void SAT_status_change() { }
 }
