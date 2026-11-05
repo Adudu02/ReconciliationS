@@ -94,6 +94,8 @@ También existen la cadena de auditoría y conciliación 6A/6B. SAT sin conexió
 
 ### 2.2 Ciclo de una solicitud autenticada
 
+Diagrama interactivo: [`docs/diagrams/flows/authenticated-request.html`](../diagrams/flows/authenticated-request-es.html).
+
 Ejemplo: un contador sube una factura con `POST /companies/{companyId}/imports/cfdi`.
 
 1. **Login.** El cliente llama `POST /auth/tokens` con `{"email","password"}`. Antes de tocar la base,
@@ -156,6 +158,8 @@ Por qué varias capas: cada una cubre un fallo distinto. Un 403 no demuestra que
 RLS no identifica al usuario; por eso hacen falta ambas y pruebas para cada una.
 
 ### 2.4 Ciclo de una importación
+
+Diagramas interactivos: [`import-to-reconciliation.html`](../diagrams/flows/import-to-reconciliation-es.html) (carga, trabajo, ejecución de conciliación, lectura) y [`matching-pipeline.html`](../diagrams/flows/matching-pipeline-es.html) (cómo decide una ejecución).
 
 ```
  multipart -> límites de streaming y limpieza de nombres
@@ -415,6 +419,8 @@ Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la 
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
 
 ### PR-11: SAT status check
+
+Diagrama interactivo: [`sat-status-check.html`](../diagrams/flows/sat-status-check-es.html) (las tres fases del trabajo de consulta de estado).
 
 **Propósito.** Completar el flujo SAT sin conexión real del grupo 7 (7.1, 7.2, 7.3, 7.3b, 7.3c, 7.4, 7.5): un puerto ISatClient, transporte SOAP para stub/real, grabación privada/replay y la MISMA política compartida. ADR-008 fija el contrato y sus dudas. 7.6 sigue en Phase 2 (fase 2): requiere un CFDI de pago real anonimizado y acceso SAT en vivo. Conciliación no espera consultas. 5.3 queda abierta solo por decisiones de usuario del group 8; SAT status change ya es una prueba real de API/worker/cascada.
 

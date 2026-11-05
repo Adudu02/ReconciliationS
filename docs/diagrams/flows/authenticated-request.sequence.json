@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "An authenticated request inside one company",
+    "output": "authenticated-request.html",
+    "viewBox": [
+      1000,
+      604
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Client",
+      "sublabel": "token + company"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "runs as cfdi_app"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "forced RLS"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 288,
+      "label": "Who and where"
+    },
+    {
+      "from": 314,
+      "to": 424,
+      "label": "Work inside the company"
+    },
+    {
+      "from": 450,
+      "to": 496,
+      "label": "Answer"
+    }
+  ],
+  "messages": [
+    {
+      "from": "client",
+      "to": "api",
+      "label": "Bearer JWT + X-Company-Id",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "BEGIN, SET LOCAL company",
+      "variant": "emphasis",
+      "y": 202
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "membership gives the role",
+      "variant": "default",
+      "y": 234
+    },
+    {
+      "from": "api",
+      "to": "client",
+      "label": "no access: refused",
+      "variant": "dashed",
+      "y": 266
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "query, rows filtered by RLS",
+      "variant": "emphasis",
+      "y": 338
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "audit append, same tx",
+      "variant": "default",
+      "y": 370
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "COMMIT",
+      "variant": "default",
+      "y": 402
+    },
+    {
+      "from": "api",
+      "to": "client",
+      "label": "200 result",
+      "variant": "return",
+      "y": 474
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Una solicitud autenticada dentro de una empresa",
+    "output": "authenticated-request-es.html",
+    "viewBox": [
+      1000,
+      604
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Cliente",
+      "sublabel": "token + empresa"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "corre como cfdi_app"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS forzado"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 288,
+      "label": "Quién y dónde"
+    },
+    {
+      "from": 314,
+      "to": 424,
+      "label": "Trabajo dentro de la empresa"
+    },
+    {
+      "from": 450,
+      "to": 496,
+      "label": "Respuesta"
+    }
+  ],
+  "messages": [
+    {
+      "from": "client",
+      "to": "api",
+      "label": "Bearer JWT + X-Company-Id",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "BEGIN, SET LOCAL empresa",
+      "variant": "emphasis",
+      "y": 202
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "la membresía da el rol",
+      "variant": "default",
+      "y": 234
+    },
+    {
+      "from": "api",
+      "to": "client",
+      "label": "sin acceso: rechazado",
+      "variant": "dashed",
+      "y": 266
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "consulta, filas filtradas por RLS",
+      "variant": "emphasis",
+      "y": 338
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "registro de auditoría, misma tx",
+      "variant": "default",
+      "y": 370
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "COMMIT",
+      "variant": "default",
+      "y": 402
+    },
+    {
+      "from": "api",
+      "to": "client",
+      "label": "200 resultado",
+      "variant": "return",
+      "y": 474
+    }
+  ]
+}
