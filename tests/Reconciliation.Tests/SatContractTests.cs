@@ -35,7 +35,7 @@ public sealed class SatContractTests
                             AssertMapped(reply, "Cancellability", cancellableValue, cancellable);
                             AssertMapped(reply, "CancellationStatus", cancellationValue, cancellation);
                             Assert.Equal(efos, Property(reply, "EfosRaw"));
-                            Assert.Equal(efos != "200", Property(reply, "EfosFlagged"));
+                            Assert.Equal(code == Success && efos != "200", Property(reply, "EfosFlagged"));
                             Assert.Equal(xml, Property(reply, "RawText"));
                         }
     }

@@ -110,7 +110,7 @@ public sealed class CreditNoteMatchingTests(ApiFixture fixture)
         using var serviceScope = services.CreateScope();
         var runner = serviceScope.ServiceProvider.GetRequiredService<IMigrationRunner>();
         await using var owner = await database.OpenOwnerAsync();
-        Assert.Equal(10, await owner.ExecuteScalarAsync<long>(new CommandDefinition("SELECT max(\"Version\") FROM \"VersionInfo\"", cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal(11, await owner.ExecuteScalarAsync<long>(new CommandDefinition("SELECT max(\"Version\") FROM \"VersionInfo\"", cancellationToken: TestContext.Current.CancellationToken)));
         var company = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("INSERT INTO company(rfc,name) VALUES('AAA010101AAA','Synthetic fiscal migration') RETURNING id", cancellationToken: TestContext.Current.CancellationToken));
         await owner.ExecuteAsync(new CommandDefinition("SELECT set_config('app.company_id',@company,false); SELECT append_audit_entry(@id,'system',NULL,'synthetic.migration','[]','{\"source\":\"migration-test\"}')", new { company = company.ToString(), id = company }, cancellationToken: TestContext.Current.CancellationToken));
         var link = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("""
