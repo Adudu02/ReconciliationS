@@ -90,6 +90,7 @@ public sealed class SatPhasedJobTests : IAsyncLifetime
         var job = await fixture.App.Services.GetRequiredService<CompanyScope>().ExecuteWriteAsync(company, (c, t, ct) =>
             JobStore.EnqueueAsync(c, t, company, actor.Id, "status_check", JsonSerializer.Serialize(new { cfdiIds = ids }), null, 5, fixture.Clock.GetUtcNow(), ct), TestContext.Current.CancellationToken);
         var running = RunAsync(); await fixture.Sat.WaitForCallsAsync(uuids[1].Uuid, 1);
+        var delivered = await owner.QuerySingleAsync<JobRecord>(new CommandDefinition($"SELECT {JobStore.Columns} FROM job WHERE id=@job", new { job }, cancellationToken: TestContext.Current.CancellationToken));
         fixture.Clock.Advance(TimeSpan.FromSeconds(61)); await running;
         Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM sat_status_cache WHERE company_id=@company", new { company }));
         Assert.Equal(0, fixture.Sat.CallsFor(uuids[2].Uuid));
@@ -98,6 +99,12 @@ public sealed class SatPhasedJobTests : IAsyncLifetime
         var remaining = JsonSerializer.Deserialize<JsonElement>((await owner.ExecuteScalarAsync<string>(new CommandDefinition("SELECT payload::text FROM job WHERE id=@job", new { job = followUp }, cancellationToken: TestContext.Current.CancellationToken)))!).GetProperty("cfdiIds").EnumerateArray().Select(v => v.GetGuid()).ToArray();
         Assert.Equal(ids.Skip(1), remaining);
         Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT (payload->>'followUpGeneration')::integer FROM job WHERE id=@followUp", new { followUp }));
+        Assert.Equal(2, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM job WHERE company_id=@company", new { company }));
+        var contextType = typeof(IJobHandler).Assembly.GetType("Reconciliation.Core.Jobs.JobHandlerContext"); Assert.NotNull(contextType);
+        var staleContext = Activator.CreateInstance(contextType, fixture.App.Services.GetRequiredService<CompanyScope>(), delivered, fixture.Clock)!;
+        var handler = fixture.App.Services.GetServices<IJobHandler>().Single(handler => handler.Type == "status_check");
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await (Task)handler.GetType().GetMethod("HandlePhasedAsync")!
+            .Invoke(handler, [delivered, staleContext, TestContext.Current.CancellationToken])!);
         Assert.Equal(2, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM job WHERE company_id=@company", new { company }));
         fixture.Sat.Outcomes.TryRemove(uuids[1].Uuid, out _); fixture.Clock.Advance(TimeSpan.FromSeconds(10)); await RunAsync();
         Assert.Equal("succeeded", await fixture.Database.ScalarAsync<string>("SELECT state FROM job WHERE id=@job", new { job = followUp }));
@@ -111,8 +118,8 @@ public sealed class SatPhasedJobTests : IAsyncLifetime
         fixture.Sat.Outcomes[uuids[1]] = _ => throw new SatTransientException("Synthetic outage");
         fixture.Sat.Outcomes[uuids[2]] = async token => { await Task.Delay(Timeout.InfiniteTimeSpan, token); return SatJobTests.Answer("current"); };
         var running = RunAsync(); await fixture.Sat.WaitForCallsAsync(uuids[1], 1);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(2)); await fixture.Sat.WaitForCallsAsync(uuids[1], 2);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(3)); await fixture.Sat.WaitForCallsAsync(uuids[2], 1);
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(2)); fixture.Clock.Advance(TimeSpan.FromSeconds(2)); await fixture.Sat.WaitForCallsAsync(uuids[1], 2);
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(3)); fixture.Clock.Advance(TimeSpan.FromSeconds(3)); await fixture.Sat.WaitForCallsAsync(uuids[2], 1);
         fixture.Clock.Advance(TimeSpan.FromSeconds(56)); await running;
         Assert.Equal("queued", await fixture.Database.ScalarAsync<string>("SELECT state FROM job WHERE id=@job", new { job }));
         Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM job WHERE company_id=@company", new { company }));
@@ -135,6 +142,22 @@ public sealed class SatPhasedJobTests : IAsyncLifetime
         Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM sat_status_cache WHERE company_id=@company", new { company }));
         Assert.Equal(0, fixture.Sat.CallsFor(uuids[1]));
         Assert.Equal(2, ids.Length);
+    }
+
+    [Fact]
+    public async Task Permanent_601_in_a_mixed_batch_is_not_retried_by_the_same_job()
+    {
+        var (company, _, uuids, job) = await BatchAsync(2);
+        fixture.Sat.Outcomes[uuids[0]] = _ => Task.FromResult(SatJobTests.Answer("invalid"));
+        fixture.Sat.Outcomes[uuids[1]] = _ => throw new SatTransientException("Synthetic outage");
+        var running = RunAsync(); await fixture.Sat.WaitForCallsAsync(uuids[1], 1);
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(2)); fixture.Clock.Advance(TimeSpan.FromSeconds(2)); await fixture.Sat.WaitForCallsAsync(uuids[1], 2);
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(3)); fixture.Clock.Advance(TimeSpan.FromSeconds(3)); await running;
+        Assert.Equal("queued", await fixture.Database.ScalarAsync<string>("SELECT state FROM job WHERE id=@job", new { job }));
+        fixture.Sat.Outcomes.TryRemove(uuids[1], out _); fixture.Clock.Advance(TimeSpan.FromSeconds(10)); await RunAsync();
+        Assert.Equal("succeeded", await fixture.Database.ScalarAsync<string>("SELECT state FROM job WHERE id=@job", new { job }));
+        Assert.Equal(1, fixture.Sat.CallsFor(uuids[0]));
+        Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM job WHERE company_id=@company", new { company }));
     }
 
     private async Task<(Guid Company, Guid[] Ids, Guid[] Uuids, Guid Job)> BatchAsync(int count, int generation = 0)

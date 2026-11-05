@@ -95,8 +95,8 @@ public sealed class SatJobTests(ApiFixture fixture)
         fixture.Sat.Outcomes[seed.Uuid] = _ => throw new SatTransientException("Synthetic unavailable");
         using var client = await fixture.LoginAsync(seed.Email, seed.Company); var jobId = await EnqueueAsync(client, seed);
         var run = RunAsync(); await fixture.Sat.WaitForCallsAsync(seed.Uuid, 1);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(2)); await fixture.Sat.WaitForCallsAsync(seed.Uuid, 2);
-        fixture.Clock.Advance(TimeSpan.FromSeconds(3)); await run;
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(2)); fixture.Clock.Advance(TimeSpan.FromSeconds(2)); await fixture.Sat.WaitForCallsAsync(seed.Uuid, 2);
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromSeconds(3)); fixture.Clock.Advance(TimeSpan.FromSeconds(3)); await run;
         var failed = await JobAsync(client, seed.Company, jobId); Assert.Equal("queued", failed.GetProperty("state").GetString());
         Assert.NotNull(failed.GetProperty("lastError").GetString());
         Assert.Equal(3, await fixture.Database.ScalarAsync<int>("SELECT attempts FROM sat_status_cache WHERE company_id=@company", new { company = seed.Company }));
