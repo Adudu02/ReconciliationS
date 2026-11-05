@@ -203,7 +203,7 @@ tables with forced row-level security. The next two diagrams show the status rul
 
 ![Row security, privileges and immutability](../diagrams/database/database-security-implemented.png)
 
-The original design-time model (planned tables for the whole MVP) is still in `docs/diagrams/database/database-erd.png`.
+The original design-time model (planned tables for the whole MVP) was retired from the working tree; git history keeps it.
 Regenerate the three as-built diagrams with `python3 tools/db_diagrams.py` (add `--lang es` for Spanish).
 
 ### 2.6 Per-user authentication storage
