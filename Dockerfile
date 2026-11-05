@@ -32,6 +32,8 @@ ENTRYPOINT ["dotnet", "Reconciliation.Migrator.dll"]
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS sat-stub
 WORKDIR /app
 COPY --from=build /out/sat-stub ./
+# SOAP and local control stay on the Compose network; no host-published control port.
 ENV ASPNETCORE_URLS=http://+:8081
+EXPOSE 8081
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Reconciliation.SatStub.dll"]

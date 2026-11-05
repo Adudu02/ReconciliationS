@@ -74,6 +74,28 @@ public static partial class SatContract
         };
     }
 
+    public static async Task<string> ReadBoundedAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        var bytes = new byte[MaxResponseBytes + 1];
+        var length = 0;
+        while (length < bytes.Length)
+        {
+            var read = await stream.ReadAsync(bytes.AsMemory(length), cancellationToken);
+            if (read == 0) return Encoding.UTF8.GetString(bytes, 0, length);
+            length += read;
+        }
+        throw new SatPermanentException("SAT SOAP size limit exceeded.");
+    }
+
+    public static string ResponseXml(SatCode code, SatState state, SatCancellability cancellability, SatCancellationStatus cancellation, string? efos) =>
+        new XDocument(new XElement(Soap + "Envelope", new XElement(Soap + "Body", new XElement(Service + "ConsultaResponse",
+            new XElement(Service + "ConsultaResult", new XElement(Acuse + "CodigoEstatus", Raw(Codes, code)), new XElement(Acuse + "Estado", Raw(States, state)),
+                new XElement(Acuse + "EsCancelable", Raw(Cancellabilities, cancellability)), new XElement(Acuse + "EstatusCancelacion", Raw(Cancellations, cancellation)),
+                efos is null ? null : new XElement(Acuse + "ValidacionEFOS", efos)))))).ToString();
+
+    private static string Raw<T>(Dictionary<string, T> mappings, T value) where T : struct, Enum =>
+        mappings.FirstOrDefault(pair => EqualityComparer<T>.Default.Equals(pair.Value, value)).Key ?? "";
+
     private static SatValue<T> Map<T>(Dictionary<string, T> mappings, string raw) where T : struct, Enum => new(mappings.GetValueOrDefault(raw), raw);
 
     [GeneratedRegex(@"\A[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}\z", RegexOptions.CultureInvariant)]
