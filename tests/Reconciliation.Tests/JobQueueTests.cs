@@ -163,6 +163,35 @@ public sealed class JobQueueTests(PostgresFixture database) : IClassFixture<Post
         Assert.Equal("failed", await database.ScalarAsync<string>("SELECT state FROM job WHERE id=@Id", new { job.Id }));
     }
 
+    [Fact]
+    public async Task Equal_timestamps_use_enqueue_sequence_instead_of_random_UUID_order()
+    {
+        var seeded = await SeedAsync(); await using var owner = await database.OpenOwnerAsync();
+        var first = Guid.Parse("ffffffff-ffff-4fff-8fff-fffffffffff1"); var second = Guid.Parse("00000000-0000-4000-8000-000000000001");
+        await owner.ExecuteAsync(new CommandDefinition("""
+            INSERT INTO job(id,company_id,type,created_by,created_at,run_after) VALUES(@first,@company,'status_check',@actor,@now,@now);
+            INSERT INTO job(id,company_id,type,created_by,created_at,run_after) VALUES(@second,@company,'status_check',@actor,@now,@now);
+            """, new { first, second, company = seeded.CompanyId, actor = seeded.UserId, now = clock.GetUtcNow() }, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.True(await database.ScalarAsync<bool>("SELECT a.seq<b.seq FROM job a,job b WHERE a.id=@first AND b.id=@second", new { first, second }));
+        await using var source = NpgsqlDataSource.Create(database.AppConnectionString); var queue = new JobStore(source, clock);
+        Assert.Equal(first, (await queue.ClaimAsync("synthetic-fifo-first", 60, TestContext.Current.CancellationToken))!.Id);
+        Assert.Equal(second, (await queue.ClaimAsync("synthetic-fifo-second", 60, TestContext.Current.CancellationToken))!.Id);
+    }
+
+    [Fact]
+    public async Task Recovered_older_job_precedes_a_child_enqueued_at_the_same_time()
+    {
+        var seeded = await SeedAsync(); await using var source = NpgsqlDataSource.Create(database.AppConnectionString);
+        var scope = new CompanyScope(source, NullLogger<CompanyScope>.Instance); var queue = new JobStore(source, clock);
+        var parent = await scope.ExecuteWriteAsync(seeded.CompanyId, (c, t, ct) => JobStore.EnqueueAsync(c, t, seeded.CompanyId, seeded.UserId,
+            "import_cfdi", "{}", null, 5, clock.GetUtcNow(), ct), TestContext.Current.CancellationToken);
+        Assert.Equal(parent, (await queue.ClaimAsync("synthetic-parent", 9, TestContext.Current.CancellationToken))!.Id);
+        await scope.ExecuteWriteAsync(seeded.CompanyId, (c, t, ct) => JobStore.EnqueueAsync(c, t, seeded.CompanyId, seeded.UserId,
+            "status_check", "{}", null, 5, clock.GetUtcNow(), ct), TestContext.Current.CancellationToken);
+        clock.Advance(TimeSpan.FromSeconds(10));
+        Assert.Equal(parent, (await queue.ClaimAsync("synthetic-recovery", 9, TestContext.Current.CancellationToken))!.Id);
+    }
+
     private async Task<(Guid CompanyId, Guid UserId)> SeedAsync()
     {
         await using var owner = await database.OpenOwnerAsync();
