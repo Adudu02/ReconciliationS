@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the AS-BUILT database diagrams (migrations M0001 to M0009) as SVG and PNG.
+"""Draw the AS-BUILT database diagrams (migrations M0001 to M0010) as SVG and PNG.
 
 Writes into docs/diagrams/database/:
   database-erd-implemented[-es]      tables, columns and foreign keys, grouped by area
@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / 'docs/diagrams/database'
 
 ES = {
-    'As-built data model (migrations M0001 to M0009)': 'Modelo de datos construido (migraciones M0001 a M0009)',
+    'As-built data model (migrations M0001 to M0010)': 'Modelo de datos construido (migraciones M0001 a M0010)',
     'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company':
         'PK clave primaria · FK clave foránea · UK único · RLS = seguridad a nivel de fila forzada por empresa',
     'Tenancy and access': 'Multiempresa y acceso',
@@ -73,6 +73,7 @@ ES = {
 }
 
 ES.update({
+    'cancelled evidence: review; no capacity': 'evidencia cancelada: revisión; sin capacidad',
     'jobs': 'trabajos', 'Jobs (forced RLS; cross-company claims through queue-only definer)':
         'Trabajos (RLS forzado; claim global por dueño restringido de cola)',
     'Durable jobs': 'Trabajos duraderos',
@@ -108,8 +109,8 @@ ES.update({
     'later complement: upgrade': 'complemento posterior: mejora',
     'automatic suggestion in place': 'sugerencia automática en su lugar',
     'system closes provisional suggestion': 'el sistema cierra sugerencia provisional',
-    'movement_state() / cfdi_state(): reconciled, suggested or pending are computed; never stored.':
-        'movement_state() / cfdi_state(): reconciled, suggested o pending se calculan; nunca se guardan.',
+    'movement_state / cfdi_state / cfdi_payable / cfdi_review_reasons: derived, company-scoped reads.':
+        'movement_state / cfdi_state / cfdi_payable / cfdi_review_reasons: lecturas derivadas por empresa.',
 })
 
 AREAS = {
@@ -122,6 +123,7 @@ AREAS = {
 
 # M0007 introduced jobs; M0008 adds audit chains and function-only appends.
 # name: (area, rls, [(column, type, flags)])
+# M0010 adds cancellation_status, link.review_reason and cfdi_payable()/cfdi_review_reasons().
 # M0009 adds link and derived movement_state()/cfdi_state(); item states are never stored.
 TABLES = {
     'link': ('matching', True, [
@@ -129,7 +131,7 @@ TABLES = {
         ('payment_cfdi_id', 'uuid nullable', 'FK'), ('payment_ref', 'uuid nullable', 'FK'), ('amount_applied', 'numeric(18,2)', '> 0'),
         ('state', '4 states', 'CHECK'), ('origin', 'automatic / user', ''), ('criteria', 'jsonb array', ''),
         ('confidence', 'high/medium/low', ''), ('explanation', 'text', ''), ('created_at', 'timestamptz', ''),
-        ('decided_by', 'uuid nullable', 'FK'), ('decided_at', 'timestamptz', ''), ('reopened_at', 'timestamptz', '')]),
+        ('decided_by', 'uuid nullable', 'FK'), ('decided_at', 'timestamptz', ''), ('reopened_at', 'timestamptz', ''), ('review_reason', 'text nullable', '')]),
     'job': ('jobs', True, [
         ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('type', 'text (4 types)', ''),
         ('state', 'text (4 states)', ''), ('payload', 'jsonb', ''), ('input_ref', 'uuid', 'upload ref'),
@@ -183,7 +185,8 @@ TABLES = {
         ('type', 'I / P / E', ''), ('direction', 'issued / received', ''), ('issuer_rfc', 'text', ''),
         ('receiver_rfc', 'text', ''), ('issued_at', 'timestamp', ''), ('stamped_at', 'timestamp', ''),
         ('currency', 'text', ''), ('subtotal, discount', 'numeric(18,2)', ''), ('4 tax columns', 'numeric(18,2)', ''),
-        ('serie, folio', 'text nullable', ''), ('total', 'numeric(18,2)', 'CHECK'), ('is_global', 'boolean', ''), ('review_reason', 'text', '')]),
+        ('serie, folio', 'text nullable', ''), ('total', 'numeric(18,2)', 'CHECK'), ('is_global', 'boolean', ''), ('review_reason', 'text', ''),
+        ('sat_status', 'text', ''), ('cancellation_status', 'text nullable', '')]),
     'cfdi_relation': ('ingestion', True, [
         ('id', 'uuid', 'PK'), ('company_id', 'uuid', 'FK'), ('cfdi_id', 'uuid', 'FK'), ('related_uuid', 'uuid', ''),
         ('relation_code', 'text', '')]),
@@ -205,7 +208,7 @@ GRANTS = {
     'company': 'S I U', 'membership': 'S I U', 'app_user': 'S I U(password_hash)', 'audit_entry': 'S; append_audit_entry EXECUTE',
     'auth_session': 'S I U(last_used_at, revoked_at, revoked_reason)', 'refresh_token': 'S I U(rotated_at, replaced_by)',
     'auth_event': 'S I', 'bank_account': 'S I', 'bank_movement': 'S I U(classification, classification_note)',
-    'import_file': 'S I U(status, reason, original, sha256, ...)', 'cfdi': 'S I U(review_reason)',
+    'import_file': 'S I U(status, reason, original, sha256, ...)', 'cfdi': 'S I U(review_reason, sat_status, cancellation_status)',
     'cfdi_relation': 'S I', 'cfdi_payment': 'S I', 'cfdi_payment_doc': 'S I U(inconsistent_balance)',
 }
 NOTES = {
@@ -335,21 +338,21 @@ def zone(x, y, w, h, area, label, ctx):
 def erd(ctx):
     c = [30, 370, 710, 1050, 1390]
     pos = {
-        'link': (c[0], 940), 'job': (c[0], 1410), 'job_attempt': (c[1], 1410),
+        'link': (c[0], 940), 'job': (c[0], 1510), 'job_attempt': (c[1], 1510),
         'company': (c[0], 120), 'membership': (c[1], 120), 'app_user': (c[2], 120),
         'audit_entry': (c[1], 330), 'audit_chain_head': (c[2], 480),
         'auth_session': (c[3], 120), 'refresh_token': (c[4], 120), 'auth_event': (c[3], 360),
         'bank_account': (c[0], 740), 'bank_movement': (c[1], 740), 'import_file': (c[2], 740), 'cfdi': (c[3], 740),
-        'cfdi_relation': (c[4], 740), 'cfdi_payment': (c[3], 1100), 'cfdi_payment_doc': (c[4], 1100),
+        'cfdi_relation': (c[4], 740), 'cfdi_payment': (c[3], 1170), 'cfdi_payment_doc': (c[4], 1170),
     }
     lay = Layout(pos)
-    width, height = 1700, 1810
-    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0009)',
+    width, height = 1700, 1910
+    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0010)',
                    'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company', ctx)
     out += zone(18, 78, 1002, 570, 'tenancy', 'Tenancy and access', ctx)
     out += zone(1028, 78, 662, 480, 'sessions', 'Sessions (per user, outside company RLS)', ctx)
-    out += zone(18, 1370, 1672, 420, 'jobs', 'Jobs (forced RLS; cross-company claims through queue-only definer)', ctx)
-    out += zone(18, 690, 1672, 650, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
+    out += zone(18, 1470, 1672, 420, 'jobs', 'Jobs (forced RLS; cross-company claims through queue-only definer)', ctx)
+    out += zone(18, 690, 1672, 750, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
     out += link(lay, 'company', 'id', 'right', 'membership', 'company_id', 'left')
     out += link(lay, 'app_user', 'id', 'left', 'membership', 'user_id', 'right')
     out += link(lay, 'company', 'id', 'bottom', 'audit_entry', 'company_id', 'left')
@@ -371,8 +374,8 @@ def erd(ctx):
     out.append(f'<path d="M{px} {py} H1350 V1320 H{qx} V{qy}" fill="none" stroke="#a16207" stroke-width="1.5"/>')
     out.append(f'<text x="360" y="1305" font-size="11" fill="#444">{esc(ctx.tr("link FKs use company_id + id; payment_ref targets cfdi_payment"))}</text>')
     out += link(lay, 'job', 'id', 'right', 'job_attempt', 'job_id', 'left')
-    for y, text in [(1450, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
-                    (1480, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
+    for y, text in [(1550, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
+                    (1580, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
         out.append(f'<text x="730" y="{y}" font-size="12" fill="#222">{esc(ctx.tr(text))}</text>')
     for name in TABLES:
         out += draw_table(name, lay, ctx)
@@ -461,7 +464,9 @@ def states(ctx):
     out += arrow([(340, 1390), (490, 1390), (490, 1355), (650, 1355)],
                  ['later complement: upgrade', 'automatic suggestion in place'], 360, 1325, ctx)
     out += arrow([(220, 1440), (220, 1505), (650, 1505)], ['system closes provisional suggestion'], 270, 1492, ctx)
-    out.append(f'<text x="45" y="1582" font-size="12" fill="#222">{esc(ctx.tr("movement_state() / cfdi_state(): reconciled, suggested or pending are computed; never stored."))}</text>')
+    out += arrow([(775, 1390), (775, 1450), (340, 1450), (340, 1420)],
+                 ['cancelled evidence: review; no capacity'], 390, 1438, ctx, color='#b91c1c')
+    out.append(f'<text x="45" y="1582" font-size="12" fill="#222">{esc(ctx.tr("movement_state / cfdi_state / cfdi_payable / cfdi_review_reasons: derived, company-scoped reads."))}</text>')
     out.append('</svg>')
     return width, height, out
 

@@ -49,7 +49,7 @@
 - [x] 5.1 Create audit_entry with insert-only privileges and a trigger that rejects update and delete, and verify an update attempt fails and is itself recorded
 - [x] 5.2 Implement hash chaining per company and the verification operation, and verify an altered row is reported at the correct position
 - [ ] 5.3 Record audit entries inside the same transaction as imports, links, decisions and role changes, and verify a rolled-back action leaves no entry
-  - Imports, company administration, membership added/changed, job retry, automatic link creation/upgrades/closures and movement classification are audited; user link decisions and SAT changes remain pending groups 7/8.
+  - Imports, company administration, membership added/changed, job retry, automatic links, classification and the 6B cancellation domain operation are audited; user decisions (group 8) and the real SAT status-check job (group 7) remain pending.
 - [x] 5.4 Implement filtered read access for viewers and auditors and verify company isolation of the log
 
 ## 6. Matching engine (days 4–6)
@@ -66,10 +66,11 @@
 - [x] 6.9 Match only credit movements with issued income CFDI and verify a debit movement is not proposed
 - [x] 6.10 Add the gross-payment heuristic and the reference-equals-operation-number criterion, and verify both reasons appear
 - [ ] 6.11 (stretch if time is short) Record invoice-currency amount, movement amount and declared rate on links, and verify the dollar-invoice scenario
-- [ ] 6.12 Compute the complement due date and the overdue state with the weekend setting, and verify both scenarios
-- [ ] 6.13 Flag overpaid invoices and verify the overpayment scenario
-- [ ] 6.14 Keep global invoices out of RFC matching and verify they show pending with their reason
-- [ ] 6.15 Cascade cancellation of invoices and complements to links, handle cancellation in process, and propose replacements (relation 04), and verify the four cancellation scenarios
+  - Deferred 6.11: TipoCambioP is stored; document-level EquivalenciaDR and exact dual-currency multi-document capacity need their own fiscal contract.
+- [x] 6.12 Compute the complement due date and the overdue state with the weekend setting, and verify both scenarios
+- [x] 6.13 Flag overpaid invoices and verify the overpayment scenario
+- [x] 6.14 Keep global invoices out of RFC matching and verify they show pending with their reason
+- [x] 6.15 Cascade cancellation of invoices and complements to links, handle cancellation in process, and propose replacements (relation 04), and verify the four cancellation scenarios
 
 ## 7. SAT status check (days 5–6, real adapter in phase 2)
 

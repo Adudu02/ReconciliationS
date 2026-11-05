@@ -241,11 +241,11 @@ Task 5.3 remains open for links, decisions/classification and SAT changes in gro
 
 ## Matching core and movement classification
 
-`POST /companies/{companyId}/reconciliation-runs` now runs matching 6A in the worker. It returns 202 with a jobId, or 200
+`POST /companies/{companyId}/reconciliation-runs` runs matching 6A/6B in the worker. It returns 202 with a jobId, or 200
 with the existing active run for that company. Poll the job until succeeded before reading derived movement states.
 Only exact issued payment-complement evidence auto-reconciles. Other eligible evidence creates a suggestion with
 criteria, confidence and explanation; high confidence never confirms a heuristic. A gross target adds both federal and
-local retained taxes to the declared net total; its persisted reason/audit lists the two components separately. In the synthetic worked example,
+local retained taxes to net payable after valid credit notes; its persisted reason/audit lists the two components separately. In the synthetic worked example,
 invoice **11600** receives two **5800** payments: the first reconciles with its complement, the second is suggested from
 the remaining payable. [ADR-007](docs/adr/ADR-007-explainable-rule-pipeline.md) fixes the rubric and bounded-index design.
 
@@ -291,5 +291,54 @@ curl -sS "http://localhost:8080/companies/$COMPANY/movements?limit=50&afterDate=
 The pure-engine benchmark is opt-in: pass `-e RUN_BENCHMARKS=1` to the README SDK container and filter tests with
 `--filter 'FullyQualifiedName~MatchingBenchmarks'`. It measures 20,000 unique amounts and dense 5,000-by-5,000 inputs;
 PR-9 in the build log records warmup, samples and medians. CI runs capacity/idempotency/rejection/order properties and a
-small-K brute-force oracle without an environment flag. Credit notes, FX, due dates, overpaid/global flags and SAT
-cancellation cascades remain PR 6B; user link decisions and manual N:M allocation remain group 8.
+small-K brute-force oracle without an environment flag. PR-10 records the 6B before/after medians. User link decisions
+and manual N:M allocation remain group 8. FX stretch 6.11 is deferred until document-level exchange data is available.
+
+## Matching fiscal reads and cancellation review
+
+All member roles can read `GET /companies/{companyId}/cfdi/{invoiceId}`. An income CFDI includes a `matching` object
+with derived amounts and review information; other CFDI types return `matching: null`. Reads remain available for
+archived companies and use the same membership/not-found and tenant guards as other company routes.
+
+| Field | Meaning |
+|---|---|
+| `creditNotes`, `payable` | Valid issued same-currency code-01 note totals and max(original total minus notes, 0) |
+| `state`, `reconciledAmount`, `suggestedAmount`, `paidPercentage` | Derived coverage; cancellation-marked links count in neither monetary sum |
+| `pendingAmount`, `uncoveredAmount` | Net payable minus confirmed coverage; then minus valid suggestions, both floored at zero |
+| `reasons`, `requiresReview` | Array of `{code, requiresReview}` plus aggregate problem flag |
+| `complementDueDate`, `complementOverdue` | Earliest missing PPD payment deadline and whether injected UTC today is later |
+| `satStatus`, `cancellationStatus` | Stored status and optional informational cancellation process text |
+
+The 11,600 invoice with a 1,160 credit note has payable 10,440; an explicitly complemented 10,440 payment reconciles it.
+A fully credited invoice stays pending with zero due and informational `fully credited`. Global invoices receive no
+automatic proposals and keep informational `global invoice`, including when manual links reconcile them. Overpaid,
+cancelled invoice/payment complement/credit note, credit note in a different currency and complement overdue are problem
+reasons. Queue consumers should use `requiresReview`; pending-list consumers should use `pendingAmount > 0`.
+
+PPD deadlines are the fifth of the next declared payment month, optionally moved from a weekend to Monday. Holidays
+are not modeled; UTC today can differ from the Mexican local calendar near midnight. PUE has no deadline. Coverage
+requires both link references, a valid type-P complement/payment row and an invoice document; an unlinked complement
+or complement id without payment_ref does not cover a payment. A payment_ref is claimed by the movement of its earliest
+link (created_at, then id); all that movement's valid invoice allocations are covered, but another movement cannot reuse it.
+
+The domain operation `SatStatusChanges.ApplySatStatusChangeAsync` accepts the caller's company connection/transaction,
+CFDI id, SAT status, cancellation status, injected time and cancellation token. It is for the later group 7 job;
+there is no status mutation HTTP route or real SAT adapter here. Cancellation in process keeps links. Cancelled evidence
+moves active links to review, preserves provenance and releases capacity while holding ordinary matching for that
+movement. Direct relation-04 replacements for the same customer/currency may be suggested, never confirmed. The worker
+also discovers replacements imported later. Transitive replacements and foreign exchange conversion are not implemented.
+Gross after a credit note keeps original retentions without prorating, a documented approximation in ADR-007.
+
+Synthetic read examples (INVOICE_ID comes from the synthetic import report):
+
+```bash
+curl -sS "http://localhost:8080/companies/$COMPANY/cfdi/$INVOICE_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "http://localhost:8080/companies/$COMPANY/cfdi/$INVOICE_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY" | jq '.matching | {payable, pendingAmount, reasons, requiresReview, complementDueDate, complementOverdue}'
+```
+
+M0010 is reversible on populated databases. Stop API/workers for a rollback: Down removes free-text cancellation_status
+and review_reason metadata while preserving documents, links and audit evidence; Up reconstructs suggested-link
+cancellation markers from retained SAT status. FX 6.11 stays unticked: TipoCambioP alone lacks document-level EquivalenciaDR
+and the exact dual-currency multi-document allocation contract.
