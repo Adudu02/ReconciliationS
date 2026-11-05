@@ -93,6 +93,8 @@ The audit hash chain and matching 6A/6B also exist. Offline SAT handlers also ex
 
 ### 2.2 Life of an authenticated request
 
+Interactive diagram: [`docs/diagrams/flows/authenticated-request.html`](../diagrams/flows/authenticated-request.html).
+
 Example: an accountant uploads an invoice with `POST /companies/{companyId}/imports/cfdi`.
 
 1. **Login.** The client calls `POST /auth/tokens` with `{"email","password"}`. Before touching the database,
@@ -155,6 +157,8 @@ Why several layers: each covers a different failure. A 403 does not prove the RL
 not identify the user; both are needed, and each needs tests.
 
 ### 2.4 Life of an import
+
+Interactive diagrams: [`import-to-reconciliation.html`](../diagrams/flows/import-to-reconciliation.html) (upload, job, reconciliation run, read) and [`matching-pipeline.html`](../diagrams/flows/matching-pipeline.html) (how a run decides).
 
 ```
  multipart -> streaming bounds and filename cleaning
@@ -411,6 +415,8 @@ Most recent first. Each entry answers six questions: **What it is** (the piece),
 learn** (C#, SQL or tooling idea) and **Verified** (how it was checked). Entries before PR-5 use the names the code had then; the PR-5 rename map translates them.
 
 ### PR-11: SAT status check
+
+Interactive diagram: [`sat-status-check.html`](../diagrams/flows/sat-status-check.html) (the three phases of the status check job).
 
 **Purpose.** Complete group 7's offline status workflow (7.1, 7.2, 7.3, 7.3b, 7.3c, 7.4, 7.5) with one ISatClient port, SOAP stub/real transport, private record/replay and the SAME shared status policy. ADR-008 documents the actual contract and its uncertainties; 7.6 remains Phase 2, requiring one real anonymised payment CFDI and live SAT access. Matching does not wait for consultation. Task 5.3 remains open only for group 8 user decisions; SAT status change is now a real passing API/worker/cascade test.
 

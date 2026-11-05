@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "SAT status check job in three phases",
+    "output": "sat-status-check.html",
+    "viewBox": [
+      1000,
+      708
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Accountant",
+      "sublabel": "or an import"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "enqueue only"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "status_check job"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "cache, cfdi, audit"
+    },
+    {
+      "id": "sat",
+      "type": "external",
+      "label": "SAT service",
+      "sublabel": "stub, real or replay"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 256,
+      "label": "Request"
+    },
+    {
+      "from": 282,
+      "to": 360,
+      "label": "1 Short read"
+    },
+    {
+      "from": 386,
+      "to": 464,
+      "label": "2 No connection held"
+    },
+    {
+      "from": 490,
+      "to": 600,
+      "label": "3 Short fenced write"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST sat-check",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "enqueue status_check",
+      "variant": "default",
+      "y": 202
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "202 jobId",
+      "variant": "return",
+      "y": 234
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "claim, load CFDI + cache",
+      "variant": "emphasis",
+      "y": 306
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "commit, cached ids skipped",
+      "variant": "return",
+      "y": 338
+    },
+    {
+      "from": "worker",
+      "to": "sat",
+      "label": "Consulta (rate gate, retries)",
+      "variant": "emphasis",
+      "y": 410
+    },
+    {
+      "from": "sat",
+      "to": "worker",
+      "label": "state, EFOS, cancellation",
+      "variant": "return",
+      "y": 442
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "lock, re-read, cache + status",
+      "variant": "emphasis",
+      "y": 514
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "cancelled: cascade + audit",
+      "variant": "dashed",
+      "y": 546
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "lease fence, commit, finish",
+      "variant": "default",
+      "y": 578
+    }
+  ]
+}
