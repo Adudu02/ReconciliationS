@@ -25,6 +25,18 @@ public static class AuditLog
         }, cancellationToken);
     }
 
+    internal static Task<int> WriteSystemAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid jobId,
+        string source, string auditAction, object? previousValues, object currentValues, IReadOnlyList<AuditItem> items, CancellationToken cancellationToken) =>
+        connection.ExecuteAsync(Command("""
+            SELECT append_audit_entry(@companyId,'system',NULL,@auditAction,@items::jsonb,@detail::jsonb)
+            """, new
+        {
+            companyId,
+            auditAction,
+            items = JsonSerializer.Serialize(items, JsonSerializerOptions.Web),
+            detail = JsonSerializer.Serialize(new { jobId, source, old = previousValues, @new = currentValues }, JsonSerializerOptions.Web)
+        }, transaction, cancellationToken: cancellationToken));
+
     public static Task<int> WriteAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid companyId, Guid actorId,
         string auditAction, object? previousValues, object currentValues, CancellationToken cancellationToken, IReadOnlyList<AuditItem>? items = null) =>
         connection.ExecuteAsync(Command("""

@@ -106,15 +106,15 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
             {
                 cfdiId = await connection.QuerySingleOrDefaultAsync<Guid?>(Command("""
                 INSERT INTO cfdi(company_id, import_file_id, uuid, type, direction, issuer_rfc, receiver_rfc, issued_at, stamped_at,
-                  currency, payment_method, subtotal, discount, transferred_tax, retained_tax, local_transferred_tax, local_retained_tax, total, is_global, review_reason)
+                  currency, payment_method, subtotal, discount, transferred_tax, retained_tax, local_transferred_tax, local_retained_tax, total, is_global, review_reason, serie, folio)
                 VALUES (@companyId, @fileId, @Uuid, @Type, @direction, @IssuerRfc, @ReceiverRfc, @IssuedAt, @StampedAt,
-                  @Currency, @PaymentMethod, @Subtotal, @Discount, @TransferredTax, @RetainedTax, @LocalTransferredTax, @LocalRetainedTax, @Total, @IsGlobal, @ReviewReason)
+                  @Currency, @PaymentMethod, @Subtotal, @Discount, @TransferredTax, @RetainedTax, @LocalTransferredTax, @LocalRetainedTax, @Total, @IsGlobal, @ReviewReason, @Serie, @Folio)
                 ON CONFLICT (company_id, uuid) DO NOTHING RETURNING id
                 """, new CfdiInsertRow(companyId, fileId, parsedCfdi.Uuid, parsedCfdi.Type,
                     parsedCfdi.IssuerRfc == companyRfc ? "issued" : "received", parsedCfdi.IssuerRfc, parsedCfdi.ReceiverRfc,
                     parsedCfdi.IssuedAt, parsedCfdi.StampedAt, parsedCfdi.Currency, parsedCfdi.PaymentMethod,
                     parsedCfdi.Subtotal, parsedCfdi.Discount, parsedCfdi.TransferredTax, parsedCfdi.RetainedTax,
-                    parsedCfdi.LocalTransferredTax, parsedCfdi.LocalRetainedTax, parsedCfdi.Total, parsedCfdi.IsGlobal, parsedCfdi.ReviewReason), transaction, cancellationToken: transactionCancellationToken));
+                    parsedCfdi.LocalTransferredTax, parsedCfdi.LocalRetainedTax, parsedCfdi.Total, parsedCfdi.IsGlobal, parsedCfdi.ReviewReason, parsedCfdi.Serie, parsedCfdi.Folio), transaction, cancellationToken: transactionCancellationToken));
                 if (cfdiId is null)
                 {
                     return await RecordDuplicateAsync(connection, transaction, companyId, actorId, fileId, upload.File, parsedCfdi, transactionCancellationToken);
@@ -182,5 +182,5 @@ public sealed class CfdiImporter(CompanyScope companyScope, SafeCfdiXmlReader xm
     private sealed record CfdiInsertRow(Guid CompanyId, Guid FileId, Guid Uuid, string Type, string Direction, string IssuerRfc,
         string ReceiverRfc, DateTime IssuedAt, DateTime StampedAt, string Currency, string? PaymentMethod, decimal Subtotal,
         decimal Discount, decimal TransferredTax, decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax,
-        decimal Total, bool IsGlobal, string? ReviewReason);
+        decimal Total, bool IsGlobal, string? ReviewReason, string? Serie, string? Folio);
 }

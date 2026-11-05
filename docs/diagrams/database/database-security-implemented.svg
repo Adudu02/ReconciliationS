@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="690" viewBox="0 0 1240 690" font-family="Liberation Sans, Arial, sans-serif">
-<rect width="1240" height="690" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="720" viewBox="0 0 1240 720" font-family="Liberation Sans, Arial, sans-serif">
+<rect width="1240" height="720" fill="#fff"/>
 <text x="620.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Row security, privileges and immutability</text>
 <text x="620.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">S = SELECT · I = INSERT · U(columns) = UPDATE only on the named columns · no table grants DELETE</text>
 <rect x="20" y="80" width="180" height="30" fill="#1f3864"/>
@@ -159,27 +159,37 @@
 <rect x="310" y="530" width="100" height="30" fill="#fff4e0" stroke="#cbd5e1"/>
 <text x="320" y="550" font-size="12" fill="#111">yes</text>
 <rect x="410" y="530" width="430" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="420" y="550" font-size="12" fill="#111">S I</text>
+<text x="420" y="550" font-size="12" fill="#111">S I U(classification, classification_note)</text>
 <rect x="840" y="530" width="380" height="30" fill="#fff" stroke="#cbd5e1"/>
 <text x="850" y="550" font-size="12" fill="#111"></text>
 <rect x="20" y="560" width="180" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="30" y="580" font-size="12" font-weight="bold" fill="#111">job</text>
-<rect x="200" y="560" width="110" height="30" fill="#fff7ed" stroke="#cbd5e1"/>
-<text x="210" y="580" font-size="12" fill="#111">jobs</text>
+<text x="30" y="580" font-size="12" font-weight="bold" fill="#111">link</text>
+<rect x="200" y="560" width="110" height="30" fill="#fef9c3" stroke="#cbd5e1"/>
+<text x="210" y="580" font-size="12" fill="#111">matching</text>
 <rect x="310" y="560" width="100" height="30" fill="#fff4e0" stroke="#cbd5e1"/>
 <text x="320" y="580" font-size="12" fill="#111">yes</text>
 <rect x="410" y="560" width="430" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="420" y="580" font-size="12" fill="#111">S I U(state, max_attempts, run_after, ...)</text>
+<text x="420" y="580" font-size="12" fill="#111">S I U; no DELETE</text>
 <rect x="840" y="560" width="380" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="850" y="580" font-size="12" fill="#111">claim/renew/finish through restricted definer</text>
+<text x="850" y="580" font-size="12" fill="#111">movement_state / cfdi_state derive item states</text>
 <rect x="20" y="590" width="180" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="30" y="610" font-size="12" font-weight="bold" fill="#111">job_attempt</text>
+<text x="30" y="610" font-size="12" font-weight="bold" fill="#111">job</text>
 <rect x="200" y="590" width="110" height="30" fill="#fff7ed" stroke="#cbd5e1"/>
 <text x="210" y="610" font-size="12" fill="#111">jobs</text>
 <rect x="310" y="590" width="100" height="30" fill="#fff4e0" stroke="#cbd5e1"/>
 <text x="320" y="610" font-size="12" fill="#111">yes</text>
 <rect x="410" y="590" width="430" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="420" y="610" font-size="12" fill="#111">S</text>
+<text x="420" y="610" font-size="12" fill="#111">S I U(state, max_attempts, run_after, ...)</text>
 <rect x="840" y="590" width="380" height="30" fill="#fff" stroke="#cbd5e1"/>
-<text x="850" y="610" font-size="12" fill="#111">attempt writes through restricted definer only</text>
+<text x="850" y="610" font-size="12" fill="#111">claim/renew/finish through restricted definer</text>
+<rect x="20" y="620" width="180" height="30" fill="#fff" stroke="#cbd5e1"/>
+<text x="30" y="640" font-size="12" font-weight="bold" fill="#111">job_attempt</text>
+<rect x="200" y="620" width="110" height="30" fill="#fff7ed" stroke="#cbd5e1"/>
+<text x="210" y="640" font-size="12" fill="#111">jobs</text>
+<rect x="310" y="620" width="100" height="30" fill="#fff4e0" stroke="#cbd5e1"/>
+<text x="320" y="640" font-size="12" fill="#111">yes</text>
+<rect x="410" y="620" width="430" height="30" fill="#fff" stroke="#cbd5e1"/>
+<text x="420" y="640" font-size="12" fill="#111">S</text>
+<rect x="840" y="620" width="380" height="30" fill="#fff" stroke="#cbd5e1"/>
+<text x="850" y="640" font-size="12" fill="#111">attempt writes through restricted definer only</text>
 </svg>

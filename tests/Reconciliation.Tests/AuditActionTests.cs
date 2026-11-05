@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Reconciliation.Core.Audit;
 using Reconciliation.Core.Ingestion;
+using Reconciliation.Core.Jobs;
 using Reconciliation.Core.Tenancy;
 
 namespace Reconciliation.Tests;
@@ -88,11 +89,33 @@ public sealed class AuditActionTests(ApiFixture fixture)
         Assert.Equal("Synthetic company", await fixture.Database.ScalarAsync<string>("SELECT name FROM company WHERE id=@company", new { company }));
     }
 
-    [Fact(DisplayName = "User confirms a link", Skip = "pending group 6/8: real links and user decisions do not exist yet")]
+    [Fact(DisplayName = "User confirms a link", Skip = "pending group 8: user link decisions do not exist yet")]
     public void User_confirms_a_link() { }
 
-    [Fact(DisplayName = "Automatic link", Skip = "pending group 6: automatic links and criteria do not exist yet")]
-    public void Automatic_link() { }
+    [Fact(DisplayName = "Automatic link")]
+    public async Task Automatic_link()
+    {
+        var seed = await MatchingRunScenario.SeedAsync(fixture);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        var job = await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
+        var entries = (await owner.QueryAsync<(string ActorType, Guid? ActorId, string Items, string Detail)>(new CommandDefinition(
+            "SELECT actor_type,actor_id,items::text,detail::text FROM audit_entry WHERE company_id=@company AND action='link.created' ORDER BY company_seq",
+            new { company = seed.Company }, cancellationToken: TestContext.Current.CancellationToken))).ToArray();
+        Assert.Equal(2, entries.Length);
+        foreach (var entry in entries)
+        {
+            Assert.Equal("system", entry.ActorType);
+            Assert.Null(entry.ActorId);
+            var detail = JsonSerializer.Deserialize<JsonElement>(entry.Detail);
+            Assert.Equal(job.GetProperty("id").GetGuid(), detail.GetProperty("jobId").GetGuid());
+            Assert.Equal("reconciliation_run", detail.GetProperty("source").GetString());
+            Assert.NotEmpty(detail.GetProperty("new").GetProperty("criteria").EnumerateArray());
+            var items = JsonSerializer.Deserialize<JsonElement>(entry.Items).EnumerateArray().ToArray();
+            Assert.Equal(["cfdi", "link", "movement"], items.Select(item => item.GetProperty("kind").GetString()).Order());
+            Assert.Contains(items, item => item.GetProperty("kind").GetString() == "cfdi" && item.GetProperty("id").GetGuid() == seed.InvoiceUuid);
+        }
+    }
 
     [Fact(DisplayName = "SAT status change", Skip = "pending group 7: real SAT status transitions do not exist yet")]
     public void SAT_status_change() { }

@@ -27,7 +27,7 @@ leen `docs/adr/`, `docs/reference/` y `docs/build-log/`), y usa `git mv` para co
 
 ![Mapa de estado de la construcción](../diagrams/progress/status-map-es.png)
 
-**35 de 85 tareas completas. Grupos 3 y 4 completos; auditoría 5.1/5.2/5.4 completa, mientras 5.3 espera grupos 6/7/8. La tarea 2.4 también espera decisiones reales.**
+**45 de 85 tareas completas. Grupos 3/4 y conciliación 6A completos; 5.3 y 2.4 esperan decisiones/eventos de grupos 7/8. Conciliación 6B sigue diferida.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -60,7 +60,7 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
               +-------------------------------+
               | Reconciliation.Core           |   Tenancy | Ingestion | Audit
               | (siete módulos, sin Main)     |   Matching | Review | Sat | Jobs
-              +---------------+---------------+   (Matching, Review y Sat son marcadores)
+              +---------------+---------------+   (Review y Sat son marcadores)
                               | SQL con Npgsql + Dapper, CompanyScope para empresa; auth global
                               v
               +-------------------------------+        +----------------------+
@@ -74,12 +74,12 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
 
 Cada flecha es una frontera con una razón de ser:
 
-- **Dos hosts, una biblioteca.** La API atiende personas y debe responder rápido; el worker hará tareas largas
-  (conciliar, consultar al SAT). Comparten `Reconciliation.Core`, así la regla de negocio se escribe una sola vez
+- **Dos hosts, una biblioteca.** La API atiende personas y debe responder rápido; el worker ejecuta importación y conciliación
+  y después consultará al SAT. Comparten `Reconciliation.Core`, así la regla de negocio se escribe una sola vez
   (ADR-001: monolito modular con worker separado, en lugar de microservicios).
 - **Módulos con fronteras.** `Tenancy` (empresas, usuarios, roles, sesiones), `Ingestion` (lectura de CFDI y CSV), `Audit`
-  (bitácora), `Jobs` (cola/ejecución), y los marcadores `Matching`, `Review`, `Sat` de grupos posteriores. Un módulo
-  habla con otro por interfaces, nunca leyendo las tablas ajenas.
+  (bitácora), `Jobs` (cola/ejecución), `Matching` (reglas puras y orquestación), y los marcadores `Review` y `Sat`.
+  La orquestación lee tablas de ingesta/vínculos bajo RLS; el motor puro no conoce SQL.
 - **PostgreSQL como árbitro final.** Aunque el código olvide filtrar por empresa, la base de datos no entrega filas
   de otra empresa (sección 2.3).
 - **El migrador es un programa aparte** con otro rol de base de datos: el dueño del esquema (`cfdi`) crea y cambia
@@ -90,7 +90,7 @@ El diseño completo, incluido lo que aún no existe (cliente SAT, telemetría), 
 ![Vista de contenedores del diseño (Docker Compose)](../../openspec/changes/mvp-reconciliation-core/diagrams/containers.png)
 
 Existen API, worker de sondeo, tablas PostgreSQL de empresa/ingesta/sesiones/trabajos y stub de salud SAT.
-Faltan cadena de hash de auditoría, manejadores reales de conciliación/SAT y OpenTelemetry.
+También existen la cadena de auditoría y conciliación 6A. Faltan conciliación 6B, SAT, decisiones de revisión y OpenTelemetry.
 
 ### 2.2 Ciclo de una solicitud autenticada
 
@@ -193,7 +193,7 @@ Convenciones de empresa: `id uuid` generado por la base (job_attempt usa clave c
 RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
 por empresa que empiezan con `company_id` (`M0005`); el worker global además necesita índices de vencimiento/lease.
 
-El esquema construido (migraciones M0001 a M0008), dibujado a partir de las propias migraciones:
+El esquema construido (migraciones M0001 a M0009), dibujado a partir de las propias migraciones:
 
 ![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
 
@@ -240,8 +240,8 @@ Los errores transitorios usan backoff exponencial con jitter y tope; una entrada
 Historial y entrada se conservan para un reintento administrativo auditado. Los archivos restantes quedan queued con
 pending_original hasta un reintento exitoso; no hay limpieza implementada. La comprobación del lease por archivo y
 sus ids estables evitan duplicar efectos y auditoría tras otra entrega. Los cuatro tipos son import_cfdi,
-import_statement, reconciliation_run y status_check; los dos últimos registran expresamente el límite de grupos 6/7
-al finalizar sin efectos de dominio.
+import_statement, reconciliation_run y status_check; reconciliation_run ejecuta conciliación 6A y solo status_check
+registra el límite del grupo 7 sin efectos de dominio.
 
 ## 3. Diccionario de nombres y variables
 
@@ -395,17 +395,17 @@ aceptación. Un rechazo conserva solo hash/motivo.
 |---|---|---|---|
 | Archivo de solución | Compilación | Agrupa los seis proyectos para que un solo `dotnet build` compile todo | `Reconciliation.slnx` |
 | Reglas de compilación compartidas | Compilación | Todos los proyectos usan la misma configuración: .NET 10, verificación de nulos, las advertencias son errores | `Directory.Build.props`, `.editorconfig`, `global.json` |
-| **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts: multiempresa, ingesta, auditoría encadenada y código común de base de datos y salud | `src/Reconciliation.Core` |
-| **Host de la API** | Host | La API web que llamarán los usuarios. Atiende autenticación, empresas, miembros, configuración, archivo, importaciones, salud y OpenAPI | `src/Reconciliation.Api` |
+| **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts: multiempresa, ingesta, conciliación, auditoría encadenada y código común de base de datos y salud | `src/Reconciliation.Core` |
+| **Host de la API** | Host | La API web que llamarán los usuarios. Atiende autenticación, empresas, miembros, configuración, archivo, importaciones, corridas de conciliación, lectura/clasificación de movimientos, salud y OpenAPI | `src/Reconciliation.Api` |
 | **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0008` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0009` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS, diagramas y el cambio de OpenSpec que define el trabajo | `docs/requirements/`, `docs/diagrams/`, `openspec/` |
-| Pruebas | Pruebas | 283 casos xUnit: 275 aprobados, 6 escenarios pendientes y 2 benchmarks optativos; PostgreSQL real | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 374 casos xUnit: 367 aprobados, 4 escenarios pendientes y 3 benchmarks optativos; PostgreSQL real | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 5. Registro de pull requests
@@ -413,6 +413,28 @@ aceptación. Un rechazo conserva solo hash/motivo.
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
+
+### PR-9: Matching core
+
+**Propósito.** Implementar el grupo 6A de conciliación explicable y clasificación de movimientos, con dinero exacto y decisiones del usuario preservadas. MatchingEngine es código puro en memoria; reconciliation_run ya lo ejecuta en lugar del placeholder. M0009 agrega link aislado por empresa, movement_state()/cfdi_state() derivados, notas de clasificación restringidas y serie/folio anulables para nuevos CFDI. El estado del elemento se calcula, nunca se guarda. ADR-007 es el siguiente registro real: la mención ADR-005 de 6.8 quedó desactualizada porque ese número corresponde a la cola.
+
+**Cómo funciona.** El worker bloquea la fila de su empresa, carga datos con SQL por conjuntos y llama a MatchingEngine. La etapa 1 usa complementos emitidos cuyo monto coincide exactamente con el abono y cuya fecha cae en la tolerancia configurada; varios documentos pueden aplicar un movimiento a varias facturas. Solo participan abonos y CFDI de ingreso emitidos. La etapa 2 propone vínculos con un criterio de monto más evidencia independiente de fecha/RFC/identificadores. El dinero sigue siendo decimal/numeric. La factura de 11600 queda con el primer movimiento de 5800 conciliado por complemento y el segundo de 5800 sugerido por el saldo, con razón visible. La descripción real del segundo solo contiene un fragmento del nombre del cliente: saldo exacto basta para confianza baja; no hay criterio de nombre.
+
+La rúbrica fijada por pruebas es: total neto exacto 40, bruto exacto 35, saldo parcial exacto 30, o tolerancia 25, en esa prioridad. Se aplica exactamente un criterio de monto. Fecha suma 20 más un bonus de proximidad redondeado de 0–10; RFC suma 15; serie/folio o fragmento UUID de ocho caracteres hex suma 30; referencia igual a número de operación suma 30 si los montos coinciden. High empieza en 70, medium en 45 y low en 25; por debajo no se propone. Se exige evidencia de monto o identificador fuerte. Fecha/RFC solos no inventan candidatos. Un identificador sin coincidencia de monto permite un pago parcial limitado por ambas capacidades y lo explica. El objetivo bruto siempre queda sugerido y dice “amount equals total before retentions”, también al coincidir dentro de tolerancia.
+
+**Decisiones y nombres.** “Payer did not withhold” significa ninguna retención federal ni local: bruto = total declarado + retained_tax + local_retained_tax, conforme a D14. SQL carga la suma numeric exacta (COALESCE de nulos a cero) en el único Retained del motor; criterio persistido, explicación y auditoría system detallan por separado federal/local. Las integraciones con solo retención local y con ambas fallaron primero y pasaron tras corregir esa frontera; el motor puro ya aceptaba la suma. Las sugerencias son provisionales frente a evidencia determinista: la etapa 1 solo reserva conciliados y decisiones activas del usuario. Un complemento posterior actualiza en su lugar la misma sugerencia automática (link.upgraded) o cierra la sustituida (link.closed) y crea el reemplazo determinista. El estado closed existente también representa esta sustitución automática aprobada. La limpieza cierra excedentes automáticos por menor confianza, más reciente y después id estable; nunca toca vínculos del usuario ni conciliados. Ordenar cuesta O(L log L), seguido de un recorrido O(L); el costo total es linearítmico, no lineal. El rechazo del usuario bloquea el par movimiento/factura aunque llegue otro complemento, salvo reapertura explícita. La etapa 2 respeta todas las reservas activas y no asigna automáticamente el sobrante de un vínculo existente: queda descubierto para N:M manual en grupo 8. Perder evidencia no borra sugerencias y repetir sin cambios no modifica nada.
+
+MatchingResult separa creaciones de actualizaciones con valores previos/posteriores. El worker guarda lotes unnest de 500 y llama append_audit_entry de ADR-006 en la MISMA transacción multiempresa. Detail de system incluye jobId/source, criterios y valores previos; items son referencias tipadas [{kind,id}] para movimiento, UUID de CFDI e id de vínculo. Un fallo forzado después de conciliar y auditar revierte vínculos y cabecera de cadena juntos. Transacciones cortas independientes de progreso permiten renovar el heartbeat; el chequeo final del lease evita confirmar trabajo obsoleto. Las empresas archivadas siguen legibles, pero no aceptan conciliación/clasificación. 5.3 sigue abierta solo por decisiones de vínculos y cambios SAT futuros de grupos 7/8; Automatic link y Tolerance changed ya son pruebas reales que pasan.
+
+**Tensión de especificación (spec tension).** Un movimiento de 1,939.27 con referencia crea una sugerencia que cubre el total neto de la muestra. pendingAmount resta solo conciliados y uncoveredAmount también resta sugeridos. Por ello quedan pendingAmount 1,939.27 y uncoveredAmount 0 hasta confirmación/complemento. Sigue el escenario explícito de pago parcial y es una spec tension con “no amount pending” de retenciones. Se exponen ambos valores; una decisión de producto posterior puede elegir qué mostrar sin cambiar las cuentas. Los CFDI anteriores tienen serie/folio NULL y carecen de ese criterio: los originales permiten una carga histórica futura, pero importar un UUID repetido nunca reescribe la fila.
+
+**Qué aprendí.** Limitar candidatos solo por monto puede ocultar una coincidencia RFC mejor. Cada bucket de monto ordenado por fecha tiene por ello un subíndice por RFC también ordenado por fecha; nunca se enumera la lista completa de un RFC. Se combinan los vecinos de ambos índices con referencias fuertes directas y se elige por puntuación/fecha/id estable. La normalización RFC conserva & para distinguir A&A de AA& y hacer coincidir búsqueda y puntuación. MaxCandidatesPerMovement vale 50. amount_tolerance tiene tope 1.00 en API, DB y configuración efectiva del motor: como máximo 201 buckets de centavos por objetivo, tres con 0.01. La eliminación perezosa de pagos agotados ocurre una vez porque la capacidad determinista solo disminuye. El límite es O((M + C + P) log n + M*(B log n + K)), más coincidencias directas explícitas y limpieza O(L log L): linearithmic, no lineal. CI prueba un caso denso 2,000 por 2,000 con contador de comparaciones, cinco propiedades FsCheck de 150 casos y un oráculo independiente de búsqueda exhaustiva de 200 casos con K=1.
+
+**Benchmark medido.** MatchingBenchmarks se activa con RUN_BENCHMARKS=1 en el contenedor SDK del README (.NET 10.0.14, X64). Los datos se preparan antes de medir; hay un calentamiento y tres ejecuciones medidas del motor puro. Con 20,000 movimientos y 20,000 facturas de montos únicos, las muestras fueron 526.5145 / 487.2182 / 442.3172 ms; mediana (median) 487.2182 ms y 20,000 comparaciones. En el caso denso 5,000 por 5,000 de igual monto: 361.3979 / 340.2344 / 338.8588 ms; median 340.2344 ms y 248,775 comparaciones. Son observaciones locales, no promesas de capacidad ni umbrales de tiempo CI. Cada ejecución produjo una sugerencia por movimiento sin exceder capacidades.
+
+**Leer y clasificar.** Cualquier miembro puede GET movimientos con filtros de estado/clasificación y páginas por clave fecha/id de máximo 200. Accountant/administrator puede PATCH loan, partner_contribution, tax_payment, late_invoicing, other o null explícito, con nota opcional acotada. movement.classification_changed registra usuario y referencia de movimiento en la transacción de la acción. Clasificar retira el movimiento de pendientes y del motor, preservando el estado derivado; limpiar reabre. TenantIsolationChecks ejercita ambas rutas con casos positivos, otra empresa y recurso ajeno. No se agregó ruta DELETE.
+
+**Validación y límites.** Cada porción tuvo commit rojo y después verde, con fallos esperados en el cuerpo del rojo y suite completa/formato en SDK antes del verde. Se probaron reglas, deduplicación de corridas concurrentes, cargas API procesadas por worker, mejoras, rollback, nuevas tolerancias, roles, archivo y clasificación. Comprobaciones finales en SDK: build sin advertencias/errores; 374 pruebas, 367 aprobadas y 7 skips explícitos (cuatro escenarios futuros, tres benchmarks optativos); dotnet format --verify-no-changes verde. docker compose up --build --wait dejó PostgreSQL/API/worker/SAT saludables y migrador terminado correctamente. La carga sintética por API y el worker real produjeron reconciled/suggested, progreso 2/2, dos entradas system y cadena consistente de seis entradas. Migraciones up/down/up por SDK preservaron las seis entradas y hashes existentes; repetir conciliación después reprodujo ambos estados y cadena consistente de ocho entradas. Se regeneraron y revisaron visualmente Word/PDF y diagramas bilingües de datos/progreso. PR 6B conserva 6.4 y 6.11–6.15: notas de crédito, FX, vencimientos, sobrepagos/globales y cascadas de cancelación. Las decisiones y N:M manual siguen en grupo 8. Se inspeccionó architecture JSON: contenedores y límites PostgreSQL no cambiaron y el archivo queda igual. El motor carga en memoria los datos de una empresa; más volumen requiere perfilado. Solo commits locales, sin push ni merge.
 
 ### PR-8: Audit log
 
@@ -966,9 +988,12 @@ migración subir/bajar/subir en una base de datos real y la ejecución `41122200
   silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 6. Siguiente trabajo: grupo 6, Conciliación
+## 6. Siguiente trabajo: conciliación 6B y grupo 7
 
-Cadena, verificación y lecturas filtradas ya funcionan. 5.3 sigue abierta por eventos de grupos 6/7/8. La cola del grupo 4 está completa; conciliación y SAT reales esperan los grupos 6/7. Los escenarios previos de multiempresa mantienen sus skips y tareas abiertas.
+Conciliación 6A está implementada. Notas de crédito, FX, vencimientos, sobrepagos/globales y cascadas de cancelación
+siguen diferidos a 6B; SAT espera el grupo 7. 5.3 y 2.4 esperan decisiones de usuario/eventos SAT en grupos 7/8.
+Automatic link y el cambio de tolerancia ya se ejecutan; la suite normal mantiene cuatro escenarios de dominio y tres
+benchmarks optativos omitidos. Ninguna tarea diferida se marca completa.
 
 ## 7. El resto del camino
 

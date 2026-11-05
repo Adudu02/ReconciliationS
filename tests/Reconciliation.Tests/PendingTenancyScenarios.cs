@@ -1,6 +1,10 @@
 using System.Net;
+using System.Net.Http.Json;
+using System.Text;
+using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Reconciliation.Core.Ingestion;
+using Reconciliation.Core.Jobs;
 
 namespace Reconciliation.Tests;
 
@@ -29,8 +33,22 @@ public sealed class PendingTenancyScenarios(ApiFixture fixture)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact(DisplayName = "Tolerance changed", Skip = "pending group 6: persisted settings apply to the next reconciliation run")]
-    public void Settings_apply_to_next_reconciliation_run() => Assert.Fail("Replace with real reconciliation-run scenario.");
+    [Fact(DisplayName = "Tolerance changed")]
+    public async Task Settings_apply_to_next_reconciliation_run()
+    {
+        var (user, company) = await fixture.SeedCompanyWithAdminAsync();
+        await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(company, user.Id,
+            [UploadedFile.FromBytes("synthetic.xml", SyntheticCfdi.Invoice(root => root.SetAttributeValue("Fecha", "2026-10-10T12:00:00")))], TestContext.Current.CancellationToken);
+        await fixture.App.Services.GetRequiredService<BankStatementImporter>().ImportAsync(company, user.Id, "reference", "Synthetic-Tolerance",
+            [UploadedFile.FromBytes("synthetic.csv", Encoding.UTF8.GetBytes("fecha,concepto,abono,cargo,saldo\n2026-10-10,transfer,1939.29,0,1939.29\n"))], TestContext.Current.CancellationToken);
+        using var client = await fixture.LoginAsync(user.Email, company);
+        await MatchingRunScenario.RunAsync(fixture, client, company);
+        Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link WHERE company_id=@company", new { company }));
+        using var changed = await client.PatchAsJsonAsync($"/companies/{company}/settings", new { amountTolerance = .02m }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+        await MatchingRunScenario.RunAsync(fixture, client, company);
+        Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link WHERE company_id=@company AND state='suggested' AND criteria @> '[{\"code\":\"amount-within-tolerance\"}]'", new { company }));
+    }
 
     [Fact(DisplayName = "Delete attempt")]
     public async Task Imported_CFDI_retained_on_delete_attempt()

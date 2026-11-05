@@ -81,9 +81,9 @@ public static partial class CompanyAdminEndpoints
     private static Task<IResult> ChangeSettingsAsync(Guid companyId, SettingsChange settingsChange, HttpContext httpContext, CompanyScope companyScope, CancellationToken cancellationToken) =>
         companyScope.ExecuteWriteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
         {
-            if (settingsChange.DateToleranceDays is < 0 or > 366 || settingsChange.AmountTolerance < 0 || settingsChange.AmountTolerance > Money.MaxAmount ||
+            if (settingsChange.DateToleranceDays is < 0 or > 366 || settingsChange.AmountTolerance < 0 || settingsChange.AmountTolerance > 1.00m ||
                 (settingsChange.AmountTolerance is decimal amount && !Money.HasAtMostTwoDecimals(amount)))
-                return Results.BadRequest(new { error = "Tolerances must be nonnegative; amount must fit numeric(18,2)." });
+                return Results.BadRequest(new { error = "Tolerances must be nonnegative; amount tolerance must be at most 1.00 with at most two decimals." });
             var before = await ReadSettingsForUpdateAsync(connection, transaction, transactionCancellationToken);
             if (before is null) return Results.NotFound();
             var after = new CompanySettings(settingsChange.DateToleranceDays ?? before.DateToleranceDays,

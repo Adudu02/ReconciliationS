@@ -41,7 +41,7 @@ public sealed class ReconciliationJobsTests(ApiFixture fixture) : IClassFixture<
     }
 
     [Fact]
-    public async Task Four_types_are_registered_and_future_handlers_record_explicit_success_notes()
+    public async Task Four_types_are_registered_and_only_status_check_is_still_a_placeholder()
     {
         Assert.Equal(["import_cfdi", "import_statement", "reconciliation_run", "status_check"], fixture.App.Services.GetServices<IJobHandler>().Select(handler => handler.Type).Order());
         var seeded = await fixture.SeedCompanyWithAdminAsync();
@@ -53,7 +53,8 @@ public sealed class ReconciliationJobsTests(ApiFixture fixture) : IClassFixture<
             Assert.True(await fixture.App.Services.GetRequiredService<JobDispatcher>().RunOneAsync("synthetic-placeholder", TestContext.Current.CancellationToken));
             var job = await client.GetFromJsonAsync<JsonElement>($"/companies/{seeded.CompanyId}/jobs/{jobId}", TestContext.Current.CancellationToken);
             Assert.Equal("succeeded", job.GetProperty("state").GetString());
-            Assert.Contains($"not implemented until group {group}", job.GetProperty("payload").GetString()!, StringComparison.Ordinal);
+            if (jobType == "status_check") Assert.Contains($"not implemented until group {group}", job.GetProperty("payload").GetString()!, StringComparison.Ordinal);
+            else Assert.DoesNotContain("not implemented", job.GetProperty("payload").GetString()!, StringComparison.Ordinal);
             Assert.Equal(JsonValueKind.Null, job.GetProperty("lastError").ValueKind);
         }
     }
