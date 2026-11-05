@@ -5,8 +5,8 @@
 | [`build-log/`](build-log/) | `BUILD-LOG.md` (English) and `BUILD-LOG-ES.md` (Español): architecture, dictionary of names and variables, and one entry per pull request. `exports/` holds the generated Word/PDF copies | Everyone; start here |
 | [`adr/`](adr/) | Architecture decision records. One file per decision; retain dated amendments for compatible extensions; replace changed decisions with a new ADR | Developers, reviewers |
 | [`requirements/`](requirements/) | BRS and SRS in English and Spanish (`.docx` and `.pdf`) | Product, reviewers |
-| [`reference/`](reference/) | `bank-csv-reference-format.md` (read by tests) and `01-conciliacion-cfdi.md` (project brief with reading links) | Developers |
-| [`diagrams/`](diagrams/) | `database/` (design-time ERD and states, plus the as-built `*-implemented` ERD, states and security matrix), `roles/` (sequence per role), `architecture/` (as-built container diagram, interactive HTML) and `progress/` (generated status map) | Everyone |
+| [`reference/`](reference/) | `bank-csv-reference-format.md` (read by tests) | Developers |
+| [`diagrams/`](diagrams/) | `database/` (the as-built `*-implemented` ERD, states and security matrix), `roles/` (sequence per role), `architecture/` (as-built container diagram, interactive HTML) and `progress/` (generated status map) | Everyone |
 
 Related: the scope and task list live in `openspec/changes/mvp-reconciliation-core/` (source of truth).
 

@@ -205,7 +205,7 @@ de los datos y quién puede hacer qué:
 
 ![Seguridad de filas, privilegios e inmutabilidad](../diagrams/database/database-security-implemented-es.png)
 
-El modelo original de diseño (tablas planeadas para todo el MVP) sigue en `docs/diagrams/database/database-erd.png`.
+El modelo original de diseño (tablas planeadas para todo el MVP) se retiró del árbol de trabajo; el historial de git lo conserva.
 Regenera los tres diagramas construidos con `python3 tools/db_diagrams.py` (agrega `--lang es` para español).
 
 ### 2.6 Persistencia de autenticación por usuario
