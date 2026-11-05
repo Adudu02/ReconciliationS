@@ -13,7 +13,7 @@ log explains them; the status map below is generated from them.
 
 | Folder | What it holds | Why it is separate |
 |---|---|---|
-| `docs/adr/` | Architecture decision records (ADR-001 to ADR-005) | One decision = one file; they are never edited, a later ADR replaces them |
+| `docs/adr/` | Architecture decision records (ADR-001 to ADR-008) | One decision = one file; amendments retain history; larger changes use a new ADR |
 | `docs/build-log/` | This log in English and Spanish, and `exports/` with the generated PDF/Word files | What changes every PR; exports stay apart from the source text |
 | `docs/requirements/` | BRS and SRS (English and Spanish) | Requirements documents that rarely change |
 | `docs/reference/` | The reference bank CSV format and the project brief with reading links | Reference material that tests read or that is cited |
@@ -27,7 +27,7 @@ read `docs/adr/`, `docs/reference/` and `docs/build-log/`), and use `git mv` to 
 
 ![Build status map](../diagrams/progress/status-map.png)
 
-**50 of 85 tasks complete. Matching 6A/6B is implemented except FX stretch 6.11; audit 5.3 and task 2.4 await group 7/8 routes/jobs.**
+**57 of 85 tasks complete. Matching 6A/6B (except FX 6.11) and offline SAT group 7 are implemented; 7.6 awaits live evidence, 5.3 and 2.4 await group 8 decisions.**
 Regenerate the image after ticking tasks: `python3 tools/progress_diagram.py` (add `--lang es` for Spanish).
 
 ### What each type means
@@ -59,7 +59,7 @@ Regenerate the image after ticking tasks: `python3 tools/progress_diagram.py` (a
               +-------------------------------+
               | Reconciliation.Core           |   Tenancy | Ingestion | Audit
               | (seven modules, no Main)      |   Matching | Review | Sat | Jobs
-              +---------------+---------------+   (Review and Sat are placeholders)
+              +---------------+---------------+   (Review remains a placeholder)
                               | SQL via Npgsql + Dapper, CompanyScope for tenants; auth global
                               v
               +-------------------------------+        +----------------------+
@@ -68,28 +68,28 @@ Regenerate the image after ticking tasks: `python3 tools/progress_diagram.py` (a
               | application role: cfdi_app    |        | and first operator   |
               +-------------------------------+        +----------------------+
 
- SAT stub (port 8081): separate container, only /health today.
+ SAT stub (8081 internal only): SOAP Consulta + local controls; worker uses short DB phases.
 ```
 
 Every arrow is a boundary with a reason:
 
-- **Two hosts, one library.** The API serves people and must answer quickly; the worker runs imports and matching now and will run later
+- **Two hosts, one library.** The API serves people and must answer quickly; the worker runs imports, matching and bounded
   SAT queries. They share `Reconciliation.Core`, so business rules are written once (ADR-001: modular monolith with a
   separate worker, instead of microservices).
 - **Modules with boundaries.** `Tenancy` (companies, users, roles, sessions), `Ingestion` (reading CFDI and CSV), `Audit` (log),
-  `Jobs` (queue/dispatch), `Matching` (pure rules and orchestration), and placeholders `Review` and `Sat`. A module talks to another
+  `Jobs` (queue/dispatch), `Matching` (pure rules and orchestration), `Sat` (SOAP/status policy), and placeholder `Review`. A module talks to another
   through explicit interfaces; matching orchestration loads the tenant ingestion/link tables while its pure engine has no SQL.
 - **PostgreSQL as the final referee.** Even if the code forgets to filter by company, the database does not return
   another company's rows (section 2.3).
 - **The migrator is a separate program** with a different database role: the schema owner (`cfdi`) creates and changes
   tables; the application (`cfdi_app`) can only do what it is granted.
 
-The full design, including what does not exist yet (SAT client, telemetry), is this:
+The full design, including what does not exist yet (review UI, telemetry), is this:
 
 ![Container view of the design (Docker Compose)](../../openspec/changes/mvp-reconciliation-core/diagrams/containers.png)
 
-The API, polling worker, PostgreSQL tenancy/ingestion/session/job tables and SAT health stub exist.
-The audit hash chain and matching 6A/6B also exist. FX stretch 6.11, SAT handlers, review decisions and OpenTelemetry remain open.
+The API, polling worker, PostgreSQL tenancy/ingestion/session/job tables and SAT SOAP stub exist.
+The audit hash chain and matching 6A/6B also exist. Offline SAT handlers also exist. FX stretch 6.11, live SAT validation 7.6, review decisions and OpenTelemetry remain open.
 
 ### 2.2 Life of an authenticated request
 
@@ -238,7 +238,7 @@ Transient failures use capped exponential backoff plus jitter; invalid input fai
 input remain for an audited administrator rerun. An import's remaining files stay queued with pending_original until
 successful rerun; no cleanup is implemented. Per-file lease checks and stable file ids prevent duplicate domain/audit
 effects after redelivery. The four types are import_cfdi, import_statement, reconciliation_run and status_check;
-reconciliation_run executes matching 6A; only status_check records its group 7 placeholder limit without domain effects.
+reconciliation_run executes matching 6A/6B; status_check runs the three-phase cached SAT workflow (ADR-008).
 
 ## 3. Dictionary of names and variables
 
@@ -395,8 +395,8 @@ original, clears pending bytes, and starts RetentionYears at acceptance. Rejecte
 | **API host** | Host | The web API users will call. Serves authentication, companies, members, settings, archive, imports, matching jobs, movement reads/classification, health and OpenAPI | `src/Reconciliation.Api` |
 | **Worker host** | Host | Polls jobs concurrently, renews leases, records attempts/progress and reports health | `src/Reconciliation.Worker` |
 | **Migrator** | Tool | Applies or reverts database changes (`up`, `down`) and creates the first operator | `src/Reconciliation.Migrator` |
-| **SAT stub** | Host | A simulation of the SAT status service to develop without a real account. Today only a placeholder | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Database | Stores all data with forced RLS per company | `docker-compose.yml`, migrations `M0001` to `M0010` |
+| **SAT stub** | Host | SOAP Consulta and controlled outcomes on the internal network; no live SAT required | `src/Reconciliation.SatStub` |
+| **PostgreSQL 17** | Database | Stores all data with forced RLS per company | `docker-compose.yml`, migrations `M0001` to `M0011` |
 | Docker Compose | Pipeline | Starts database, migrator, API, worker and stub with one command and waits for all to be healthy | `docker-compose.yml`, `Dockerfile` |
 | CI pipeline | Pipeline | On every push: format, build, tests, migrations up/down/up and a full system start | `.github/workflows/ci.yml` |
 | ADRs | Docs | Big decisions and the alternatives that were rejected | `docs/adr/` |
@@ -409,6 +409,28 @@ original, clears pending bytes, and starts RetentionYears at acceptance. Rejecte
 Most recent first. Each entry answers six questions: **What it is** (the piece), **How it works** (step by step),
 **Names and variables** (what each new term means), **Why this way** (decision and rejected alternative), **What you
 learn** (C#, SQL or tooling idea) and **Verified** (how it was checked). Entries before PR-5 use the names the code had then; the PR-5 rename map translates them.
+
+### PR-11: SAT status check
+
+**Purpose.** Complete group 7's offline status workflow (7.1, 7.2, 7.3, 7.3b, 7.3c, 7.4, 7.5) with one ISatClient port, SOAP stub/real transport, private record/replay and the SAME shared status policy. ADR-008 documents the actual contract and its uncertainties; 7.6 remains Phase 2, requiring one real anonymised payment CFDI and live SAT access. Matching does not wait for consultation. Task 5.3 remains open only for group 8 user decisions; SAT status change is now a real passing API/worker/cascade test.
+
+**How it works.** SatContract owns every Spanish-text mapping and the exact printed expression. Total is invariant, six fractional digits and at least ten integer digits: 0000001939.270000 and 0000000000.000000. More than six significant fractional digits or negative values are refused without rounding. Unknown values retain their raw text. SOAP XML forbids DTD/external resolution and limits size/depth/nodes. Stub/real share SoapSatClient with a configured endpoint, no redirects and a 10-second total timeout. Real requires HTTPS. The local SOAP stub has forced outcomes, delays and /control/outcomes only on the internal Compose network; it is no longer a health-only placeholder.
+
+M0011 creates sat_status_cache with forced RLS, composite company/UUID key/FK, no DELETE grant and a company-first expiry index. Current defaults to 24h, not_found to 1h, cancelled is permanent. Only existing cancelled CFDI are backfilled, source=backfill and checked_at=migration observation time, with no invented response/EFOS fields. Cached current/cancelled checks make no service call. A 601 stores error/attempts but keeps the CFDI/cache status, expires immediately, does not retry in that job, and does not automatically enqueue another. A new explicit job may recheck; last_job_id/last_error_kind prevent repeating a permanent error during the same mixed-batch retry. Transient exhaustion commits unknown/error/attempt metadata before normal job backoff. In-process and deadline-expired cancellation statuses leave a current CFDI current.
+
+TimeProvider drives request timeout, retry delays, job budget and the small thread-safe IRequestRateGate. Default spacing is 2 requests/second, no catch-up burst. The built-in limiter was rejected because its clock cannot be injected; the same gate runs in tests and production. The fake-time Large batch benchmark schedules 1,000 simultaneous callers at exactly 0.5-second intervals: 499.5 virtual seconds from first to last permit, with no 1-second window exceeding two permits. This measures policy scheduling, not SAT latency or throughput. The limit is per process; multiple workers multiply the service quota.
+
+StatusCheckHandler has three phases: short set-based tenant read; HTTP with NO pooled connection/transaction held; short company-locked apply transaction with set-based reread, superseded-reply checks and lease fence before commit. Heartbeats continue during HTTP. Cache UPSERT and ordinary CFDI updates use two UNNEST statements per batch when needed; add one audit per changed CFDI, one per changed nonclear EFOS value and the existing 6B cascade commands per NEW cancellation. No per-link reads or calls are added. Same-answer refreshes add no audit noise. Audit detail contains before/new status/cancellation/cancellability/EFOS/jobId/source; typed items follow ADR-006. EFOS warnings require actual code S, a present nonempty value other than 200; NULL/empty/backfill do not warn. cfdi_review_reasons exposes efos warning with requiresReview=true.
+
+A batch contains at most 100 ids. The 60-second job budget stops new calls and cancels the pending request. Budget-only remainder gets exactly one follow-up carrying unchecked ids and generation+1, while the parent succeeds atomically with its cache/audit writes. Mixed real failures retain the original job payload and defer normal retry; cache hits skip completed ids. MaxFollowUpGenerations=20 caps the child chain and falls back to bounded job attempts. The active-parent unique index and stale-lease fence prevent duplicate children. Existing import/matching dispatcher paths stay intact. Imports enqueue one-id batches inside each retained per-file transaction, avoiding a new import transaction model; duplicate UUIDs enqueue none. POST /companies/{companyId}/cfdi/{uuid}/sat-check returns 202, accepts accountant/admin and refuses viewers, archived writes and cross-company UUIDs.
+
+**What I learned.** A deferred retry is a durable outcome: throwing outside the company transaction would roll back the unknown status that the user needs to see. A slow network call must also release the database connection, not merely the company lock. FIFO needs a real enqueue sequence, not a random UUID tie-break. M0011 job.seq guarantees equal-timestamp order; recovery preserves run_after=LEAST(run_after,p_now), created_at and seq so the expired parent precedes its child. Only lease-expiry recovery changes; scheduled transient backoff stays unchanged. Immediate crash recovery adds no new backoff and still ends failed after Jobs:MaxAttempts. Down restores the old p_now/id behavior. The unchanged Worker killed mid-job test, equal-timestamp FIFO, parent-before-child, not-before-backoff and crash-loop bound all pass.
+
+**Decisions and privacy.** Recording stores ONLY response raw fields plus check time under an explicit different anonymous UUID; no request, raw SOAP, RFC, total or real UUID. The privacy guard rejects echoed request identifiers. Automatic missing/unsafe recording skips with one sanitized warning per process and a counter, without changing the answer; explicit RecordAsync throws. .local/sat-recordings is ignored by git and Docker builds; Compose has writable persistent volume storage. Only an allowlisted synthetic recording is committed. Recording off ignores keys; supplied on-demand keys are administrator-only. Replay alone may use the imported anonymous UUID as fallback, allows equal keys and never resolves HTTP; missing/corrupt files become unavailable/unknown. Group 9 owns real-to-anonymised mapping. Real-mode recording warns at startup, replay+recording is rejected.
+
+**Validation and limits.** Each slice used a red test commit with expected failures, then code with full SDK-container tests and format green. Final SDK checks: build 0 warnings/0 errors; 578 tests, 572 passed and 6 skips (three group 8 scenarios and three opt-in benchmarks); dotnet format --verify-no-changes passed. docker compose up --build --wait brought PostgreSQL/API/worker/SAT healthy. A synthetic API upload and worker produced a reconciled link; forcing cancelled initially hit the current cache, then a shortened synthetic cache expiry allowed the worker to cancel the CFDI and move the link to suggested/review with the same amount. Its ten-entry audit chain verified; another check kept permanent cancelled status. The smoke used only synthetic inputs and one explicit DB fixture to shorten the 24h cache wait, with no real SAT call. SDK M0011 up/down/up on the populated database preserved 47 audit entries with identical hash fingerprint, all 11 links totaling 45,565.00 and all 15 CFDI rows; Down restored the old function and Up reconstructed cancelled backfill. The as-built architecture now has the real worker SOAP path: 9/9 showcase checks, no errors/warnings; browser containment passed four desktop sizes and both themes were visually inspected. Database/progress diagrams and Word/PDF exports are regenerated in both languages.
+
+Open contract questions: padded total compatibility with real answers; exact aliases/punctuation and unknown fields; empty/absent EFOS meaning; whether the public service answers a payment CFDI with total zero. ValidacionEFOS=200 clear is an explicit assumption pending 7.6. Controls are development-only; rate is process-local; budgets/attempts bound work, not upstream availability. No live SOAP validation, distributed rate coordination or new fiscal blocking rule is claimed. FX 6.11 remains deferred. Local commits only, no push or merge.
 
 ### PR-10: Matching rest
 
@@ -998,12 +1020,12 @@ real database and GitHub Actions run `41122200072` succeeded.
   to pin a patched version (`System.Security.Cryptography.Pkcs` 10.0.14) instead of silencing the warning.
 - The first scaffold was TypeScript. It was dropped when the stack changed to C#; nothing depended on it.
 
-## 6. Next work: group 7 and review decisions
+## 6. Next work: group 8 review decisions
 
-Matching 6A/6B is implemented except FX stretch 6.11, explicitly deferred for its document-level exchange contract.
-The SAT client/status-check job remains group 7; user decisions, review queue and manual N:M actions remain group 8.
-Task 5.3 and 2.4 stay open for those real routes/jobs. Four future domain scenarios and three opt-in benchmarks remain
-skipped in the default suite; the cancellation domain operation itself is tested directly.
+Offline SAT group 7 is implemented, including the real API/worker cancellation scenario. Phase 2 task 7.6 needs live
+SAT evidence from one real anonymised payment CFDI. Matching FX stretch 6.11 still needs its document-level exchange
+contract. User decisions, review queue and manual N:M remain group 8; 5.3 and 2.4 await those actions. The default suite
+keeps three future group 8 scenarios and three opt-in benchmarks skipped.
 
 ## 7. The rest of the road
 

@@ -30,8 +30,8 @@ docker compose down                      # add -v to drop the database volume
 ```
 
 Compose starts PostgreSQL, runs the migrations once, then starts the API (http://127.0.0.1:8080/health), the
-worker (health endpoint on 3001 inside the Compose network only) and the SAT stub (8081). Published ports are
-bound to 127.0.0.1.
+worker (health endpoint on 3001 inside the Compose network only) and the SAT SOAP stub (8081, internal only).
+Only API 8080 and PostgreSQL 5432 are published, both bound to 127.0.0.1.
 
 ## Develop locally
 
@@ -182,8 +182,8 @@ Viewers can read jobs and reports. Accountants and administrators can import and
 /companies/{companyId}/reconciliation-runs`. That route returns a new job with 202, or the existing queued/running
 job with 200. Only administrators can `GET /companies/{companyId}/jobs?status=failed` or `POST
 /companies/{companyId}/jobs/{jobId}/retry`; retry is audited and retains history/input. Archived companies refuse
-these writes. The reconciliation handler executes the matching pipeline described below. Only the SAT status handler
-still records `not implemented until group 7` and succeeds without calling SAT.
+these writes. The reconciliation handler executes the matching pipeline described below. The SAT status handler runs short tenant
+read/write transactions around a connection-free HTTP phase, with caching, bounded retry and lease fencing (ADR-008).
 
 The worker uses PostgreSQL SKIP LOCKED claims, heartbeat leases and capped exponential backoff with jitter. Each
 handler uses CompanyScope; cfdi_app still cannot bypass RLS. The queue-only NOLOGIN owner and SECURITY DEFINER
@@ -237,7 +237,7 @@ Item containment narrows by company index and then filters O(n) company entries:
 runtime use of the proposed non-LEAKPROOF JSON GIN predicate, so the unused GIN index is not installed. Opt-in
 `RUN_AUDIT_BENCHMARKS=1` measures 20k/100k entry lookup and verification using the SDK container (add
 `-e RUN_AUDIT_BENCHMARKS=1` to the Docker example and `--filter FullyQualifiedName~AuditBenchmarks` to dotnet test).
-Task 5.3 remains open for links, decisions/classification and SAT changes in groups 6/7/8. Member removal is not implemented.
+Task 5.3 remains open for user link decisions in group 8; current imports, matching, classification and SAT changes are audited. Member removal is not implemented.
 
 ## Matching core and movement classification
 
@@ -322,8 +322,8 @@ or complement id without payment_ref does not cover a payment. A payment_ref is 
 link (created_at, then id); all that movement's valid invoice allocations are covered, but another movement cannot reuse it.
 
 The domain operation `SatStatusChanges.ApplySatStatusChangeAsync` accepts the caller's company connection/transaction,
-CFDI id, SAT status, cancellation status, injected time and cancellation token. It is for the later group 7 job;
-there is no status mutation HTTP route or real SAT adapter here. Cancellation in process keeps links. Cancelled evidence
+CFDI id, SAT status, cancellation status, injected time and cancellation token. The status_check job calls it inside
+its fenced write transaction; clients queue a consultation instead of setting status directly. Cancellation in process keeps links. Cancelled evidence
 moves active links to review, preserves provenance and releases capacity while holding ordinary matching for that
 movement. Direct relation-04 replacements for the same customer/currency may be suggested, never confirmed. The worker
 also discovers replacements imported later. Transitive replacements and foreign exchange conversion are not implemented.
@@ -342,3 +342,87 @@ M0010 is reversible on populated databases. Stop API/workers for a rollback: Dow
 and review_reason metadata while preserving documents, links and audit evidence; Up reconstructs suggested-link
 cancellation markers from retained SAT status. FX 6.11 stays unticked: TipoCambioP alone lacks document-level EquivalenciaDR
 and the exact dual-currency multi-document allocation contract.
+
+## SAT status checks (offline first)
+
+`POST /companies/{companyId}/cfdi/{uuid}/sat-check` returns `202 {jobId}` for accountants/administrators. The path uses
+the CFDI UUID, while the existing read `/cfdi/{id}` uses its database id. Viewers cannot enqueue checks, unknown or
+foreign UUIDs return the usual company-safe not-found behavior, and archived companies refuse writes. Newly imported
+CFDI enqueue checks in the same per-file transaction; duplicate UUID imports do not. Matching never waits for SAT.
+
+Synthetic examples (use the token/company from the tenancy example and the UUID/id from an import):
+
+```bash
+curl -sS -X POST "http://localhost:8080/companies/$COMPANY/cfdi/$CFDI_UUID/sat-check" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "http://localhost:8080/companies/$COMPANY/jobs/$JOB_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "http://localhost:8080/companies/$COMPANY/cfdi/$INVOICE_ID" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY" | jq '.sat'
+# Optional key: administrator only; use a different synthetic UUID when recording.
+curl -sS -X POST "http://localhost:8080/companies/$COMPANY/cfdi/$CFDI_UUID/sat-check" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY" -H 'Content-Type: application/json' \
+  -d '{"anonymizedUuid":"00000000-0000-4000-8000-000000000751"}'
+```
+
+The `.sat` read exposes state, cancellability, cancellationStatus, efosRaw, checkedAt, expiresAt, lastError, attempts,
+source and raw mapped fields. Legacy/unobserved rows have no check time. EFOS warnings require an actual successful
+answer and a nonempty raw value other than `200`; NULL/empty does not warn. In-process/deadline-expired cancellation
+statuses keep the CFDI current. Cancelled status invokes the 6B cascade and adds review reasons; repeated identical
+answers refresh the cache without audit noise. `cfdi_review_reasons` adds `{code:"efos warning",requiresReview:true}`.
+
+Configuration is validated at startup. Compose maps the `SAT_*` entries in `.env.example` to `Sat:*`; for `dotnet run`
+use the matching `Sat__*` environment names. Mode and endpoint come only from trusted configuration.
+
+| Setting | Default / meaning |
+|---|---|
+| `SAT_MODE` / `Sat:Mode` | `stub`; `real` and `replay` use identical shared status policy |
+| `SAT_ENDPOINT` / `Sat:Endpoint` | empty selects the internal stub, or the documented public HTTPS endpoint in real mode |
+| `SAT_CURRENT_CACHE_TTL` | `1.00:00:00` (24h); cancelled is permanent, expiresAt NULL |
+| `SAT_NOT_FOUND_CACHE_TTL` | `01:00:00` (1h); unknown is recheckable |
+| `SAT_REQUEST_TIMEOUT` / `SAT_MAX_ATTEMPTS` | `00:00:10` / `3`; bounded backoff+jitter on timeouts/connections/5xx |
+| `SAT_MAX_REQUESTS_PER_SECOND` | `2`, per process; no burst after clock jumps |
+| `SAT_JOB_BUDGET` / `SAT_MAX_FOLLOW_UP_GENERATIONS` | `00:01:00` / `20`; at most 100 ids per job |
+| `SAT_RECORD_RESPONSES` | `false`; only stub/real can record |
+| `Sat:RecordingDirectory` | `.local/sat-recordings`; Compose persists it in the `sat-recordings` named volume |
+
+Budget-only remainder gets one atomic follow-up and the parent succeeds. Real transient failures commit unknown/error
+metadata and retry the original job with normal bounded backoff; cached successes are skipped. A permanent 601 records
+a per-CFDI error without changing its status or failing/retrying that job; a new explicit check can try again. No database
+connection is held during SOAP calls, and a stale lease cannot commit results. FIFO ties use enqueue seq; expired-lease
+recovery preserves the original due time, while transient retry scheduling remains unchanged.
+
+Stub controls are local-development-only, available from the Compose network, never host-published:
+
+```bash
+docker compose exec -T worker wget -qO- --header='Content-Type: application/json' \
+  --post-data='{"uuid":"00000000-0000-4000-8000-000000000701","outcome":"cancelled"}' \
+  http://sat-stub:8081/control/outcomes
+```
+
+Outcomes: current, cancelled, not_found, invalid_expression, efos_flagged, cancel_in_process, deadline_expired, timeout,
+server_error, slow (optional delayMs). DELETE /control/outcomes resets overrides; GET /health checks readiness. A forced
+outcome does not bypass a valid cache: use a new synthetic document or wait for its configured TTL.
+
+Replay uses the optional anonymizedUuid, otherwise the imported anonymous UUID itself; it makes no HTTP call and
+missing recordings become unavailable/unknown. For a synthetic demo, copy the sample recording into the shared volume
+and select `SAT_MODE=replay` before restarting API/worker. Automatic import checks find it when the imported anonymous
+CFDI UUID is `00000000-0000-4000-8000-000000000751`:
+
+```bash
+docker compose cp samples/sat-recordings/00000000-0000-4000-8000-000000000751.json \
+  worker:/app/.local/sat-recordings/00000000-0000-4000-8000-000000000751.json
+```
+
+Recording requires an explicit different anonymous key; automatic checks without one still work and skip recording
+with one sanitized warning per process. Files contain only response fields/check time. The privacy guard rejects echoed
+UUIDs, RFCs or formatted totals; explicit RecordAsync throws, automatic recording skips. Never commit real recordings;
+`.local` is git-ignored and excluded from Docker builds. Real-mode recording emits a startup warning. Group 9 supplies
+the real-to-anonymised mapping. Recording off discards keys; replay allows equality because it writes nothing.
+
+See [ADR-008](docs/adr/ADR-008-sat-client-port-and-adapters.md) for the single mapping table, exact printed expression,
+three-phase transactions, privacy and alternatives. **Phase 2 / task 7.6 remains unticked:** public SOAP configuration is
+implemented but unvalidated against a real anonymised payment CFDI/live SAT response. Padded totals, exact unknown
+spellings, empty EFOS and payment-CFDI consultation need that evidence. Tests/CI make no real SAT call. M0011 Down
+removes cache observations and seq, restores the old queue function, and preserves CFDI/link/audit data; stop API/worker
+during rollback. Reapplying backfills only cancelled CFDI as permanent `source=backfill`, explicitly not a fresh answer.

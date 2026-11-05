@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="720" viewBox="0 0 1240 720" font-family="Liberation Sans, Arial, sans-serif">
-<rect width="1240" height="720" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="750" viewBox="0 0 1240 750" font-family="Liberation Sans, Arial, sans-serif">
+<rect width="1240" height="750" fill="#fff"/>
 <text x="620.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Row security, privileges and immutability</text>
 <text x="620.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">S = SELECT · I = INSERT · U(columns) = UPDATE only on the named columns · no table grants DELETE</text>
 <rect x="20" y="80" width="180" height="30" fill="#1f3864"/>
@@ -192,4 +192,14 @@
 <text x="420" y="640" font-size="12" fill="#111">S</text>
 <rect x="840" y="620" width="380" height="30" fill="#fff" stroke="#cbd5e1"/>
 <text x="850" y="640" font-size="12" fill="#111">attempt writes through restricted definer only</text>
+<rect x="20" y="650" width="180" height="30" fill="#fff" stroke="#cbd5e1"/>
+<text x="30" y="670" font-size="12" font-weight="bold" fill="#111">sat_status_cache</text>
+<rect x="200" y="650" width="110" height="30" fill="#cffafe" stroke="#cbd5e1"/>
+<text x="210" y="670" font-size="12" fill="#111">sat</text>
+<rect x="310" y="650" width="100" height="30" fill="#fff4e0" stroke="#cbd5e1"/>
+<text x="320" y="670" font-size="12" fill="#111">yes</text>
+<rect x="410" y="650" width="430" height="30" fill="#fff" stroke="#cbd5e1"/>
+<text x="420" y="670" font-size="12" fill="#111">S I U; no DELETE</text>
+<rect x="840" y="650" width="380" height="30" fill="#fff" stroke="#cbd5e1"/>
+<text x="850" y="670" font-size="12" fill="#111">cancelled permanent; company expiry index</text>
 </svg>

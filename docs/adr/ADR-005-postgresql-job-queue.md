@@ -42,3 +42,7 @@ The migration path is a transactional outbox committed with the domain change, f
 The API returns 202 with jobId/uploadId after streaming limits and atomic persistence. Viewers read job progress; accountants enqueue; administrators inspect failed jobs and retry with an audit entry. Archived companies refuse new writes. Four handlers are registered: real import_cfdi/import_statement, and explicit reconciliation_run/status_check placeholders recording “not implemented until group 6” / “not implemented until group 7” while succeeding without domain effects.
 
 Tests use real PostgreSQL, application credentials and a fake clock: transactional rollback, concurrent distinct claims across companies, retry histories, heartbeat/reaper fencing, real import redelivery and crash recovery, retained input, API roles and isolation. A manual Compose worker-kill demonstration supplements deterministic CI tests; its commands and observed result are recorded in the PR-7 build log.
+
+## M0011 amendment
+
+Equal-timestamp FIFO now uses enqueue seq; lease-expiry recovery preserves the original due time (LEAST(run_after,p_now)), created_at and seq. Scheduled transient backoff and attempt bounds are unchanged. SAT uses short read / no-connection HTTP / fenced write phases; import and matching keep their established dispatcher path (ADR-008).
