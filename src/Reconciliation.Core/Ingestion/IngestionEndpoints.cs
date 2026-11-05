@@ -59,7 +59,8 @@ public static class IngestionEndpoints
                         SELECT row_to_json(matching)::text FROM (
                           SELECT s.state,p.credit_notes AS CreditNotes,p.payable,s.reconciled_amount AS ReconciledAmount,
                             s.suggested_amount AS SuggestedAmount,s.pending_amount AS PendingAmount,s.uncovered_amount AS UncoveredAmount,
-                            s.paid_percentage AS PaidPercentage,r.reasons,r.requires_review AS RequiresReview
+                            s.paid_percentage AS PaidPercentage,r.reasons,r.requires_review AS RequiresReview,
+                            r.complement_due_date AS ComplementDueDate,r.complement_overdue AS ComplementOverdue
                           FROM cfdi_state() s JOIN cfdi_payable() p ON p.company_id=s.company_id AND p.id=s.id
                           JOIN cfdi_review_reasons(@today) r ON r.company_id=s.company_id AND r.id=s.id WHERE s.id=@cfdiId
                         ) matching

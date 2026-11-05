@@ -23,4 +23,4 @@ public sealed record MatchingResult(IReadOnlyList<MatchingLink> Changes, long Ca
 public sealed record InvoiceReviewReason(string Code, bool RequiresReview);
 public sealed record InvoiceMatchingState(string State, decimal CreditNotes, decimal Payable, decimal ReconciledAmount,
     decimal SuggestedAmount, decimal PendingAmount, decimal UncoveredAmount, decimal PaidPercentage,
-    InvoiceReviewReason[] Reasons, bool RequiresReview);
+    InvoiceReviewReason[] Reasons, bool RequiresReview, DateOnly? ComplementDueDate, bool ComplementOverdue);

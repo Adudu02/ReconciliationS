@@ -7,6 +7,8 @@ public sealed class M0010MatchingRest : Migration
 {
     public override void Up() => Execute.Sql("""
         CREATE INDEX cfdi_relation_related_idx ON cfdi_relation(company_id,related_uuid,relation_code,cfdi_id);
+        CREATE INDEX link_payment_claim_idx ON link(company_id,payment_ref,created_at,id) WHERE payment_ref IS NOT NULL;
+        CREATE INDEX cfdi_payment_doc_coverage_idx ON cfdi_payment_doc(company_id,payment_id,invoice_uuid);
         CREATE FUNCTION cfdi_payable() RETURNS TABLE(company_id uuid,id uuid,credit_notes numeric,payable numeric)
         LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
           WITH notes AS (
@@ -39,9 +41,33 @@ public sealed class M0010MatchingRest : Migration
           FROM public.cfdi_payable() p LEFT JOIN applied a ON a.company_id=p.company_id AND a.cfdi_id=p.id
         $$;
         CREATE FUNCTION cfdi_review_reasons(p_today date)
-        RETURNS TABLE(company_id uuid,id uuid,reasons jsonb,requires_review boolean)
+        RETURNS TABLE(company_id uuid,id uuid,reasons jsonb,requires_review boolean,complement_due_date date,complement_overdue boolean)
         LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
-          WITH note_flags AS (
+          WITH payment_claims AS (
+            SELECT DISTINCT ON(company_id,payment_ref) company_id,payment_ref,movement_id
+            FROM public.link WHERE state='reconciled' AND payment_ref IS NOT NULL
+            ORDER BY company_id,payment_ref,created_at,id
+          ), missing_deadlines AS (
+            SELECT l.company_id,l.cfdi_id,
+              min(f.fifth + CASE WHEN company.complement_next_biz_day AND extract(isodow FROM f.fifth) IN (6,7)
+                THEN 8-extract(isodow FROM f.fifth)::integer ELSE 0 END) AS due_date
+            FROM public.link l
+            JOIN public.bank_movement m ON m.company_id=l.company_id AND m.id=l.movement_id
+            JOIN public.cfdi invoice ON invoice.company_id=l.company_id AND invoice.id=l.cfdi_id
+            JOIN public.company company ON company.id=l.company_id
+            CROSS JOIN LATERAL (SELECT (date_trunc('month',m.movement_date::timestamp)+interval '1 month 4 days')::date AS fifth) f
+            WHERE l.state='reconciled' AND invoice.payment_method='PPD' AND invoice.sat_status<>'cancelled'
+              AND NOT EXISTS (
+                SELECT FROM payment_claims claim
+                JOIN public.cfdi_payment payment ON payment.company_id=claim.company_id AND payment.id=claim.payment_ref
+                JOIN public.cfdi complement ON complement.company_id=payment.company_id AND complement.id=payment.cfdi_id
+                JOIN public.cfdi_payment_doc doc ON doc.company_id=payment.company_id AND doc.payment_id=payment.id
+                WHERE claim.company_id=l.company_id AND claim.payment_ref=l.payment_ref AND claim.movement_id=l.movement_id
+                  AND payment.cfdi_id=l.payment_cfdi_id AND complement.type='P' AND complement.sat_status<>'cancelled'
+                  AND doc.invoice_uuid=invoice.uuid
+              )
+            GROUP BY l.company_id,l.cfdi_id
+          ), note_flags AS (
             SELECT invoice.company_id,invoice.id,
               bool_or(note.sat_status='cancelled') AS cancelled_note,
               bool_or(note.currency<>invoice.currency) AS currency_mismatch
@@ -56,11 +82,14 @@ public sealed class M0010MatchingRest : Migration
             || CASE WHEN c.is_global OR upper(c.receiver_rfc)='XAXX010101000' THEN jsonb_build_array(jsonb_build_object('code','global invoice','requiresReview',false)) ELSE '[]'::jsonb END
             || CASE WHEN s.reconciled_amount>p.payable THEN jsonb_build_array(jsonb_build_object('code','overpaid','requiresReview',true)) ELSE '[]'::jsonb END
             || CASE WHEN coalesce(n.cancelled_note,false) THEN jsonb_build_array(jsonb_build_object('code','cancelled credit note','requiresReview',true)) ELSE '[]'::jsonb END
-            || CASE WHEN coalesce(n.currency_mismatch,false) THEN jsonb_build_array(jsonb_build_object('code','credit note in a different currency','requiresReview',true)) ELSE '[]'::jsonb END,
-            s.reconciled_amount>p.payable OR coalesce(n.cancelled_note,false) OR coalesce(n.currency_mismatch,false)
+            || CASE WHEN coalesce(n.currency_mismatch,false) THEN jsonb_build_array(jsonb_build_object('code','credit note in a different currency','requiresReview',true)) ELSE '[]'::jsonb END
+            || CASE WHEN d.due_date<p_today THEN jsonb_build_array(jsonb_build_object('code','complement overdue','requiresReview',true)) ELSE '[]'::jsonb END,
+            s.reconciled_amount>p.payable OR coalesce(n.cancelled_note,false) OR coalesce(n.currency_mismatch,false) OR coalesce(d.due_date<p_today,false),
+            d.due_date,coalesce(d.due_date<p_today,false)
           FROM public.cfdi_payable() p JOIN public.cfdi c ON c.company_id=p.company_id AND c.id=p.id
           JOIN public.cfdi_state() s ON s.company_id=p.company_id AND s.id=p.id
           LEFT JOIN note_flags n ON n.company_id=p.company_id AND n.id=p.id
+          LEFT JOIN missing_deadlines d ON d.company_id=p.company_id AND d.cfdi_id=p.id
         $$;
         REVOKE ALL ON FUNCTION cfdi_payable(),cfdi_review_reasons(date) FROM PUBLIC;
         GRANT EXECUTE ON FUNCTION cfdi_payable(),cfdi_review_reasons(date) TO cfdi_app;
@@ -86,6 +115,6 @@ public sealed class M0010MatchingRest : Migration
           FROM public.cfdi c LEFT JOIN applied a ON a.company_id=c.company_id AND a.cfdi_id=c.id WHERE c.type='I'
         $$;
         DROP FUNCTION cfdi_payable();
-        DROP INDEX cfdi_relation_related_idx;
+        DROP INDEX cfdi_relation_related_idx,link_payment_claim_idx,cfdi_payment_doc_coverage_idx;
         """);
 }

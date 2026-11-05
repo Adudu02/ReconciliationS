@@ -18,14 +18,14 @@ public sealed class ComplementDeadlineTests(ApiFixture fixture)
     [InlineData("2026-06-10", true, "2026-07-06")]
     [InlineData("2026-12-31", true, "2027-01-05")]
     public void Fifth_of_next_month_and_optional_weekend_adjustment(string payment, bool businessDay, string due) =>
-        Assert.Equal(DateOnly.Parse(due), Calculate(DateOnly.Parse(payment), businessDay));
+        Assert.Equal(DateOnly.Parse(due), ComplementDeadline.Calculate(DateOnly.Parse(payment), businessDay));
 
     [Property(MaxTest = 150)]
     public void Deadline_is_fifth_or_following_Monday_only_when_enabled(int day, bool businessDay)
     {
         var payment = new DateOnly(2020, 1, 1).AddDays((int)(Math.Abs((long)day) % 36500));
         var fifth = new DateOnly(payment.Year, payment.Month, 5).AddMonths(1);
-        var actual = Calculate(payment, businessDay);
+        var actual = ComplementDeadline.Calculate(payment, businessDay);
         var weekend = fifth.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
         Assert.Equal(businessDay && weekend ? fifth.AddDays(fifth.DayOfWeek == DayOfWeek.Saturday ? 2 : 1) : fifth, actual);
     }
@@ -114,10 +114,6 @@ public sealed class ComplementDeadlineTests(ApiFixture fixture)
         Assert.Equal("2026-10-05", matching.GetProperty("complementDueDate").GetString());
         Assert.True(matching.GetProperty("complementOverdue").GetBoolean());
     }
-
-    private static DateOnly Calculate(DateOnly payment, bool businessDay) =>
-        (DateOnly)typeof(MatchingEngine).Assembly.GetType("Reconciliation.Core.Matching.ComplementDeadline", true)!
-            .GetMethod("Calculate")!.Invoke(null, [payment, businessDay])!;
 
     private async Task<(Guid Complement, Guid Payment)> ImportPaymentAsync(MatchingFiscalScenario.Seed seed)
     {
