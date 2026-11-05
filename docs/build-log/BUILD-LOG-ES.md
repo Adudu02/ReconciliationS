@@ -27,7 +27,7 @@ leen `docs/adr/`, `docs/reference/` y `docs/build-log/`), y usa `git mv` para co
 
 ![Mapa de estado de la construcción](../diagrams/progress/status-map-es.png)
 
-**45 de 85 tareas completas. Grupos 3/4 y conciliación 6A completos; 5.3 y 2.4 esperan decisiones/eventos de grupos 7/8. Conciliación 6B sigue diferida.**
+**50 de 85 tareas completas. Conciliación 6A/6B implementada salvo FX stretch 6.11; 5.3 y 2.4 esperan rutas/jobs de grupos 7/8.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -90,7 +90,7 @@ El diseño completo, incluido lo que aún no existe (cliente SAT, telemetría), 
 ![Vista de contenedores del diseño (Docker Compose)](../../openspec/changes/mvp-reconciliation-core/diagrams/containers.png)
 
 Existen API, worker de sondeo, tablas PostgreSQL de empresa/ingesta/sesiones/trabajos y stub de salud SAT.
-También existen la cadena de auditoría y conciliación 6A. Faltan conciliación 6B, SAT, decisiones de revisión y OpenTelemetry.
+También existen la cadena de auditoría y conciliación 6A/6B. Faltan FX stretch 6.11, SAT, decisiones de revisión y OpenTelemetry.
 
 ### 2.2 Ciclo de una solicitud autenticada
 
@@ -193,7 +193,7 @@ Convenciones de empresa: `id uuid` generado por la base (job_attempt usa clave c
 RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
 por empresa que empiezan con `company_id` (`M0005`); el worker global además necesita índices de vencimiento/lease.
 
-El esquema construido (migraciones M0001 a M0009), dibujado a partir de las propias migraciones:
+El esquema construido (migraciones M0001 a M0010), dibujado a partir de las propias migraciones:
 
 ![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
 
@@ -400,7 +400,7 @@ aceptación. Un rechazo conserva solo hash/motivo.
 | **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | Simulación del servicio de estatus del SAT para desarrollar sin cuenta real. Hoy es solo un marcador | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0009` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0010` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
@@ -413,6 +413,28 @@ aceptación. Un rechazo conserva solo hash/motivo.
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
+
+### PR-10: Matching rest
+
+**Propósito.** Completar 6B: 6.4, 6.12, 6.13, 6.14 y 6.15 sobre Matching core. M0010 agrega metadatos de cancelación, índices encabezados por empresa y funciones fiscales por conjuntos. MatchingEngine sigue siendo puro, con dinero exacto y búsqueda acotada; los estados se derivan. El stretch 6.11 queda abierto sin columnas especulativas ni implementación parcial. Se amplía ADR-007 con las decisiones de 6B.
+
+**Cómo funciona.** cfdi_payable descuenta totales de notas tipo E emitidas, de la misma moneda, relación 01 y no canceladas; el resultado nunca es negativo. Estado SAT desconocido cuenta como válido. Una factura 11,600.00 menos nota 1,160.00 queda pagada con 10,440.00 conciliados. Cancelar la nota restaura lo exigible sin degradar pagos válidos: los vínculos no referencian la nota; esta es la lectura conservadora de “depender de una nota”. Otra moneda no se convierte y genera revisión. El bruto es exigible neto más retenciones federales y locales ORIGINALES, sin prorrateo; es una aproximación conocida porque la nota también debería reducir retenciones.
+
+cfdi_review_reasons(today) entrega objetos {code, requiresReview}, un indicador agregado requiresReview y fecha/vencimiento del primer complemento faltante. Overpaid compara solo importes conciliados con exigible neto. Fully credited conserva estado pending e importes cero como información. Las globales quedan fuera de TODA propuesta automática, incluso por complemento; global invoice es informativo aunque vínculos manuales concilien la factura. Sobrepago, factura/complemento/nota cancelados, nota en otra moneda y complemento vencido sí requieren revisión. Información y problemas pueden coexistir.
+
+Cada pago confirmado PPD vence el día cinco del mes siguiente a la fecha declarada del movimiento; el ajuste opcional mueve sábado/domingo al lunes. No se modelan feriados; PUE no genera fecha. Hoy es la fecha UTC del TimeProvider inyectado; cerca de medianoche mexicana puede diferir un día. Solo cubren referencias explícitas payment_cfdi_id Y payment_ref, CFDI tipo P no cancelado, su fila de pago y documento con UUID de la factura. No se infiere un complemento importado por monto/fecha. First-claim por link.created_at y link.id asigna payment_ref a UN MOVIMIENTO; sus asignaciones A 6,000.00 y B 4,000.00 quedan cubiertas, pero otro movimiento no reutiliza el pago.
+
+ApplySatStatusChangeAsync usa una sola transacción de empresa, aplica RLS/archivo y audita estado/vínculos mediante append_audit_entry con items cfdi/link/movement. En proceso no equivale a cancelado. Factura o complemento cancelado pasa vínculos activos a suggested con razón, conserva monto/procedencia del usuario y libera capacidad monetaria. El movimiento sigue suggested para revisar, pero el motor ordinario lo retiene; la factura cancelada no entra en pendientes/vencimientos. La nota cancelada solo restaura exigible y reporta su razón. Un fallo forzado revierte estado, vínculos y auditoría/cabeza.
+
+Una relación 04 directa propone sustituta tipo I emitida, no cancelada/global, misma moneda y mismo RFC receptor, por la menor capacidad libre. La relación es evidencia fuerte: no se inventa igualdad de monto/fecha; siempre queda suggested. El vínculo marcado anterior coexiste hasta la decisión humana. Orden total por fechas/proximidad/ids estables, rechazos por par y claves únicas preservan decisiones e idempotencia. reconciliation_run también ejecuta descubrimiento: una sustituta importada después de cancelar aparece una sola vez en la próxima corrida. No se persiguen cadenas transitivas. Se escriben lotes y auditorías por conjuntos sin nuevos viajes de red por vínculo.
+
+**Qué aprendí.** La reserva de una fila de pago debe pertenecer al movimiento, no a un solo vínculo, para respetar N:M. Las exclusiones informativas necesitan requiresReview explícito para no llenar la cola de problemas. El historial cancelado conserva montos pero no reserva capacidad. Dos pruebas rojas adicionales detectaron sugerencias previas sin marca y pérdida de marcas al repetir la migración; ambas pasan. M0010 Up reconstruye marcas de suggested desde SAT retenido. Down vuelve a funciones M0009 y elimina metadatos nuevos; pierde cancellation_status libre, pero conserva CFDI, movimientos, montos/estados de vínculos y cadena auditada. API/workers deben detenerse durante rollback.
+
+**Benchmark medido.** RUN_BENCHMARKS=1, mismo contenedor SDK/runtime, un calentamiento y tres muestras: median before -> after, 20,000 montos únicos 487.2182 -> 515.1927 ms (+5.74%); 5,000 densos iguales 340.2344 -> 368.6202 ms (+8.34%). Comparaciones: 20,000 y 248,775. Son observaciones locales, no aserciones temporales en CI. Notas/globales no cambian K=50, B<=201 ni el tope del motor; preprocesamiento por conjuntos e índices, limpieza O(L log L), sustituciones con H coincidencias directas y orden O(H log H). La garantía sigue linearithmic, nunca lineal.
+
+**Para group 8.** Lista pendiente desde pendingAmount > 0 / exclusión informativa fully credited; cola desde reason.requiresReview = true. Globales admiten vínculo manual. Adjuntar/decidir debe fijar payment_cfdi_id Y payment_ref y respetar first-claim por movimiento. Mostrar pendingAmount (solo confirmado) y uncoveredAmount (también resta sugerencias válidas); las marcas canceladas no cuentan en ninguno. Al aceptar sustituta, la decisión humana debe cerrar la marca obsoleta. Cliente/job SAT sigue en grupo 7 y SAT status change continúa omitido explícitamente; la operación de dominio se prueba directamente aquí.
+
+**Verificación y límites.** Cada escenario tuvo commit rojo antes del código; suite completa y format verdes antes de cada commit no rojo. Compilación final con 0 warnings; 440 tests, 433 passed, 7 explicit skips (4 future domain scenarios and 3 opt-in benchmarks); format --verify-no-changes green. docker compose up --build --wait dejó PostgreSQL/API/worker/SAT saludables y el migrador terminó correctamente. M0010 up/down/up por SDK conservó 37 entradas auditadas con la misma huella de hashes y 10 vínculos por 45,465.00. El smoke de carga API/worker/lectura mostró exigible 10,440 sin pendiente tras nota, global pendiente con razón informativa y complemento vencido desde 2026-10-05. Su cadena de nueve entradas verificó. El vencido usó una decisión confirmada sintética sembrada en DB porque su ruta es grupo 8; documentos, movimientos, worker y lecturas usaron API. Exportaciones Word/PDF y diagramas DB/progreso bilingües regenerados e inspeccionados visualmente. JSON de arquitectura intacto: no cambiaron contenedores ni fronteras. Se difiere FX 6.11 porque se almacena TipoCambioP pero no EquivalenciaDR/datos de cambio por documento; la capacidad exacta de dos monedas con varios documentos requiere contrato fiscal propio. No se construyen endpoint de cola ni cliente/job SAT. Solo commits locales; sin push ni merge.
 
 ### PR-9: Matching core
 
@@ -988,12 +1010,12 @@ migración subir/bajar/subir en una base de datos real y la ejecución `41122200
   silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 6. Siguiente trabajo: conciliación 6B y grupo 7
+## 6. Siguiente trabajo: grupo 7 y decisiones de revisión
 
-Conciliación 6A está implementada. Notas de crédito, FX, vencimientos, sobrepagos/globales y cascadas de cancelación
-siguen diferidos a 6B; SAT espera el grupo 7. 5.3 y 2.4 esperan decisiones de usuario/eventos SAT en grupos 7/8.
-Automatic link y el cambio de tolerancia ya se ejecutan; la suite normal mantiene cuatro escenarios de dominio y tres
-benchmarks optativos omitidos. Ninguna tarea diferida se marca completa.
+Conciliación 6A/6B está implementada salvo FX stretch 6.11, diferido por el contrato de cambio por documento.
+El cliente/job SAT sigue en grupo 7; decisiones, cola de revisión y acciones N:M manuales siguen en grupo 8.
+5.3 y 2.4 esperan esas rutas/jobs reales. La suite normal mantiene cuatro escenarios futuros y tres benchmarks
+optativos omitidos; la operación de dominio de cancelación se prueba directamente.
 
 ## 7. El resto del camino
 

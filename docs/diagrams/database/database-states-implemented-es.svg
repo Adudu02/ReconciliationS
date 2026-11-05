@@ -98,5 +98,7 @@
 <text x="360" y="1339" font-size="11" fill="#222" text-anchor="start">sugerencia automática en su lugar</text>
 <path d="M220 1440 L220 1505 L650 1505" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="270" y="1492" font-size="11" fill="#222" text-anchor="start">el sistema cierra sugerencia provisional</text>
-<text x="45" y="1582" font-size="12" fill="#222">movement_state() / cfdi_state(): reconciled, suggested o pending se calculan; nunca se guardan.</text>
+<path d="M775 1390 L775 1450 L340 1450 L340 1420" fill="none" stroke="#b91c1c" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="390" y="1438" font-size="11" fill="#222" text-anchor="start">evidencia cancelada: revisión; sin capacidad</text>
+<text x="45" y="1582" font-size="12" fill="#222">movement_state / cfdi_state / cfdi_payable / cfdi_review_reasons: lecturas derivadas por empresa.</text>
 </svg>

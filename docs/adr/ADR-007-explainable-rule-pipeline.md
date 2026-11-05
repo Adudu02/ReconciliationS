@@ -158,8 +158,66 @@ authentication events remain in auth_event. Audit task 5.3 remains open until la
 
 ## Limits and follow-up
 
-PR 6B owns credit notes (6.4), foreign currency (6.11), complement due dates (6.12), overpaid flags (6.13), global invoices
-(6.14) and SAT cancellation/replacement cascades (6.15). These tasks stay unticked. No speculative FX columns are added.
-User confirmation/rejection/reopening and manual N:M endpoints belong to group 8. Matching uses current settings only on
-the next run and does not erase prior suggestions. It loads a company's matching inputs into memory once; deployment
-volumes beyond the measured demo need profiling and possibly partitioned runs. Classification does not delete evidence.
+Matching rest is implemented by the amendments below except FX stretch 6.11. User confirmation/rejection/reopening
+and manual N:M endpoints remain group 8. Inputs are loaded once per company; larger deployments need profiling.
+
+## Amendments in 6B
+
+M0010 keeps the engine pure and item states derived. `cfdi_payable()` subtracts totals of issued type E credit notes
+with direct relation 01, the same currency and a non-cancelled SAT status (unknown is valid), then floors at zero.
+Other relation codes, received notes and different-currency notes cannot reduce payable. A cancelled credit note restores
+the payable without downgrading valid payment links: those links do not reference the note. It raises a review reason
+instead. The engine's total, gross, residual targets and capacities now use that net payable. Gross is exactly
+`max(original total - valid credit-note totals, 0) + original federal retention + original local retention`.
+Keeping the original retentions without prorating is a known approximation; a credit note should also reduce retentions
+proportionally, but this version does not invent credit-note tax allocations.
+
+Zero payable keeps the positive-payable guard: state pending, pendingAmount and uncoveredAmount zero, no automatic link,
+and informational reason `fully credited`. Every global invoice (stored flag or generic receiver XAXX010101000) is
+excluded from both automatic stages. Manual links still determine its state normally. Its `global invoice` reason is
+always informational, including when a user fully reconciles it. `cfdi_review_reasons(today)` returns a JSON array of
+`{code, requiresReview}` objects plus an aggregate requires_review. Informational reasons never hide problem reasons:
+overpaid uses only reconciled coverage exceeding net payable; cancelled invoice/payment complement/credit note,
+different-currency credit note and complement overdue require review. Group 8 must build its queue from requiresReview
+and its pending list from `pendingAmount > 0`, excluding informational fully credited invoices.
+
+For a PPD reconciled payment, the deadline is the fifth calendar day of the following payment month, moved to Monday
+only if the company setting is enabled and the fifth is a weekend. No holidays are modeled. Pure ComplementDeadline
+and set-based SQL agree on this rule. Today is the UTC date obtained from injected TimeProvider; declared payment dates
+are retained. Near Mexican local midnight UTC can differ by one day; no timezone database is assumed. PUE has no due date.
+Only explicitly linked coverage counts: both payment_cfdi_id and payment_ref, a non-cancelled type P complement,
+a payment row belonging to it, and a document referencing this invoice UUID. No imported complement is inferred by
+amount/date. A deterministic first-claim orders reconciled links by created_at then link.id: one payment_ref belongs
+to at most one movement, and covers every valid invoice-document allocation of that winning movement. A second movement
+cannot reuse it. Company-leading payment-claim and document-coverage indexes support this set-based lookup.
+Group 8 attach/decision actions must set both references.
+
+ApplySatStatusChangeAsync is a domain operation in the caller's company transaction, with no HTTP route or SAT client.
+It locks the company, refuses archived/foreign access, updates SAT/cancellation status, and moves affected active links
+to suggested with review_reason `cancelled invoice` or `cancelled payment complement`. Cancellation in process does not
+mean cancelled. Monetary coverage excludes these markers: history and amount stay, but they reserve no capacity.
+The movement remains suggested for review and is held out of the ordinary engine; a cancelled invoice has no pending
+or overdue computation. Prior origin/decided_by/decided_at remain on the link and in the system audit's previous snapshot.
+Status, link changes, replacement proposals and typed audit items commit or roll back together. Repeated unchanged calls
+create neither links nor audit noise.
+
+Replacement discovery runs both in that operation and before reconciliation_run loads ordinary engine inputs, so a
+replacement imported later is discovered on the next run. It expands direct relation 04 postings only; no transitive
+replacement chain is chased. A replacement must be issued type I, current/unknown, non-global, the same currency and
+same receiver RFC as the cancelled invoice, and have positive free net payable. It honors pair-level rejection and
+existing active user decisions. The relation is the strong identifier, so no amount/date equality is invented.
+Movement date/id, replacement date proximity/id, then cancelled-link id provide a total deterministic order; each movement
+gets at most one suggested replacement for min(free movement, free invoice), never automatic confirmation. The old marked
+link coexists until a user decides. Batched inserts and set-based audit appends add no per-link network round trips.
+
+Credit-note aggregation and global/status eligibility add set-based/indexed preprocessing and constant-time engine
+checks. The 6A K=50 / B<=201 comparison bound and one-amount-criterion rule are unchanged. Cleanup remains O(L log L).
+Replacement processing adds explicit relation posting hits H and their deterministic sort O(H log H), not an all-pairs
+movement/invoice scan. The total claim remains linearithmic plus explicit postings, never linear. Benchmark medians
+before/after are recorded in PR-10. M0010 Down restores M0009 functions and removes new indexes/columns; it preserves
+CFDI, movements, links and audit rows. The free-text cancellation status is lost on Down; Up reconstructs suggested-link
+cancellation markers from retained SAT status without rewriting audit evidence. Run migrations with API/workers stopped.
+
+FX stretch 6.11 remains open. The parser stores TipoCambioP, not document-level EquivalenciaDR/exchange data; exact
+dual-currency capacities across multi-document payments need their own fiscal contract. No speculative FX columns,
+conversion, exchange gain/loss calculation, review queue endpoint or group 7 SAT adapter is added here.

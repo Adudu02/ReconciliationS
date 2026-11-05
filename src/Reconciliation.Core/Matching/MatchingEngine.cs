@@ -11,8 +11,10 @@ public static class MatchingEngine
         ArgumentOutOfRangeException.ThrowIfLessThan(maxCandidates, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maxCandidates, MaxCandidatesPerMovement);
         ArgumentOutOfRangeException.ThrowIfNegative(settings.DateToleranceDays);
-        var eligible = invoices.Where(invoice => invoice.Type == "I" && invoice.Direction == "issued" && invoice.Currency == "MXN").ToDictionary(invoice => invoice.Uuid);
-        var active = existing.Where(link => link.State is "reconciled" or "suggested").ToArray();
+        var eligible = invoices.Where(invoice => invoice.Type == "I" && invoice.Direction == "issued" && invoice.Currency == "MXN" && !invoice.Global && invoice.SatStatus != "cancelled").ToDictionary(invoice => invoice.Uuid);
+        var heldMovements = existing.Where(link => link.CancellationMarked).Select(link => link.MovementId).ToHashSet();
+        movements = movements.Where(movement => !heldMovements.Contains(movement.Id)).ToArray();
+        var active = existing.Where(link => !link.CancellationMarked && link.State is "reconciled" or "suggested").ToArray();
         var current = active.ToDictionary(Key);
         var updates = new List<MatchingLinkUpdate>();
         var provisional = active.Where(link => link.Origin == "automatic" && link.State == "suggested")
@@ -30,7 +32,7 @@ public static class MatchingEngine
         var documents = new Dictionary<Guid, MatchingPaymentDocument[]>();
         foreach (var payment in payments)
         {
-            if (payment.Direction != "issued" || payment.Currency != "MXN" || payment.Version != "2.0" || payment.Inconsistent || usedPayments.Contains(payment.Id) ||
+            if (payment.SatStatus == "cancelled" || payment.Direction != "issued" || payment.Currency != "MXN" || payment.Version != "2.0" || payment.Inconsistent || usedPayments.Contains(payment.Id) ||
                 payment.Documents.Count == 0 || payment.Documents.Any(doc => doc.Currency != "MXN" || doc.Inconsistent || doc.Paid <= 0 || !eligible.ContainsKey(doc.InvoiceUuid)) ||
                 payment.Documents.Sum(doc => doc.Paid) != payment.Amount) continue;
             documents.Add(payment.Id, payment.Documents.GroupBy(doc => doc.InvoiceUuid)
@@ -51,7 +53,7 @@ public static class MatchingEngine
                 {
                     if (Math.Abs(payment.Date.DayNumber - movement.Date.DayNumber) > settings.DateToleranceDays) break;
                     var docs = documents[payment.Id];
-                    if (docs.Any(doc => doc.Paid > eligible[doc.InvoiceUuid].Total - reservedInvoices.GetValueOrDefault(eligible[doc.InvoiceUuid].Id)))
+                    if (docs.Any(doc => doc.Paid > eligible[doc.InvoiceUuid].Payable - reservedInvoices.GetValueOrDefault(eligible[doc.InvoiceUuid].Id)))
                     {
                         comparisons++;
                         exhausted.Add(payment.Id);
@@ -90,7 +92,7 @@ public static class MatchingEngine
             foreach (var previous in superseded)
                 if (!upgraded.Contains(previous)) Close(previous, "superseded by deterministic link");
         }
-        var invoiceCapacity = eligible.Values.ToDictionary(invoice => invoice.Id, invoice => invoice.Total);
+        var invoiceCapacity = eligible.Values.ToDictionary(invoice => invoice.Id, invoice => invoice.Payable);
         var movementCapacity = movements.ToDictionary(movement => movement.Id, movement => movement.Credit);
         var invoiceTotals = current.Values.GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var movementTotals = current.Values.GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
@@ -109,7 +111,7 @@ public static class MatchingEngine
         }
         reservedInvoices = current.Values.GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         reservedMovements = current.Values.GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
-        var stageTwoExisting = current.Values.Concat(existing.Where(link => link.State is not ("reconciled" or "suggested")))
+        var stageTwoExisting = current.Values.Concat(existing.Where(link => link.CancellationMarked || link.State is not ("reconciled" or "suggested")))
             .Concat(updates.Where(update => update.After.State == "closed").Select(update => update.After)).ToArray();
         var deterministicCount = changes.Count;
         comparisons += HeuristicMatching.Apply(movements, eligible.Values.ToArray(), payments, stageTwoExisting, settings, maxCandidates,
@@ -120,8 +122,8 @@ public static class MatchingEngine
         var suggested = allLinks.Where(link => link.State == "suggested").GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var balances = eligible.Values.OrderBy(invoice => invoice.Id).Select(invoice => new MatchingBalance(invoice.Id,
             reconciled.GetValueOrDefault(invoice.Id), suggested.GetValueOrDefault(invoice.Id),
-            Math.Max(0, invoice.Total - reconciled.GetValueOrDefault(invoice.Id)),
-            Math.Max(0, invoice.Total - reconciled.GetValueOrDefault(invoice.Id) - suggested.GetValueOrDefault(invoice.Id)))).ToArray();
+            Math.Max(0, invoice.Payable - reconciled.GetValueOrDefault(invoice.Id)),
+            Math.Max(0, invoice.Payable - reconciled.GetValueOrDefault(invoice.Id) - suggested.GetValueOrDefault(invoice.Id)))).ToArray();
         return new(changes, comparisons, balances, updates);
 
         void Update(MatchingLink before, MatchingLink after, string action)

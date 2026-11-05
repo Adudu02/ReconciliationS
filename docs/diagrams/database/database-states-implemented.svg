@@ -97,5 +97,7 @@
 <text x="360" y="1339" font-size="11" fill="#222" text-anchor="start">automatic suggestion in place</text>
 <path d="M220 1440 L220 1505 L650 1505" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="270" y="1492" font-size="11" fill="#222" text-anchor="start">system closes provisional suggestion</text>
-<text x="45" y="1582" font-size="12" fill="#222">movement_state() / cfdi_state(): reconciled, suggested or pending are computed; never stored.</text>
+<path d="M775 1390 L775 1450 L340 1450 L340 1420" fill="none" stroke="#b91c1c" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="390" y="1438" font-size="11" fill="#222" text-anchor="start">cancelled evidence: review; no capacity</text>
+<text x="45" y="1582" font-size="12" fill="#222">movement_state / cfdi_state / cfdi_payable / cfdi_review_reasons: derived, company-scoped reads.</text>
 </svg>
