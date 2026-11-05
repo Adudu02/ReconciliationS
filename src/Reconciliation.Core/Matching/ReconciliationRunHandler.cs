@@ -26,9 +26,10 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
         LinkRow[] linkRows;
         using (var data = await connection.QueryMultipleAsync(Command("""
             SELECT id,movement_date AS Date,credit,debit,description,reference,classification FROM bank_movement;
-            SELECT id,uuid,issued_at::date AS Date,total,coalesce(retained_tax,0)+coalesce(local_retained_tax,0) AS Retained,
+            SELECT c.id,c.uuid,c.issued_at::date AS Date,c.total,coalesce(retained_tax,0)+coalesce(local_retained_tax,0) AS Retained,
               issuer_rfc AS IssuerRfc,receiver_rfc AS ReceiverRfc,type,direction,currency,serie,folio,
-              coalesce(retained_tax,0) AS FederalRetained,coalesce(local_retained_tax,0) AS LocalRetained FROM cfdi WHERE type='I' AND direction='issued';
+              coalesce(retained_tax,0) AS FederalRetained,coalesce(local_retained_tax,0) AS LocalRetained,p.credit_notes AS CreditNotes
+              FROM cfdi c JOIN cfdi_payable() p ON p.company_id=c.company_id AND p.id=c.id WHERE c.type='I' AND c.direction='issued';
             SELECT p.id,p.cfdi_id AS CfdiId,p.paid_at::date AS Date,p.amount,p.operation_number AS OperationNumber,c.direction,p.currency
               FROM cfdi_payment p JOIN cfdi c ON c.company_id=p.company_id AND c.id=p.cfdi_id WHERE c.type='P';
             SELECT payment_id AS PaymentId,invoice_uuid AS InvoiceUuid,paid,currency,inconsistent_balance AS Inconsistent FROM cfdi_payment_doc;
@@ -127,9 +128,9 @@ public sealed class ReconciliationRunHandler(CompanyScope scope, TimeProvider cl
 
     private sealed record SettingsRow(bool Archived, int DateToleranceDays, decimal AmountTolerance);
     private sealed record InvoiceRow(Guid Id, Guid Uuid, DateOnly Date, decimal Total, decimal Retained, string IssuerRfc, string ReceiverRfc,
-        string Type, string Direction, string Currency, string? Serie, string? Folio, decimal FederalRetained, decimal LocalRetained)
+        string Type, string Direction, string Currency, string? Serie, string? Folio, decimal FederalRetained, decimal LocalRetained, decimal CreditNotes)
     {
-        public MatchingInvoice Invoice => new(Id, Uuid, Date, Total, Retained, IssuerRfc, ReceiverRfc, Type, Direction, Currency, Serie, Folio);
+        public MatchingInvoice Invoice => new(Id, Uuid, Date, Total, Retained, IssuerRfc, ReceiverRfc, Type, Direction, Currency, Serie, Folio, CreditNotes);
     }
     private sealed record PaymentRow(Guid Id, Guid CfdiId, DateOnly Date, decimal Amount, string? OperationNumber, string Direction, string Currency);
     private sealed record DocumentRow(Guid PaymentId, Guid InvoiceUuid, decimal Paid, string Currency, bool Inconsistent);

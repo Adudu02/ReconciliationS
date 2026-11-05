@@ -16,7 +16,7 @@ internal static class HeuristicMatching
         IReadOnlyList<MatchingPayment> payments, IReadOnlyList<MatchingLink> existing, MatchingSettings settings, int cap,
         List<MatchingLink> changes, Dictionary<Guid, decimal> reservedInvoices, Dictionary<Guid, decimal> reservedMovements)
     {
-        var remaining = invoices.ToDictionary(invoice => invoice.Id, invoice => Math.Max(0, invoice.Total - reservedInvoices.GetValueOrDefault(invoice.Id)));
+        var remaining = invoices.ToDictionary(invoice => invoice.Id, invoice => Math.Max(0, invoice.Payable - reservedInvoices.GetValueOrDefault(invoice.Id)));
         var all = new AmountIndexes();
         var invoiceRfcs = invoices.ToDictionary(invoice => invoice.Id, invoice => new[]
         {
@@ -118,9 +118,9 @@ internal static class HeuristicMatching
         }
         void AddTo(AmountIndexes indexes, MatchingInvoice invoice)
         {
-            indexes.Totals.Add(invoice.Id, invoice.Total, invoice.Date, invoice);
-            if (invoice.Retained > 0) indexes.Gross.Add(invoice.Id, invoice.Total + invoice.Retained, invoice.Date, invoice);
-            if (remaining[invoice.Id] < invoice.Total) indexes.Residual.Add(invoice.Id, remaining[invoice.Id], invoice.Date, invoice);
+            indexes.Totals.Add(invoice.Id, invoice.Payable, invoice.Date, invoice);
+            if (invoice.Retained > 0) indexes.Gross.Add(invoice.Id, invoice.Payable + invoice.Retained, invoice.Date, invoice);
+            if (remaining[invoice.Id] < invoice.Payable) indexes.Residual.Add(invoice.Id, remaining[invoice.Id], invoice.Date, invoice);
         }
         void Remove(Guid id)
         {
@@ -159,12 +159,12 @@ internal static class HeuristicMatching
 
     private static MatchingCriterion? AmountCriterion(decimal credit, MatchingInvoice invoice, decimal remaining, decimal tolerance)
     {
-        if (credit == invoice.Total) return new("amount-equals-total", 40, "amount equals CFDI net total");
-        if (invoice.Retained > 0 && credit == invoice.Total + invoice.Retained) return new("gross-payment", 35, "amount equals total before retentions");
-        if (remaining < invoice.Total && credit == remaining) return new("amount-equals-remaining", 30, "amount equals remaining payable");
-        var targets = new List<(decimal Amount, string Name)> { (invoice.Total, "total") };
-        if (invoice.Retained > 0) targets.Add((invoice.Total + invoice.Retained, "gross (amount equals total before retentions)"));
-        if (remaining < invoice.Total) targets.Add((remaining, "remaining payable"));
+        if (credit == invoice.Payable) return new("amount-equals-total", 40, invoice.CreditNotes > 0 ? "amount equals net payable after credit notes" : "amount equals CFDI net total");
+        if (invoice.Retained > 0 && credit == invoice.Payable + invoice.Retained) return new("gross-payment", 35, "amount equals total before retentions");
+        if (remaining < invoice.Payable && credit == remaining) return new("amount-equals-remaining", 30, "amount equals remaining payable");
+        var targets = new List<(decimal Amount, string Name)> { (invoice.Payable, "total") };
+        if (invoice.Retained > 0) targets.Add((invoice.Payable + invoice.Retained, "gross (amount equals total before retentions)"));
+        if (remaining < invoice.Payable) targets.Add((remaining, "remaining payable"));
         var effective = Math.Clamp(tolerance, 0, 1.00m);
         var closest = targets.Select(target => (target.Name, Difference: Math.Abs(credit - target.Amount))).OrderBy(target => target.Difference).First();
         return closest.Difference <= effective ? new("amount-within-tolerance", 25,

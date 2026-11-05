@@ -51,7 +51,7 @@ public static class MatchingEngine
                 {
                     if (Math.Abs(payment.Date.DayNumber - movement.Date.DayNumber) > settings.DateToleranceDays) break;
                     var docs = documents[payment.Id];
-                    if (docs.Any(doc => doc.Paid > eligible[doc.InvoiceUuid].Total - reservedInvoices.GetValueOrDefault(eligible[doc.InvoiceUuid].Id)))
+                    if (docs.Any(doc => doc.Paid > eligible[doc.InvoiceUuid].Payable - reservedInvoices.GetValueOrDefault(eligible[doc.InvoiceUuid].Id)))
                     {
                         comparisons++;
                         exhausted.Add(payment.Id);
@@ -90,7 +90,7 @@ public static class MatchingEngine
             foreach (var previous in superseded)
                 if (!upgraded.Contains(previous)) Close(previous, "superseded by deterministic link");
         }
-        var invoiceCapacity = eligible.Values.ToDictionary(invoice => invoice.Id, invoice => invoice.Total);
+        var invoiceCapacity = eligible.Values.ToDictionary(invoice => invoice.Id, invoice => invoice.Payable);
         var movementCapacity = movements.ToDictionary(movement => movement.Id, movement => movement.Credit);
         var invoiceTotals = current.Values.GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var movementTotals = current.Values.GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
@@ -120,8 +120,8 @@ public static class MatchingEngine
         var suggested = allLinks.Where(link => link.State == "suggested").GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var balances = eligible.Values.OrderBy(invoice => invoice.Id).Select(invoice => new MatchingBalance(invoice.Id,
             reconciled.GetValueOrDefault(invoice.Id), suggested.GetValueOrDefault(invoice.Id),
-            Math.Max(0, invoice.Total - reconciled.GetValueOrDefault(invoice.Id)),
-            Math.Max(0, invoice.Total - reconciled.GetValueOrDefault(invoice.Id) - suggested.GetValueOrDefault(invoice.Id)))).ToArray();
+            Math.Max(0, invoice.Payable - reconciled.GetValueOrDefault(invoice.Id)),
+            Math.Max(0, invoice.Payable - reconciled.GetValueOrDefault(invoice.Id) - suggested.GetValueOrDefault(invoice.Id)))).ToArray();
         return new(changes, comparisons, balances, updates);
 
         void Update(MatchingLink before, MatchingLink after, string action)

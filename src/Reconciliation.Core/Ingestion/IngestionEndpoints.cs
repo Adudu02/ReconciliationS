@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Reconciliation.Core.Matching;
 using Reconciliation.Core.Tenancy;
 using static Reconciliation.Core.Common.DapperExtensions;
 
@@ -12,7 +13,10 @@ namespace Reconciliation.Core.Ingestion;
 
 public sealed record CfdiResponse(Guid Id, Guid Uuid, string Type, string Direction, string IssuerRfc, string ReceiverRfc,
     DateTime IssuedAt, DateTime StampedAt, string Currency, string? PaymentMethod, decimal Subtotal, decimal Discount,
-    decimal TransferredTax, decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal, string? ReviewReason);
+    decimal TransferredTax, decimal RetainedTax, decimal LocalTransferredTax, decimal LocalRetainedTax, decimal Total, bool IsGlobal, string? ReviewReason)
+{
+    public InvoiceMatchingState? Matching { get; init; }
+}
 
 public static class IngestionEndpoints
 {
@@ -38,7 +42,7 @@ public static class IngestionEndpoints
                     """, new { uploadId }, transaction, cancellationToken: transactionCancellationToken))).ToArray();
                 return fileOutcomes.Length == 0 ? Results.NotFound() : Results.Ok(new ImportReport(uploadId, fileOutcomes));
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
-        routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, CompanyScope companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, CompanyScope companyScope, TimeProvider clock, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
                 var storedCfdi = await connection.QuerySingleOrDefaultAsync<CfdiResponse>(Command("""
@@ -48,6 +52,17 @@ public static class IngestionEndpoints
                       local_transferred_tax AS LocalTransferredTax, local_retained_tax AS LocalRetainedTax,
                       total, is_global AS IsGlobal, review_reason AS ReviewReason FROM cfdi WHERE id = @invoiceId
                     """, new { invoiceId = cfdiId }, transaction, cancellationToken: transactionCancellationToken));
+                if (storedCfdi is { Type: "I" })
+                    storedCfdi = storedCfdi with
+                    {
+                        Matching = await connection.QuerySingleAsync<InvoiceMatchingState>(Command("""
+                            SELECT s.state,p.credit_notes AS CreditNotes,p.payable,s.reconciled_amount AS ReconciledAmount,
+                              s.suggested_amount AS SuggestedAmount,s.pending_amount AS PendingAmount,s.uncovered_amount AS UncoveredAmount,
+                              s.paid_percentage AS PaidPercentage,r.reasons,r.informational_reasons AS InformationalReasons,r.requires_review AS RequiresReview
+                            FROM cfdi_state() s JOIN cfdi_payable() p ON p.company_id=s.company_id AND p.id=s.id
+                            JOIN cfdi_review_reasons(@today) r ON r.company_id=s.company_id AND r.id=s.id WHERE s.id=@cfdiId
+                            """, new { cfdiId, today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime) }, transaction, cancellationToken: transactionCancellationToken))
+                    };
                 return CompanyScope.OkOrNotFound(storedCfdi);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
         routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}/xml", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, CompanyScope companyScope) =>
