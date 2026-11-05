@@ -11,7 +11,7 @@ public static class MatchingEngine
         ArgumentOutOfRangeException.ThrowIfLessThan(maxCandidates, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maxCandidates, MaxCandidatesPerMovement);
         ArgumentOutOfRangeException.ThrowIfNegative(settings.DateToleranceDays);
-        var eligible = invoices.Where(invoice => invoice.Type == "I" && invoice.Direction == "issued" && invoice.Currency == "MXN").ToDictionary(invoice => invoice.Uuid);
+        var eligible = invoices.Where(invoice => invoice.Type == "I" && invoice.Direction == "issued" && invoice.Currency == "MXN" && !invoice.Global).ToDictionary(invoice => invoice.Uuid);
         var active = existing.Where(link => link.State is "reconciled" or "suggested").ToArray();
         var current = active.ToDictionary(Key);
         var updates = new List<MatchingLinkUpdate>();

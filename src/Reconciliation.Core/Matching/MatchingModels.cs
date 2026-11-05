@@ -4,9 +4,10 @@ public sealed record MatchingMovement(Guid Id, DateOnly Date, decimal Credit, de
     string? Reference = null, string? Classification = null);
 public sealed record MatchingInvoice(Guid Id, Guid Uuid, DateOnly Date, decimal Total, decimal Retained,
     string IssuerRfc, string ReceiverRfc, string Type = "I", string Direction = "issued", string Currency = "MXN",
-    string? Serie = null, string? Folio = null, decimal CreditNotes = 0)
+    string? Serie = null, string? Folio = null, decimal CreditNotes = 0, bool IsGlobal = false)
 {
     public decimal Payable => Math.Max(0, Total - CreditNotes);
+    public bool Global => IsGlobal || string.Equals(ReceiverRfc, "XAXX010101000", StringComparison.OrdinalIgnoreCase);
 }
 public sealed record MatchingPaymentDocument(Guid InvoiceUuid, decimal Paid, string Currency = "MXN", bool Inconsistent = false);
 public sealed record MatchingPayment(Guid Id, Guid CfdiId, DateOnly Date, decimal Amount, string? OperationNumber,
@@ -19,10 +20,7 @@ public sealed record MatchingBalance(Guid InvoiceId, decimal ReconciledAmount, d
 public sealed record MatchingLinkUpdate(MatchingLink Before, MatchingLink After, string Action);
 public sealed record MatchingResult(IReadOnlyList<MatchingLink> Changes, long CandidateComparisons, IReadOnlyList<MatchingBalance> Invoices, IReadOnlyList<MatchingLinkUpdate> Updates);
 
+public sealed record InvoiceReviewReason(string Code, bool RequiresReview);
 public sealed record InvoiceMatchingState(string State, decimal CreditNotes, decimal Payable, decimal ReconciledAmount,
     decimal SuggestedAmount, decimal PendingAmount, decimal UncoveredAmount, decimal PaidPercentage,
-    string[] Reasons, string[] InformationalReasons, bool RequiresReview)
-{
-    // Npgsql array metadata is System.Array; use property mapping rather than exact constructor matching.
-    public InvoiceMatchingState() : this("pending", 0, 0, 0, 0, 0, 0, 0, [], [], false) { }
-}
+    InvoiceReviewReason[] Reasons, bool RequiresReview);

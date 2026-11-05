@@ -39,12 +39,13 @@ public sealed class M0010MatchingRest : Migration
           FROM public.cfdi_payable() p LEFT JOIN applied a ON a.company_id=p.company_id AND a.cfdi_id=p.id
         $$;
         CREATE FUNCTION cfdi_review_reasons(p_today date)
-        RETURNS TABLE(company_id uuid,id uuid,reasons text[],informational_reasons text[],requires_review boolean)
+        RETURNS TABLE(company_id uuid,id uuid,reasons jsonb,requires_review boolean)
         LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
-          WITH info AS (
-            SELECT company_id,id,CASE WHEN credit_notes>0 AND payable=0 THEN ARRAY['fully credited'] ELSE ARRAY[]::text[] END AS reasons
-            FROM public.cfdi_payable()
-          ) SELECT company_id,id,reasons,reasons,false FROM info
+          SELECT p.company_id,p.id,
+            CASE WHEN p.credit_notes>0 AND p.payable=0 THEN jsonb_build_array(jsonb_build_object('code','fully credited','requiresReview',false)) ELSE '[]'::jsonb END
+            || CASE WHEN c.is_global OR upper(c.receiver_rfc)='XAXX010101000' THEN jsonb_build_array(jsonb_build_object('code','global invoice','requiresReview',false)) ELSE '[]'::jsonb END,
+            false
+          FROM public.cfdi_payable() p JOIN public.cfdi c ON c.company_id=p.company_id AND c.id=p.id
         $$;
         REVOKE ALL ON FUNCTION cfdi_payable(),cfdi_review_reasons(date) FROM PUBLIC;
         GRANT EXECUTE ON FUNCTION cfdi_payable(),cfdi_review_reasons(date) TO cfdi_app;

@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -53,16 +54,18 @@ public static class IngestionEndpoints
                       total, is_global AS IsGlobal, review_reason AS ReviewReason FROM cfdi WHERE id = @invoiceId
                     """, new { invoiceId = cfdiId }, transaction, cancellationToken: transactionCancellationToken));
                 if (storedCfdi is { Type: "I" })
-                    storedCfdi = storedCfdi with
-                    {
-                        Matching = await connection.QuerySingleAsync<InvoiceMatchingState>(Command("""
-                            SELECT s.state,p.credit_notes AS CreditNotes,p.payable,s.reconciled_amount AS ReconciledAmount,
-                              s.suggested_amount AS SuggestedAmount,s.pending_amount AS PendingAmount,s.uncovered_amount AS UncoveredAmount,
-                              s.paid_percentage AS PaidPercentage,r.reasons,r.informational_reasons AS InformationalReasons,r.requires_review AS RequiresReview
-                            FROM cfdi_state() s JOIN cfdi_payable() p ON p.company_id=s.company_id AND p.id=s.id
-                            JOIN cfdi_review_reasons(@today) r ON r.company_id=s.company_id AND r.id=s.id WHERE s.id=@cfdiId
-                            """, new { cfdiId, today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime) }, transaction, cancellationToken: transactionCancellationToken))
-                    };
+                {
+                    var matchingJson = await connection.ExecuteScalarAsync<string>(Command("""
+                        SELECT row_to_json(matching)::text FROM (
+                          SELECT s.state,p.credit_notes AS CreditNotes,p.payable,s.reconciled_amount AS ReconciledAmount,
+                            s.suggested_amount AS SuggestedAmount,s.pending_amount AS PendingAmount,s.uncovered_amount AS UncoveredAmount,
+                            s.paid_percentage AS PaidPercentage,r.reasons,r.requires_review AS RequiresReview
+                          FROM cfdi_state() s JOIN cfdi_payable() p ON p.company_id=s.company_id AND p.id=s.id
+                          JOIN cfdi_review_reasons(@today) r ON r.company_id=s.company_id AND r.id=s.id WHERE s.id=@cfdiId
+                        ) matching
+                        """, new { cfdiId, today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime) }, transaction, cancellationToken: transactionCancellationToken));
+                    storedCfdi = storedCfdi with { Matching = JsonSerializer.Deserialize<InvoiceMatchingState>(matchingJson!, JsonSerializerOptions.Web) };
+                }
                 return CompanyScope.OkOrNotFound(storedCfdi);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
         routes.MapGet("/companies/{companyId:guid}/cfdi/{invoiceId:guid}/xml", (Guid companyId, [FromRoute(Name = "invoiceId")] Guid cfdiId, CompanyScope companyScope) =>
