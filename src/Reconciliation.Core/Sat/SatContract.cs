@@ -96,6 +96,8 @@ public static partial class SatContract
     private static string Raw<T>(Dictionary<string, T> mappings, T value) where T : struct, Enum =>
         mappings.FirstOrDefault(pair => EqualityComparer<T>.Default.Equals(pair.Value, value)).Key ?? "";
 
+    public static bool IsEfosFlagged(SatReply reply) => reply.Code.Value == SatCode.Success && !string.IsNullOrEmpty(reply.EfosRaw) && reply.EfosRaw != "200";
+
     private static SatValue<T> Map<T>(Dictionary<string, T> mappings, string raw) where T : struct, Enum => new(mappings.GetValueOrDefault(raw), raw);
 
     [GeneratedRegex(@"\A[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}\z", RegexOptions.CultureInvariant)]

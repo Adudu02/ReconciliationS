@@ -74,8 +74,8 @@
 
 ## 7. SAT status check (days 5–6, real adapter in phase 2)
 
-- [ ] 7.1 Define the SAT client interface with the response model and verify unit tests cover all codes and states
-- [ ] 7.2 Implement the SAT stub service speaking the real SOAP contract with a control interface to force outcomes, and verify each outcome including timeout can be forced
+- [x] 7.1 Define the SAT client interface with the response model and verify unit tests cover all codes and states
+- [x] 7.2 Implement the SAT stub service speaking the real SOAP contract with a control interface to force outcomes, and verify each outcome including timeout can be forced
 - [ ] 7.3 Implement caching, retries with backoff, rate limiting and the unknown-status degradation, and verify the service-down scenario completes a reconciliation run
 - [ ] 7.3b Store cancellability, cancellation status and the raw EFOS value, and verify the in-process and deadline-expired scenarios
 - [ ] 7.3c Implement the on-demand status check job and verify the unknown and cached-cancelled scenarios

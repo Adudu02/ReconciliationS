@@ -1,10 +1,10 @@
 using System.Collections;
 using System.Text.Json;
-using Reconciliation.Core.Sat;
 using Dapper;
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Reconciliation.Core.Sat;
 using Reconciliation.Migrator.Migrations;
 
 namespace Reconciliation.Tests;
@@ -57,9 +57,22 @@ public sealed class SatCacheTests
         Assert.False(await app.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT has_table_privilege(current_user,'sat_status_cache','DELETE')", transaction: transaction, cancellationToken: TestContext.Current.CancellationToken)));
         var entryType = typeof(ISatClient).Assembly.GetType("Reconciliation.Core.Sat.SatCacheEntry"); Assert.NotNull(entryType);
         var checkedAt = new DateTime(2026, 11, 6, 0, 0, 0, DateTimeKind.Utc);
-        var entry = JsonSerializer.Deserialize(JsonSerializer.Serialize(new { uuid, state = "current", cancellability = "with acceptance",
-            cancellationStatus = "in process", efosRaw = "100", checkedAt, expiresAt = checkedAt.AddHours(24), attempts = 2,
-            source = "stub", codeRaw = SatContractTests.Success, stateRaw = "Vigente", cancellabilityRaw = "Cancelable con aceptación", cancellationStatusRaw = "En proceso" }), entryType, JsonSerializerOptions.Web)!;
+        var entry = JsonSerializer.Deserialize(JsonSerializer.Serialize(new
+        {
+            uuid,
+            state = "current",
+            cancellability = "with acceptance",
+            cancellationStatus = "in process",
+            efosRaw = "100",
+            checkedAt,
+            expiresAt = checkedAt.AddHours(24),
+            attempts = 2,
+            source = "stub",
+            codeRaw = SatContractTests.Success,
+            stateRaw = "Vigente",
+            cancellabilityRaw = "Cancelable con aceptación",
+            cancellationStatusRaw = "En proceso"
+        }), entryType, JsonSerializerOptions.Web)!;
         var write = (Task)typeof(ISatClient).Assembly.GetType("Reconciliation.Core.Sat.SatStatusStore")!.GetMethod("WriteAsync")!
             .Invoke(null, [app, transaction, company, entry, TestContext.Current.CancellationToken])!; await write;
         Assert.Equal(("current", "with acceptance", "in process", "100", 2), await app.QuerySingleAsync<(string, string, string, string, int)>(new CommandDefinition(

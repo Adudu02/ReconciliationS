@@ -14,7 +14,7 @@ public sealed record SatValue<T>(T Value, string Raw) where T : struct, Enum;
 public sealed record SatReply(SatValue<SatCode> Code, SatValue<SatState> State, SatValue<SatCancellability> Cancellability,
     SatValue<SatCancellationStatus> CancellationStatus, string? EfosRaw, string RawText)
 {
-    public bool EfosFlagged => EfosRaw != "200";
+    public bool EfosFlagged => SatContract.IsEfosFlagged(this);
 }
 public abstract record SatStatusResponse(SatReply Reply);
 public sealed record SatAnswered(SatReply Reply) : SatStatusResponse(Reply);
