@@ -41,11 +41,26 @@ public sealed class M0010MatchingRest : Migration
         CREATE FUNCTION cfdi_review_reasons(p_today date)
         RETURNS TABLE(company_id uuid,id uuid,reasons jsonb,requires_review boolean)
         LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+          WITH note_flags AS (
+            SELECT invoice.company_id,invoice.id,
+              bool_or(note.sat_status='cancelled') AS cancelled_note,
+              bool_or(note.currency<>invoice.currency) AS currency_mismatch
+            FROM public.cfdi_relation r
+            JOIN public.cfdi note ON note.company_id=r.company_id AND note.id=r.cfdi_id
+            JOIN public.cfdi invoice ON invoice.company_id=r.company_id AND invoice.uuid=r.related_uuid
+            WHERE r.relation_code='01' AND note.type='E' AND note.direction='issued' AND invoice.direction='issued'
+            GROUP BY invoice.company_id,invoice.id
+          )
           SELECT p.company_id,p.id,
             CASE WHEN p.credit_notes>0 AND p.payable=0 THEN jsonb_build_array(jsonb_build_object('code','fully credited','requiresReview',false)) ELSE '[]'::jsonb END
-            || CASE WHEN c.is_global OR upper(c.receiver_rfc)='XAXX010101000' THEN jsonb_build_array(jsonb_build_object('code','global invoice','requiresReview',false)) ELSE '[]'::jsonb END,
-            false
+            || CASE WHEN c.is_global OR upper(c.receiver_rfc)='XAXX010101000' THEN jsonb_build_array(jsonb_build_object('code','global invoice','requiresReview',false)) ELSE '[]'::jsonb END
+            || CASE WHEN s.reconciled_amount>p.payable THEN jsonb_build_array(jsonb_build_object('code','overpaid','requiresReview',true)) ELSE '[]'::jsonb END
+            || CASE WHEN coalesce(n.cancelled_note,false) THEN jsonb_build_array(jsonb_build_object('code','cancelled credit note','requiresReview',true)) ELSE '[]'::jsonb END
+            || CASE WHEN coalesce(n.currency_mismatch,false) THEN jsonb_build_array(jsonb_build_object('code','credit note in a different currency','requiresReview',true)) ELSE '[]'::jsonb END,
+            s.reconciled_amount>p.payable OR coalesce(n.cancelled_note,false) OR coalesce(n.currency_mismatch,false)
           FROM public.cfdi_payable() p JOIN public.cfdi c ON c.company_id=p.company_id AND c.id=p.id
+          JOIN public.cfdi_state() s ON s.company_id=p.company_id AND s.id=p.id
+          LEFT JOIN note_flags n ON n.company_id=p.company_id AND n.id=p.id
         $$;
         REVOKE ALL ON FUNCTION cfdi_payable(),cfdi_review_reasons(date) FROM PUBLIC;
         GRANT EXECUTE ON FUNCTION cfdi_payable(),cfdi_review_reasons(date) TO cfdi_app;
