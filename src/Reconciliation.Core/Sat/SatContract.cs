@@ -43,8 +43,10 @@ public static partial class SatContract
             throw new ArgumentException("SAT request requires a UUID and valid RFCs.");
         if (total < 0 || total > 9999999999999999.99m || decimal.Round(total, 6) != total)
             throw new ArgumentOutOfRangeException(nameof(total), "SAT total must be nonnegative, within numeric(18,2) magnitude and have at most six fractional digits.");
-        return $"https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id={uuid:D}&re={Uri.EscapeDataString(issuerRfc)}&rr={Uri.EscapeDataString(receiverRfc)}&tt={total.ToString("0000000000.000000", CultureInfo.InvariantCulture)}";
+        return $"https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id={uuid:D}&re={Uri.EscapeDataString(issuerRfc)}&rr={Uri.EscapeDataString(receiverRfc)}&tt={FormatTotal(total)}";
     }
+
+    internal static string FormatTotal(decimal total) => total.ToString("0000000000.000000", CultureInfo.InvariantCulture);
 
     public static XDocument ReadXml(string xml)
     {
@@ -64,10 +66,13 @@ public static partial class SatContract
             ? document.Root.Element(Soap + "Body")?.Element(Service + "ConsultaResponse")?.Element(Service + "ConsultaResult") : null;
         if (result is null) throw new SatPermanentException("SAT SOAP response is missing ConsultaResult.");
         string Value(string name) => result.Element(Acuse + name)?.Value ?? "";
-        var code = Map(Codes, Value("CodigoEstatus"));
-        var reply = new SatReply(code, Map(States, Value("Estado")), Map(Cancellabilities, Value("EsCancelable")),
-            Map(Cancellations, Value("EstatusCancelacion")), result.Element(Acuse + "ValidacionEFOS")?.Value, xml);
-        return code.Value switch
+        return FromFields(Value("CodigoEstatus"), Value("Estado"), Value("EsCancelable"), Value("EstatusCancelacion"), result.Element(Acuse + "ValidacionEFOS")?.Value, xml);
+    }
+
+    internal static SatStatusResponse FromFields(string code, string state, string cancellability, string cancellation, string? efos, string rawText = "")
+    {
+        var reply = new SatReply(Map(Codes, code), Map(States, state), Map(Cancellabilities, cancellability), Map(Cancellations, cancellation), efos, rawText);
+        return reply.Code.Value switch
         {
             SatCode.InvalidExpression => new SatInvalidExpression(reply),
             SatCode.NotFound => new SatNotFound(reply),

@@ -4,6 +4,8 @@ public sealed class SatOptions
 {
     public string Mode { get; init; } = "stub";
     public string? Endpoint { get; init; }
+    public bool RecordResponses { get; init; }
+    public string RecordingDirectory { get; init; } = ".local/sat-recordings";
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan JobBudget { get; init; } = TimeSpan.FromSeconds(60);
     public int MaxFollowUpGenerations { get; init; } = 20;
