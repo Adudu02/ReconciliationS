@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Trabajo de consulta de estado SAT en tres fases",
+    "output": "sat-status-check-es.html",
+    "viewBox": [
+      1000,
+      708
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Contador",
+      "sublabel": "o una importación"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "solo encola"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "trabajo status_check"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "caché, cfdi, auditoría"
+    },
+    {
+      "id": "sat",
+      "type": "external",
+      "label": "Servicio SAT",
+      "sublabel": "stub, real o replay"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 256,
+      "label": "Solicitud"
+    },
+    {
+      "from": 282,
+      "to": 360,
+      "label": "1 Lectura corta"
+    },
+    {
+      "from": 386,
+      "to": 464,
+      "label": "2 Sin conexión retenida"
+    },
+    {
+      "from": 490,
+      "to": 600,
+      "label": "3 Escritura corta con cerco"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST sat-check",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "encolar status_check",
+      "variant": "default",
+      "y": 202
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "202 jobId",
+      "variant": "return",
+      "y": 234
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "reclamar, cargar CFDI + caché",
+      "variant": "emphasis",
+      "y": 306
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "commit, ids en caché omitidos",
+      "variant": "return",
+      "y": 338
+    },
+    {
+      "from": "worker",
+      "to": "sat",
+      "label": "Consulta (límite de tasa, reintentos)",
+      "variant": "emphasis",
+      "y": 410
+    },
+    {
+      "from": "sat",
+      "to": "worker",
+      "label": "estado, EFOS, cancelación",
+      "variant": "return",
+      "y": 442
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "bloquear, releer, caché + estado",
+      "variant": "emphasis",
+      "y": 514
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "cancelado: cascada + auditoría",
+      "variant": "dashed",
+      "y": 546
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "cerco de lease, commit, terminar",
+      "variant": "default",
+      "y": 578
+    }
+  ]
+}

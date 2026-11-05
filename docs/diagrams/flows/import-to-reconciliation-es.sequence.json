@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "De la carga a los elementos conciliados",
+    "output": "import-to-reconciliation-es.html",
+    "viewBox": [
+      1000,
+      732
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "accountant",
+      "type": "external",
+      "label": "Contador",
+      "sublabel": "cliente"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "JWT + roles"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, trabajos, auditoría"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Worker",
+      "sublabel": "trabajos con lease"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 256,
+      "label": "Aceptar la carga"
+    },
+    {
+      "from": 282,
+      "to": 424,
+      "label": "Importar en segundo plano"
+    },
+    {
+      "from": 450,
+      "to": 624,
+      "label": "Conciliar y leer"
+    }
+  ],
+  "messages": [
+    {
+      "from": "accountant",
+      "to": "api",
+      "label": "POST importaciones (archivos)",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "archivos + trabajo, una transacción",
+      "variant": "emphasis",
+      "y": 202
+    },
+    {
+      "from": "api",
+      "to": "accountant",
+      "label": "202 jobId, uploadId",
+      "variant": "return",
+      "y": 234
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "claim_next_job",
+      "variant": "emphasis",
+      "y": 306
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "analizar, guardar, auditar por archivo",
+      "variant": "default",
+      "y": 338
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "encolar status_check",
+      "variant": "dashed",
+      "y": 370
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "terminar trabajo (con cerco)",
+      "variant": "default",
+      "y": 402
+    },
+    {
+      "from": "accountant",
+      "to": "api",
+      "label": "POST reconciliation-runs",
+      "variant": "emphasis",
+      "y": 474
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "una ejecución activa por empresa",
+      "variant": "default",
+      "y": 506
+    },
+    {
+      "from": "worker",
+      "to": "pg",
+      "label": "motor, vínculos + auditoría",
+      "variant": "emphasis",
+      "y": 538
+    },
+    {
+      "from": "accountant",
+      "to": "api",
+      "label": "GET reporte, movimientos",
+      "variant": "default",
+      "y": 570
+    },
+    {
+      "from": "api",
+      "to": "accountant",
+      "label": "estados derivados",
+      "variant": "return",
+      "y": 602
+    }
+  ]
+}
