@@ -10,6 +10,7 @@
     <ProjectReference Include="..\..\src\Reconciliation.Migrator\Reconciliation.Migrator.csproj" />
     <ProjectReference Include="..\..\src\Reconciliation.Core\Reconciliation.Core.csproj" />
     <ProjectReference Include="..\..\src\Reconciliation.Worker\Reconciliation.Worker.csproj" Aliases="worker" />
+    <ProjectReference Include="..\..\src\Reconciliation.SatStub\Reconciliation.SatStub.csproj" Aliases="stub" />
     <ProjectReference Include="..\..\src\Reconciliation.Api\Reconciliation.Api.csproj" Aliases="global,api" />
   </ItemGroup>
   <ItemGroup>
