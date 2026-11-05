@@ -86,8 +86,7 @@ public sealed class CreditNoteMatchingTests(ApiFixture fixture)
         Assert.Equal(0, matching.GetProperty("payable").GetDecimal());
         Assert.Equal(0, matching.GetProperty("pendingAmount").GetDecimal());
         Assert.Equal(0, matching.GetProperty("uncoveredAmount").GetDecimal());
-        Assert.Contains(matching.GetProperty("reasons").EnumerateArray(), reason => reason.GetString() == "fully credited");
-        Assert.Contains(matching.GetProperty("informationalReasons").EnumerateArray(), reason => reason.GetString() == "fully credited");
+        Assert.False(Assert.Single(matching.GetProperty("reasons").EnumerateArray(), reason => reason.GetProperty("code").GetString() == "fully credited").GetProperty("requiresReview").GetBoolean());
         Assert.False(matching.GetProperty("requiresReview").GetBoolean());
     }
 
