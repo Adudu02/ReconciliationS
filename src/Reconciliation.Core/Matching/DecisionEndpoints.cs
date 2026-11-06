@@ -90,11 +90,12 @@ public static class DecisionEndpoints
             var targetUuid = await connection.ExecuteScalarAsync<Guid>(Command("SELECT uuid FROM cfdi WHERE id=@target", new { target }, transaction, cancellationToken: token));
             await AuditLog.WriteAsync(connection, transaction, companyId, actor, "link.created", null, new { id = newLinkId, state = "reconciled", amount }, token,
                 [new("link", newLinkId.ToString()!), new("movement", link.MovementId.ToString()), new("cfdi", targetUuid.ToString())]);
+        }
+        if (request.Type is "confirm" or "change")
             await connection.ExecuteAsync(Command("""
                 UPDATE link SET state='closed',decided_by=@actor,decided_at=clock_timestamp()
                 WHERE movement_id=@MovementId AND state='suggested' AND review_reason IN ('cancelled invoice','cancelled payment complement') AND id<>@linkId
                 """, new { actor, link.MovementId, linkId }, transaction, cancellationToken: token));
-        }
         var affected = await connection.ExecuteScalarAsync<string>(Command("""
             SELECT coalesce(jsonb_agg(jsonb_build_object('id',l.id,'state',l.state,'amountApplied',l.amount_applied,'cfdiId',l.cfdi_id,
               'movementState',m.state,'invoiceState',c.state)),'[]')::text FROM link l
