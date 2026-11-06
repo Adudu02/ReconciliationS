@@ -63,9 +63,10 @@ public sealed class ClientSessionTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Refresh_transport_or_protocol_failure_clears_the_expired_session(bool malformed)
+    [InlineData("network")]
+    [InlineData("json")]
+    [InlineData("timeout")]
+    public async Task Refresh_transport_or_protocol_failure_clears_the_expired_session(string failure)
     {
         var session = new SessionState();
         using var http = new HttpClient(new WebTestHandler(request =>
@@ -73,11 +74,13 @@ public sealed class ClientSessionTests
             if (request.RequestUri!.AbsolutePath == "/auth/tokens") return WebTestHandler.Json(new SessionTokens("synthetic-expired", 900));
             if (request.RequestUri.AbsolutePath == "/auth/refresh")
             {
-                if (malformed) return new(HttpStatusCode.OK) { Content = new StringContent("{") };
+                if (failure == "json") return new(HttpStatusCode.OK) { Content = new StringContent("{") };
+                if (failure == "timeout") throw new TaskCanceledException("Synthetic timeout");
                 throw new HttpRequestException("Synthetic transport failure");
             }
             return new(HttpStatusCode.Unauthorized);
-        })) { BaseAddress = new Uri("https://app.example.invalid/") };
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
         using var api = new ApiClient(http, session);
         await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
         session.SelectCompany(new(Guid.NewGuid(), "AAA010101AAA", "Synthetic", null, "accountant"));
