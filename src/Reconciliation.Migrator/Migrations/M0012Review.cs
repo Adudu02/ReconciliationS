@@ -26,6 +26,9 @@ public sealed class M0012Review : Migration
 
     public override void Down() => Execute.Sql("""
         DO $$ BEGIN
+          IF EXISTS(SELECT FROM link_decision) THEN
+            RAISE EXCEPTION 'M0012 rollback refused: user decisions require explicit manual export/cleanup';
+          END IF;
           IF EXISTS(SELECT FROM link GROUP BY company_id,movement_id,cfdi_id,payment_cfdi_id HAVING count(*)>1) THEN
             RAISE EXCEPTION 'M0012 rollback refused: historical duplicate link pairs must be preserved';
           END IF;
