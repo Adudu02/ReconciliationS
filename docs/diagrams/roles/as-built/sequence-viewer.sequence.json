@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Viewer: read only",
+    "output": "sequence-viewer.html",
+    "viewBox": [
+      1000,
+      584
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Viewer / auditor",
+      "sublabel": "reads, never changes"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "company transaction"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, audit, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 276,
+      "label": "Read"
+    },
+    {
+      "from": 288,
+      "to": 390,
+      "label": "Audit"
+    },
+    {
+      "from": 402,
+      "to": 476,
+      "label": "Refused"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET overview, review-queue",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "company-scoped reads (RLS)",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET cfdi?complementStatus=overdue",
+      "variant": "default",
+      "y": 226
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "200 lists and summaries",
+      "variant": "return",
+      "y": 254
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET audit-entries?item={uuid}",
+      "variant": "emphasis",
+      "y": 312
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET audit/verification",
+      "variant": "default",
+      "y": 340
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "consistent, or first bad entry",
+      "variant": "return",
+      "y": 368
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST links/{id}/decisions",
+      "variant": "dashed",
+      "y": 426
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "403, nothing changes",
+      "variant": "return",
+      "y": 454
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Cola de revisión, decisión y resumen",
+    "output": "review-decision-es.html",
+    "viewBox": [
+      1000,
+      612
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Contador",
+      "sublabel": "confirma o rechaza"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "transacción de empresa"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, auditoría, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 248,
+      "label": "1 Leer la cola"
+    },
+    {
+      "from": 260,
+      "to": 418,
+      "label": "2 Decidir en una transacción"
+    },
+    {
+      "from": 430,
+      "to": 504,
+      "label": "3 Leer el resultado"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET review-queue",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "página por cursor, lectura por conjuntos",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "sugerencias, razones, confianza",
+      "variant": "return",
+      "y": 226
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST links/{id}/decisions",
+      "variant": "emphasis",
+      "y": 284
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "bloquear enlace, revisar capacidad",
+      "variant": "default",
+      "y": 312
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "enlace + decisión + auditoría",
+      "variant": "emphasis",
+      "y": 340
+    },
+    {
+      "from": "pg",
+      "to": "api",
+      "label": "commit, o 409 con estado",
+      "variant": "return",
+      "y": 368
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "decisión, estados recalculados",
+      "variant": "return",
+      "y": 396
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET cfdi/{id}/summary, overview",
+      "variant": "emphasis",
+      "y": 454
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "% pagado, pendiente, complementos",
+      "variant": "return",
+      "y": 482
+    }
+  ]
+}

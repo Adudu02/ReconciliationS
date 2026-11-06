@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Administrator: settings, members and failed jobs",
+    "output": "sequence-administrator.html",
+    "viewBox": [
+      1000,
+      614
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Administrator",
+      "sublabel": "manages one company"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "company transaction"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, audit, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 220,
+      "label": "Settings"
+    },
+    {
+      "from": 232,
+      "to": 306,
+      "label": "Members"
+    },
+    {
+      "from": 318,
+      "to": 420,
+      "label": "Failed jobs"
+    },
+    {
+      "from": 432,
+      "to": 506,
+      "label": "Archive"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "PATCH companies/{id}/settings",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "update + old/new audit, one tx",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST members (role, last-admin guard)",
+      "variant": "emphasis",
+      "y": 256
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "200, or 409 last admin",
+      "variant": "return",
+      "y": 284
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET companies/{id}/jobs?status=failed",
+      "variant": "emphasis",
+      "y": 342
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST jobs/{id}/retry",
+      "variant": "emphasis",
+      "y": 370
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "re-queue + audit entry, one tx",
+      "variant": "default",
+      "y": 398
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST companies/{id}/archive",
+      "variant": "emphasis",
+      "y": 456
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "read-only from now on",
+      "variant": "default",
+      "y": 484
+    }
+  ]
+}

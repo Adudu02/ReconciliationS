@@ -6,7 +6,7 @@
 | [`adr/`](adr/) | Architecture decision records. One file per decision; retain dated amendments for compatible extensions; replace changed decisions with a new ADR | Developers, reviewers |
 | [`requirements/`](requirements/) | BRS and SRS in English and Spanish (`.docx` and `.pdf`) | Product, reviewers |
 | [`reference/`](reference/) | `bank-csv-reference-format.md` (read by tests) | Developers |
-| [`diagrams/`](diagrams/) | `database/` (the as-built `*-implemented` ERD, states and security matrix), `roles/` (sequence per role), `architecture/` (as-built container diagram, interactive HTML), `flows/` (request, import-to-reconciliation, matching pipeline and SAT check flows, interactive HTML; `*-es` files are the Spanish versions) and `progress/` (generated status map) | Everyone |
+| [`diagrams/`](diagrams/) | `database/` (the as-built `*-implemented` ERD, states and security matrix), `roles/` (the design-time sequence per role; `roles/as-built/` has the interactive, as-built versions with the real paths, English and `*-es` Spanish), `architecture/` (as-built container diagram, interactive HTML), `flows/` (request, import-to-reconciliation, matching pipeline, SAT check and review-decision flows, interactive HTML; `*-es` files are the Spanish versions) and `progress/` (generated status map) | Everyone |
 
 Related: the scope and task list live in `openspec/changes/mvp-reconciliation-core/` (source of truth).
 

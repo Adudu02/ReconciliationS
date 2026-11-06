@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Operador de plataforma: crear una empresa",
+    "output": "sequence-operator-es.html",
+    "viewBox": [
+      1000,
+      498
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Operador de plataforma",
+      "sublabel": "fuera de toda empresa"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "transacción de empresa"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, auditoría, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 248,
+      "label": "Crear"
+    },
+    {
+      "from": 260,
+      "to": 390,
+      "label": "Rechazos"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST /companies (rfc, admin)",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "empresa, admin, auditoría, una tx",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "201 id de la empresa",
+      "variant": "return",
+      "y": 226
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST /companies (RFC inválido)",
+      "variant": "emphasis",
+      "y": 284
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "400 con la razón",
+      "variant": "return",
+      "y": 312
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "misma llamada por un admin de empresa",
+      "variant": "dashed",
+      "y": 340
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "403 rechazado",
+      "variant": "return",
+      "y": 368
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Administrador: ajustes, miembros y jobs fallidos",
+    "output": "sequence-administrator-es.html",
+    "viewBox": [
+      1000,
+      614
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Administrador",
+      "sublabel": "gestiona una empresa"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "transacción de empresa"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, auditoría, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 220,
+      "label": "Ajustes"
+    },
+    {
+      "from": 232,
+      "to": 306,
+      "label": "Miembros"
+    },
+    {
+      "from": 318,
+      "to": 420,
+      "label": "Jobs fallidos"
+    },
+    {
+      "from": 432,
+      "to": 506,
+      "label": "Archivar"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "PATCH companies/{id}/settings",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "actualizar + auditoría antes/después",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST members (rol, guarda último admin)",
+      "variant": "emphasis",
+      "y": 256
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "200, o 409 último admin",
+      "variant": "return",
+      "y": 284
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET companies/{id}/jobs?status=failed",
+      "variant": "emphasis",
+      "y": 342
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST jobs/{id}/retry",
+      "variant": "emphasis",
+      "y": 370
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "reencolar + auditoría, una tx",
+      "variant": "default",
+      "y": 398
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST companies/{id}/archive",
+      "variant": "emphasis",
+      "y": 456
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "solo lectura desde ahora",
+      "variant": "default",
+      "y": 484
+    }
+  ]
+}
