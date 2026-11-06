@@ -3,28 +3,47 @@
 @implements IDisposable
 
 <a class="skip" href="#main">Skip to content</a>
-<header><a href="/ui/overview">CFDI reconciliation</a><span>DEMO</span></header>
-<main id="main">
-    @if (Loading) { <p role="status">Restoring session…</p> }
-    else if (!Session.IsAuthenticated) { <Login /> }
-    else
+<header class="topbar"><a class="brand" href="/ui/overview">CFDI <span>reconciliation</span></a><span class="demo">DEMO</span>
+    @if (Session.IsAuthenticated)
     {
-        <p>You are signed in.</p>
-        <button @onclick="LogoutAsync">Sign out</button>
+        @if (Session.Company is { } company) { <div class="identity"><strong>@company.Name</strong><span>@company.Role @(company.ArchivedAt is null ? "" : "· Archived · read-only")</span></div><button class="secondary" @onclick="Session.SwitchCompany">Switch company</button> }
+        <button class="secondary" @onclick="LogoutAsync">Sign out</button>
     }
-</main>
+</header>
+@if (ShellError is not null) { <p role="alert" class="error">@ShellError</p> }
+<div class="workspace">
+    @if (Session.IsAuthenticated && Session.Company is not null)
+    {
+        <nav aria-label="Workspace" class="sidebar"><p class="eyebrow">RECONCILIATION</p><NavLink href="/ui/overview">Overview</NavLink><NavLink href="/ui/review">Review queue</NavLink><NavLink href="/ui/invoices">Invoices</NavLink><NavLink href="/ui/movements">Movements</NavLink>@if (Session.CanWrite) { <NavLink href="/ui/imports">Import files</NavLink> }</nav>
+    }
+    <main id="main" @key="Session.Company?.Id">
+        @if (Loading) { <p role="status">Restoring session…</p> }
+        else if (!Session.IsAuthenticated) { <Login /> }
+        else if (Session.Company is null) { <CompanyPicker /> }
+        else
+        {
+            <Router AppAssembly="typeof(App).Assembly"><Found Context="route"><RouteView RouteData="route" /><FocusOnNavigate RouteData="route" Selector="h1" /></Found><NotFound><h1>Page unavailable</h1><p><a href="/ui/overview">Return to the overview</a></p></NotFound></Router>
+        }
+    </main>
+</div>
 <footer>Demo: results have no fiscal or legal validity.</footer>
 
 @code {
     private bool Loading { get; set; } = true;
+    private string? ShellError { get; set; }
     protected override async Task OnInitializedAsync()
     {
         Session.Changed += Refresh;
         try { await Api.RestoreAsync(); }
-        catch (HttpRequestException) { }
+        catch (HttpRequestException) { ShellError = "The service is unavailable. Try signing in again."; }
         finally { Loading = false; }
     }
     private void Refresh() => _ = InvokeAsync(StateHasChanged);
-    private async Task LogoutAsync() => await Api.LogoutAsync();
+    private async Task LogoutAsync()
+    {
+        try { await Api.LogoutAsync(); }
+        catch (ApiProblemException problem) { ShellError = problem.Message; }
+        catch (HttpRequestException) { ShellError = "Sign out could not reach the service. Try again."; }
+    }
     public void Dispose() => Session.Changed -= Refresh;
 }

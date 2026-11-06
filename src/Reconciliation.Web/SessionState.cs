@@ -10,6 +10,7 @@ public sealed class SessionState
     public bool CanWrite => Company is { ArchivedAt: null, Role: "administrator" or "accountant" };
     public event Action? Changed;
     internal void Authenticate(SessionTokens tokens) { AccessToken = tokens.AccessToken; Changed?.Invoke(); }
+    public void SwitchCompany() { Company = null; Changed?.Invoke(); }
     public void SelectCompany(CompanyItem company) { Company = company; Changed?.Invoke(); }
     internal void Clear() { AccessToken = null; Company = null; Changed?.Invoke(); }
 }

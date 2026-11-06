@@ -1,0 +1,6 @@
+@if (Model.Error is not null) { <p class="error" role="alert">@Model.Error</p> }
+@if (Model.Busy) { <p role="status">Loading…</p> }
+
+@code {
+    [Parameter, EditorRequired] public PageViewModel Model { get; set; } = default!;
+}

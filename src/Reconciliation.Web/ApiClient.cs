@@ -24,7 +24,9 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
         using var request = AuthRequest("auth/tokens", JsonContent.Create(new LoginRequest(email, password), Info<LoginRequest>()));
         using var response = await http.SendAsync(request, token);
         await CheckAsync(response, token);
-        session.Authenticate((await response.Content.ReadFromJsonAsync(Info<SessionTokens>(), token))!);
+        var tokens = (await response.Content.ReadFromJsonAsync(Info<SessionTokens>(), token))!;
+        session.Clear();
+        session.Authenticate(tokens);
     }
 
     public async Task<bool> RestoreAsync(CancellationToken token = default)
@@ -112,6 +114,8 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
         }
         throw new ApiProblemException((int)response.StatusCode, message);
     }
+
+    public string CompanyPath(string resource) => $"companies/{session.Company?.Id ?? throw new ApiProblemException(400, "Select a company first.")}/{resource}";
 
     public async Task<T> GetAsync<T>(string path, CancellationToken token = default)
     {
