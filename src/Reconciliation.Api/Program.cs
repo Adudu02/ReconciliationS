@@ -35,6 +35,7 @@ app.Use(async (HttpContext context, RequestDelegate next) =>
     context.Response.Headers["x-api-version"] = ApiDescription.Version;
     await next(context);
 });
+app.UseWebShell();
 app.UseLoginProtection();
 app.UseAuthentication();
 app.UseAuthorization();

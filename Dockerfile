@@ -4,7 +4,8 @@ WORKDIR /src
 COPY Directory.Build.props .editorconfig Reconciliation.slnx ./
 COPY src ./src
 RUN --mount=type=cache,target=/root/.nuget/packages \
-    dotnet publish src/Reconciliation.Api -c Release -o /out/api \
+    dotnet publish src/Reconciliation.Web -c Release -o /out/web \
+ && dotnet publish src/Reconciliation.Api -c Release -o /out/api \
  && dotnet publish src/Reconciliation.Worker -c Release -o /out/worker \
  && dotnet publish src/Reconciliation.Migrator -c Release -o /out/migrator \
  && dotnet publish src/Reconciliation.SatStub -c Release -o /out/sat-stub
@@ -12,6 +13,7 @@ RUN --mount=type=cache,target=/root/.nuget/packages \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS api
 WORKDIR /app
 COPY --from=build /out/api ./
+COPY --from=build /out/web/wwwroot ./wwwroot
 RUN mkdir -p .local/sat-recordings && chown -R $APP_UID .local
 ENV ASPNETCORE_URLS=http://+:3000
 USER $APP_UID

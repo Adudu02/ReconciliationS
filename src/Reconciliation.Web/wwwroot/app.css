@@ -1,0 +1,3 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; color: light-dark(#1c292b, #e4edeb); background: light-dark(#f5f7f4, #142020); }
+body { margin: 0; padding: 2rem; }
+:focus-visible { outline: 3px solid #208477; outline-offset: 3px; }

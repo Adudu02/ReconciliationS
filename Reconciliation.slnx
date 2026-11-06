@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Reconciliation.Web/Reconciliation.Web.csproj" />
     <Project Path="src/Reconciliation.Core/Reconciliation.Core.csproj" />
     <Project Path="src/Reconciliation.Api/Reconciliation.Api.csproj" />
     <Project Path="src/Reconciliation.Worker/Reconciliation.Worker.csproj" />
