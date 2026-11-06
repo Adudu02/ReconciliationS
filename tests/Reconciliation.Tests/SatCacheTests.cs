@@ -18,7 +18,7 @@ public sealed class SatCacheTests
         using var services = new ServiceCollection().AddFluentMigratorCore().ConfigureRunner(r => r.AddPostgres()
             .WithGlobalConnectionString(database.OwnerConnectionString).ScanIn(typeof(M0001CompanyUserMembership).Assembly).For.Migrations()).AddLogging().BuildServiceProvider(validateScopes: false);
         using var scope = services.CreateScope(); var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-        Assert.Equal(11, await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
+        Assert.Equal(12, await database.ScalarAsync<long>("SELECT max(\"Version\") FROM \"VersionInfo\""));
         runner.MigrateDown(10);
         Assert.Contains("run_after=p_now", await database.ScalarAsync<string>("SELECT pg_get_functiondef('claim_next_job(text,integer,timestamptz)'::regprocedure)"), StringComparison.Ordinal);
         Assert.False(await database.ScalarAsync<bool>("SELECT EXISTS(SELECT FROM information_schema.columns WHERE table_name='job' AND column_name='seq')"));

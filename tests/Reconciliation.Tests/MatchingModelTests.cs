@@ -89,6 +89,8 @@ public sealed class MatchingModelTests(ApiFixture fixture)
         await AuditDatabaseTests.SetContextAsync(app, tx, seed.Company);
         await LinkAsync(app, tx, seed.Company, seed.Movement, seed.Invoice, 1, "rejected");
         Assert.Single(await app.QueryAsync<Guid>(new CommandDefinition("SELECT id FROM link", transaction: tx, cancellationToken: TestContext.Current.CancellationToken)));
+        await LinkAsync(app, tx, seed.Company, seed.Movement, seed.Invoice, 1, "suggested");
+        Assert.Equal(2, await app.ExecuteScalarAsync<int>(new CommandDefinition("SELECT count(*) FROM link", transaction: tx, cancellationToken: TestContext.Current.CancellationToken)));
         await tx.SaveAsync("before_failure", TestContext.Current.CancellationToken);
         var duplicate = await Assert.ThrowsAsync<PostgresException>(() => LinkAsync(app, tx, seed.Company, seed.Movement, seed.Invoice, 1, "suggested"));
         Assert.Equal(PostgresErrorCodes.UniqueViolation, duplicate.SqlState);

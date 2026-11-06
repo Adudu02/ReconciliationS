@@ -72,8 +72,8 @@ must have 12 characters for a new account; an existing account keeps its passwor
 `{userId, role}` to the members route, patch settings, and `POST /companies/{companyId}/archive`. There are no DELETE routes.
 
 The hash-chained audit log records company creation, settings, membership changes and archival atomically.
-See the audit API below. Two domain-dependent tenancy scenarios remain explicitly skipped; task 2.4 stays open. Real invoice isolation
-and delete-retention checks now pass, completing 2.6 and 2.9.
+See the audit API below. Real viewer/accountant decision scenarios now pass, completing 2.4. Invoice isolation
+and delete-retention checks also pass (2.6 and 2.9).
 Compose uses synthetic local credentials; replace them and use invite/reset links for a production deployment.
 See [ADR-003](docs/adr/ADR-003-tenant-isolation-rls.md).
 
@@ -237,7 +237,7 @@ Item containment narrows by company index and then filters O(n) company entries:
 runtime use of the proposed non-LEAKPROOF JSON GIN predicate, so the unused GIN index is not installed. Opt-in
 `RUN_AUDIT_BENCHMARKS=1` measures 20k/100k entry lookup and verification using the SDK container (add
 `-e RUN_AUDIT_BENCHMARKS=1` to the Docker example and `--filter FullyQualifiedName~AuditBenchmarks` to dotnet test).
-Task 5.3 remains open for user link decisions in group 8; current imports, matching, classification and SAT changes are audited. Member removal is not implemented.
+Task 5.3 is complete: user link decisions, imports, matching, classification and SAT changes are audited. Member removal is not implemented.
 
 ## Matching core and movement classification
 
@@ -292,7 +292,7 @@ The pure-engine benchmark is opt-in: pass `-e RUN_BENCHMARKS=1` to the README SD
 `--filter 'FullyQualifiedName~MatchingBenchmarks'`. It measures 20,000 unique amounts and dense 5,000-by-5,000 inputs;
 PR-9 in the build log records warmup, samples and medians. CI runs capacity/idempotency/rejection/order properties and a
 small-K brute-force oracle without an environment flag. PR-10 records the 6B before/after medians. User link decisions
-and manual N:M allocation remain group 8. FX stretch 6.11 is deferred until document-level exchange data is available.
+are implemented in 8A; standalone manual N:M creation and reopen remain future work. FX stretch 6.11 is deferred until document-level exchange data is available.
 
 ## Matching fiscal reads and cancellation review
 
@@ -426,3 +426,59 @@ implemented but unvalidated against a real anonymised payment CFDI/live SAT resp
 spellings, empty EFOS and payment-CFDI consultation need that evidence. Tests/CI make no real SAT call. M0011 Down
 removes cache observations and seq, restores the old queue function, and preserves CFDI/link/audit data; stop API/worker
 during rollback. Reapplying backfills only cancelled CFDI as permanent `source=backfill`, explicitly not a fresh answer.
+
+## Review API and summaries (8A)
+
+Any company member may read the review queue, invoice list/summary and overview. Accountants and administrators
+may decide on suggested links; archived companies remain read-only. These examples use synthetic ids and a token
+from the tenancy API. `BASE`, `COMPANY`, `LINK` and `INVOICE` refer to your disposable demo installation.
+
+```bash
+BASE=http://localhost:8080
+# Inspect confidence/criteria/problem reasons, then follow all three nextAfter* cursor fields for the next page.
+curl -sS "$BASE/companies/$COMPANY/review-queue?limit=50" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+
+# Confirm one suggestion. Other types are reject and change; change accepts newCfdiId and/or amountApplied.
+curl -sS -X POST "$BASE/companies/$COMPANY/links/$LINK/decisions" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY" -H 'Content-Type: application/json' \
+  -d '{"type":"confirm","note":"Synthetic demo confirmation"}'
+
+curl -sS "$BASE/companies/$COMPANY/cfdi/$INVOICE/summary" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "$BASE/companies/$COMPANY/cfdi?type=I&direction=issued&complementStatus=overdue&limit=50" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS "$BASE/companies/$COMPANY/overview" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Company-Id: $COMPANY"
+curl -sS -D - "$BASE/openapi.json" # anonymous; info.version and x-api-version are 1.0.0
+```
+
+The decision body is `{type,newCfdiId?,amountApplied?,paymentCfdiId?,paymentRef?,note?}`. Supply both payment references
+or neither; a complement must be non-cancelled type P with a payment document referencing the target invoice, and
+its payment row cannot already belong to another reconciled movement. Notes are limited to 500 characters and stay
+in decision detail. The response returns one decision and every affected link with recomputed states. A competing
+or repeated decision receives 409 with the current link state. Confirm/reject add one audit entry; change records
+old closure and new creation as two entries with one decision row. Change may exceed invoice payable (overpaid
+reason), while movement capacity remains strict. Reopen and standalone manual N:M creation remain future work.
+
+Summary fields include `total`, `creditNotes`, `netPayable`, `paid`, `paidPercentage`, `pending`, `uncovered`,
+`state`, direction/payment method/SAT/cancellation/EFOS, typed reasons and active `links`. Each link includes its
+movement brief, applied amount/state/confidence, payment CFDI/ref, complement status/due date and cash warning.
+An invoice of 11,600.00 with confirmed 5,800.00 and suggested 5,800.00 shows 50% paid, 5,800.00 pending and zero
+uncovered, with both movements. Only confirmed PPD payments generate missing-complement due dates. The missing
+filter includes overdue unreceived complements; overdue narrows to passed deadlines. List cursors use
+`afterIssuedAt` and `afterId`; queue cursors use `afterRank`, `afterDate`, `afterId`. Supply complete cursors;
+maximum page size is 200. Concurrent writes can remove entries between pages. Pending invoices require
+pendingAmount > 0; informational fully credited/global reasons alone do not enter the review queue.
+
+Overview state counts/amounts add to imported type I invoice totals and all movement totals. Its totals note
+includes classified movements and zero-payable invoices in their derived states; amounts use imported gross
+invoice totals and credit plus debit. Alerts count complement overdue, cancellation in process, EFOS and global.
+The overview and OpenAPI repeat: results have no fiscal or legal validity. No UI is included in 8A; task 8.5 is 8B.
+The current paths remain unchanged; a breaking future contract introduces `/v2` alongside the old API.
+
+M0012 uses active-only null-safe pair uniqueness to retain changed-link history. Down refuses if decisions exist
+or historical duplicate pairs prevent restoring the old key. Stop API/workers and explicitly export/clean up
+such data before an operator downgrade; Down never alters audit history. See [ADR-009](docs/adr/ADR-009-review-decisions-and-read-model.md).
+The opt-in `RUN_REVIEW_BENCHMARKS=1` test measures real queue/overview requests at 20k invoices/20k movements and
+writes `review-benchmark.json` beside test binaries, including actual SQL EXPLAIN ANALYZE as cfdi_app with RLS.

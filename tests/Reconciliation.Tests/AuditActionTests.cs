@@ -89,8 +89,26 @@ public sealed class AuditActionTests(ApiFixture fixture)
         Assert.Equal("Synthetic company", await fixture.Database.ScalarAsync<string>("SELECT name FROM company WHERE id=@company", new { company }));
     }
 
-    [Fact(DisplayName = "User confirms a link", Skip = "pending group 8: user link decisions do not exist yet")]
-    public void User_confirms_a_link() { }
+    [Fact(DisplayName = "User confirms a link")]
+    public async Task User_confirms_a_link()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        var link = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = seed.Company });
+        using var response = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "confirm", note = "synthetic private note" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
+        var entry = await owner.QuerySingleAsync<(Guid Actor, DateTime Time, string Items, string Detail)>(new CommandDefinition(
+            "SELECT actor_id,occurred_at,items::text,detail::text FROM audit_entry WHERE company_id=@company AND action='link.confirmed'",
+            new { company = seed.Company }, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(seed.Actor, entry.Actor);
+        Assert.NotEqual(default, entry.Time);
+        var items = JsonSerializer.Deserialize<JsonElement>(entry.Items);
+        Assert.Contains(items.EnumerateArray(), item => item.GetProperty("kind").GetString() == "movement" && item.GetProperty("id").GetGuid() == seed.Movement);
+        Assert.Contains(items.EnumerateArray(), item => item.GetProperty("kind").GetString() == "cfdi" && item.GetProperty("id").GetGuid() == seed.Uuid);
+        Assert.DoesNotContain("synthetic private note", entry.Detail, StringComparison.Ordinal);
+    }
 
     [Fact(DisplayName = "Automatic link")]
     public async Task Automatic_link()

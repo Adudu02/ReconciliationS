@@ -24,7 +24,7 @@ public static class MatchingEngine
         var reservedInvoices = firm.GroupBy(link => link.InvoiceId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var reservedMovements = firm.GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Sum(link => link.Amount));
         var usedPayments = firm.Where(link => link.PaymentRef.HasValue).Select(link => link.PaymentRef!.Value).ToHashSet();
-        var rejected = existing.Where(link => link.State == "rejected" && link.Origin == "user" && !link.Reopened)
+        var rejected = existing.Where(link => link.State is "rejected" or "closed" && link.Origin == "user" && !link.Reopened)
             .Select(link => (link.MovementId, link.InvoiceId)).ToHashSet();
         var blocked = existing.Where(link => !link.Reopened).Select(link => (link.MovementId, link.InvoiceId, link.PaymentCfdiId)).ToHashSet();
         var tombstoneCounts = existing.Where(link => !link.Reopened).GroupBy(link => link.MovementId).ToDictionary(group => group.Key, group => group.Count());

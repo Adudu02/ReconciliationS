@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics;
+using Reconciliation.Api;
 using Reconciliation.Core.Audit;
 using Reconciliation.Core.Common;
 using Reconciliation.Core.Ingestion;
@@ -12,7 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddReconciliationDatabase(builder.Configuration);
 
 builder.Services.AddTenancyAuthentication(builder.Configuration);
-builder.Services.AddOpenApi();
+builder.Services.AddVersionedApiDescription();
 builder.Services.AddProblemDetails();
 builder.Services.AddIngestion(builder.Configuration);
 builder.Services.AddJobs(builder.Configuration);
@@ -29,6 +30,11 @@ app.UseExceptionHandler(handler => handler.Run(async http =>
     if (error is UploadFailedException upload) extensions["uploadId"] = upload.UploadId;
     await Results.Problem(statusCode: status, title: archived ? "Archived company is read-only." : "The request could not be completed.", extensions: extensions).ExecuteAsync(http);
 }));
+app.Use(async (HttpContext context, RequestDelegate next) =>
+{
+    context.Response.Headers["x-api-version"] = ApiDescription.Version;
+    await next(context);
+});
 app.UseLoginProtection();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -39,6 +45,10 @@ app.MapIngestion();
 app.MapJobs();
 app.MapAudit();
 app.MapMovements();
+app.MapDecisions();
+app.MapReview();
+app.MapSummaries();
+app.MapOverview();
 app.MapSat();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();

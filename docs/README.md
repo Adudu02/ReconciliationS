@@ -2,7 +2,7 @@
 
 | Folder | What is inside | Who reads it |
 |---|---|---|
-| [`build-log/`](build-log/) | `BUILD-LOG.md` (English) and `BUILD-LOG-ES.md` (Español): architecture, dictionary of names and variables, and one entry per pull request. `exports/` holds the generated Word/PDF copies | Everyone; start here |
+| [`build-log/`](build-log/) | `BUILD-LOG.md` (English) and `BUILD-LOG-ES.md` (Español): architecture, dictionary of names and variables, and one entry per pull request; `CODEX-SESSION-8A.md` is the detailed log of one Codex session (questions, decisions, code). `exports/` holds the generated Word/PDF copies | Everyone; start here |
 | [`adr/`](adr/) | Architecture decision records. One file per decision; retain dated amendments for compatible extensions; replace changed decisions with a new ADR | Developers, reviewers |
 | [`requirements/`](requirements/) | BRS and SRS in English and Spanish (`.docx` and `.pdf`) | Product, reviewers |
 | [`reference/`](reference/) | `bank-csv-reference-format.md` (read by tests) | Developers |

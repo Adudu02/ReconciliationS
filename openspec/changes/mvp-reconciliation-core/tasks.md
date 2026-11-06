@@ -11,8 +11,7 @@
 - [x] 2.1 Implement the transaction wrapper that sets the company context for API requests and jobs, and verify a query without context returns no rows
 - [x] 2.2 Enable row-level security with policies on every tenant table, using an application role without bypass, and verify a query without a company filter returns only the context company's rows
 - [x] 2.3 Implement authentication (slow salted password hashing, token issuance) and verify an anonymous request to a data endpoint is refused
-- [ ] 2.4 Implement roles (administrator, accountant, viewer) and per-company memberships, and verify the role scenarios of the tenancy spec pass
-  pending: Viewer cannot decide; Different roles (real link decisions) -> group 8.
+- [x] 2.4 Implement roles (administrator, accountant, viewer) and per-company memberships, and verify the role scenarios of the tenancy spec pass
 - [x] 2.5 Write ADR-003 (tenant isolation with row-level security) and verify it compares schema-per-company and database-per-company
 - [x] 2.6 Add the cross-company isolation test suite over every data endpoint and verify it fails when a policy is deliberately removed
 - [x] 2.7 Implement company creation by a platform operator with a validated, immutable RFC, and verify the operator and non-operator scenarios
@@ -48,8 +47,7 @@
 
 - [x] 5.1 Create audit_entry with insert-only privileges and a trigger that rejects update and delete, and verify an update attempt fails and is itself recorded
 - [x] 5.2 Implement hash chaining per company and the verification operation, and verify an altered row is reported at the correct position
-- [ ] 5.3 Record audit entries inside the same transaction as imports, links, decisions and role changes, and verify a rolled-back action leaves no entry
-  - Imports, company administration, membership added/changed, job retry, automatic links, classification and the 6B cancellation domain operation are audited; the SAT status-check job is audited; user decisions (group 8) remain pending.
+- [x] 5.3 Record audit entries inside the same transaction as imports, links, decisions and role changes, and verify a rolled-back action leaves no entry
 - [x] 5.4 Implement filtered read access for viewers and auditors and verify company isolation of the log
 
 ## 6. Matching engine (days 4–6)
@@ -86,13 +84,13 @@
 
 ## 8. Review, summaries and API (days 6–8)
 
-- [ ] 8.1 Implement the review queue endpoint with ordering and reasons and verify the queue scenario passes
-- [ ] 8.2 Implement confirm, reject and change decisions with audit and verify the three decision scenarios pass
-- [ ] 8.3 Implement invoice summary and company overview endpoints and verify the worked-example summary shows 50% paid and 5,800.00 pending
-- [ ] 8.3b Add complement status to the summary, the complement filter and the overview alerts, and verify the missing, overdue and alert-count scenarios
-- [ ] 8.3c Implement the supported-banks list, the movement classification, the settings and the original-file endpoints from the design catalogue, and verify each is in the OpenAPI document
-- [ ] 8.3d (stretch if time is short) Show the cash payment warning above 2,000.00 and verify the state is unchanged
-- [ ] 8.4 Generate the versioned OpenAPI document with the disclaimer and verify it covers every endpoint
+- [x] 8.1 Implement the review queue endpoint with ordering and reasons and verify the queue scenario passes
+- [x] 8.2 Implement confirm, reject and change decisions with audit and verify the three decision scenarios pass
+- [x] 8.3 Implement invoice summary and company overview endpoints and verify the worked-example summary shows 50% paid and 5,800.00 pending
+- [x] 8.3b Add complement status to the summary, the complement filter and the overview alerts, and verify the missing, overdue and alert-count scenarios
+- [x] 8.3c Implement the supported-banks list, the movement classification, the settings and the original-file endpoints from the design catalogue, and verify each is in the OpenAPI document
+- [x] 8.3d (stretch if time is short) Show the cash payment warning above 2,000.00 and verify the state is unchanged
+- [x] 8.4 Generate the versioned OpenAPI document with the disclaimer and verify it covers every endpoint
 - [ ] 8.5 Build the minimal UI (review queue, invoice summary, overview) using only the API, and verify the worked example can be completed through it
 
 ## 9. Test data tooling (days 3–7, in parallel)
