@@ -39,6 +39,17 @@ public sealed class ClientSessionTests
     }
 
     [Fact]
+    public async Task Fresh_login_discards_the_previous_workspace_selection()
+    {
+        var session = new SessionState();
+        session.SelectCompany(new(Guid.NewGuid(), "AAA010101AAA", "Synthetic old workspace", null, "administrator"));
+        using var http = new HttpClient(new WebTestHandler(_ => WebTestHandler.Json(new SessionTokens("synthetic-new-user", 900)))) { BaseAddress = new Uri("https://app.example.invalid/") };
+        using var api = new ApiClient(http, session);
+        await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
+        Assert.Null(session.Company);
+    }
+
+    [Fact]
     public async Task Failed_refresh_returns_to_login_without_retry_loop()
     {
         var calls = 0;
