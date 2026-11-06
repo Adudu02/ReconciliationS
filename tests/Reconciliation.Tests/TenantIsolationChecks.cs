@@ -156,6 +156,7 @@ internal static class TenantIsolationChecks
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
+            case "GET /companies/{companyId:guid}/overview":
             case "GET /companies/{companyId:guid}/cfdi":
             case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}/summary":
             case "GET /companies/{companyId:guid}/review-queue":

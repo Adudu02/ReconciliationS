@@ -45,7 +45,7 @@ public sealed class OverviewTests(ApiFixture fixture) : IClassFixture<ApiFixture
             INSERT INTO link(company_id,movement_id,cfdi_id,amount_applied,state,origin,criteria,explanation)
               VALUES(@Company,@Movement,@Invoice,100,'reconciled','user','[]','Synthetic overdue');
             INSERT INTO sat_status_cache(company_id,uuid,state,checked_at,expires_at,attempts,source,code_raw,efos_raw)
-              VALUES(@Company,@Uuid,'current','2026-11-02','2026-11-03',1,'stub','S','100')
+              VALUES(@Company,@Uuid,'current','2026-11-02','2026-11-03',1,'stub','S - Comprobante obtenido satisfactoriamente','100')
             """, seed);
         using var client = await fixture.LoginAsync(seed.Email, seed.Company);
         var body = await client.GetFromJsonAsync<JsonElement>($"/companies/{seed.Company}/overview", TestContext.Current.CancellationToken);
