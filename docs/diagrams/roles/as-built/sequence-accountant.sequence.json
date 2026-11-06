@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Accountant: import, reconcile and decide",
+    "output": "sequence-accountant.html",
+    "viewBox": [
+      1000,
+      612
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Accountant",
+      "sublabel": "imports and decides"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "company transaction"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, audit, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 248,
+      "label": "Import"
+    },
+    {
+      "from": 260,
+      "to": 334,
+      "label": "Reconcile"
+    },
+    {
+      "from": 346,
+      "to": 504,
+      "label": "Decide and classify"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST imports/cfdi, bank-statement",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "files + job + audit, one tx",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "202 jobId, uploadId",
+      "variant": "return",
+      "y": 226
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST reconciliation-runs",
+      "variant": "emphasis",
+      "y": 284
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "202 job, or the running one",
+      "variant": "return",
+      "y": 312
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST links/{id}/decisions",
+      "variant": "emphasis",
+      "y": 370
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "decision + audit, one tx",
+      "variant": "default",
+      "y": 398
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "PATCH movements/{id} (classify)",
+      "variant": "default",
+      "y": 426
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST cfdi/{uuid}/sat-check",
+      "variant": "dashed",
+      "y": 454
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET cfdi, cfdi/{id}/summary",
+      "variant": "default",
+      "y": 482
+    }
+  ]
+}

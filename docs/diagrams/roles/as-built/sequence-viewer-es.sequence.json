@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Lector: solo lectura",
+    "output": "sequence-viewer-es.html",
+    "viewBox": [
+      1000,
+      584
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Lector / auditor",
+      "sublabel": "lee, nunca cambia"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "transacción de empresa"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, auditoría, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 276,
+      "label": "Leer"
+    },
+    {
+      "from": 288,
+      "to": 390,
+      "label": "Auditoría"
+    },
+    {
+      "from": 402,
+      "to": 476,
+      "label": "Rechazos"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET overview, review-queue",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "lecturas de la empresa (RLS)",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET cfdi?complementStatus=overdue",
+      "variant": "default",
+      "y": 226
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "200 listas y resúmenes",
+      "variant": "return",
+      "y": 254
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET audit-entries?item={uuid}",
+      "variant": "emphasis",
+      "y": 312
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "GET audit/verification",
+      "variant": "default",
+      "y": 340
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "consistente, o primera entrada mala",
+      "variant": "return",
+      "y": 368
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST links/{id}/decisions",
+      "variant": "dashed",
+      "y": 426
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "403, nada cambia",
+      "variant": "return",
+      "y": 454
+    }
+  ]
+}

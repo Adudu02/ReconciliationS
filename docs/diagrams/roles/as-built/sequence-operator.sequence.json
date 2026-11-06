@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Platform operator: create a company",
+    "output": "sequence-operator.html",
+    "viewBox": [
+      1000,
+      498
+    ],
+    "quality_profile": "showcase",
+    "column_fit": "spread"
+  },
+  "participants": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Platform operator",
+      "sublabel": "outside any company"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "API",
+      "sublabel": "company transaction"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "RLS, audit, jobs"
+    }
+  ],
+  "segments": [
+    {
+      "from": 146,
+      "to": 248,
+      "label": "Create"
+    },
+    {
+      "from": 260,
+      "to": 390,
+      "label": "Refused"
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST /companies (rfc, admin)",
+      "variant": "emphasis",
+      "y": 170
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "label": "company, admin, audit, one tx",
+      "variant": "default",
+      "y": 198
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "201 company id",
+      "variant": "return",
+      "y": 226
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "POST /companies (bad RFC)",
+      "variant": "emphasis",
+      "y": 284
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "400 with the reason",
+      "variant": "return",
+      "y": 312
+    },
+    {
+      "from": "user",
+      "to": "api",
+      "label": "same call by a company admin",
+      "variant": "dashed",
+      "y": 340
+    },
+    {
+      "from": "api",
+      "to": "user",
+      "label": "403 refused",
+      "variant": "return",
+      "y": 368
+    }
+  ]
+}
