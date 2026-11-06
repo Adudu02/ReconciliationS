@@ -89,8 +89,8 @@ public sealed class AuditActionTests(ApiFixture fixture)
         Assert.Equal("Synthetic company", await fixture.Database.ScalarAsync<string>("SELECT name FROM company WHERE id=@company", new { company }));
     }
 
-    [Fact(DisplayName = "User confirms a link", Skip = "pending group 8: user link decisions do not exist yet")]
-    public void User_confirms_a_link() { }
+    [Fact(DisplayName = "User confirms a link")]
+    public void User_confirms_a_link() => Assert.Fail("Replace with real user decision audit scenario.");
 
     [Fact(DisplayName = "Automatic link")]
     public async Task Automatic_link()

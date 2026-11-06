@@ -11,10 +11,10 @@ namespace Reconciliation.Tests;
 [Collection("tenancy-api")]
 public sealed class PendingTenancyScenarios(ApiFixture fixture)
 {
-    [Fact(DisplayName = "Viewer cannot decide", Skip = "pending group 8: confirm a real suggested link and verify nothing changes")]
+    [Fact(DisplayName = "Viewer cannot decide")]
     public void Viewer_cannot_decide_on_real_link() => Assert.Fail("Replace with real link-decision scenario.");
 
-    [Fact(DisplayName = "Different roles", Skip = "pending group 8: successful link decision in A and read-only access in B")]
+    [Fact(DisplayName = "Different roles")]
     public void Different_roles_on_real_links() => Assert.Fail("Replace with real link-decision scenario.");
     [Fact(DisplayName = "Cross-company attempt in the test suite")]
     public async Task Real_invoice_cross_company_read()
