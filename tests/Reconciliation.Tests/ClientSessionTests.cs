@@ -62,6 +62,31 @@ public sealed class ClientSessionTests
         Assert.False(session.IsAuthenticated);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Refresh_transport_or_protocol_failure_clears_the_expired_session(bool malformed)
+    {
+        var session = new SessionState();
+        using var http = new HttpClient(new WebTestHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/auth/tokens") return WebTestHandler.Json(new SessionTokens("synthetic-expired", 900));
+            if (request.RequestUri.AbsolutePath == "/auth/refresh")
+            {
+                if (malformed) return new(HttpStatusCode.OK) { Content = new StringContent("{") };
+                throw new HttpRequestException("Synthetic transport failure");
+            }
+            return new(HttpStatusCode.Unauthorized);
+        })) { BaseAddress = new Uri("https://app.example.invalid/") };
+        using var api = new ApiClient(http, session);
+        await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
+        session.SelectCompany(new(Guid.NewGuid(), "AAA010101AAA", "Synthetic", null, "accountant"));
+        var error = await Assert.ThrowsAsync<ApiProblemException>(() => api.GetAsync<CompanyItem[]>("companies", TestContext.Current.CancellationToken));
+        Assert.Equal(401, error.Status);
+        Assert.False(session.IsAuthenticated);
+        Assert.Null(session.Company);
+    }
+
     [Fact]
     public async Task Page_reload_silently_restores_only_access_token_via_cookie_transport()
     {
