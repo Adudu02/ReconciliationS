@@ -50,7 +50,8 @@ public sealed class WorkspaceComponentTests
         var totals = new ResourceTotals(2, 11600, [new("reconciled", 1, 5800), new("suggested", 1, 5800)]);
         var http = new HttpClient(new WebTestHandler(request => request.RequestUri!.AbsolutePath == "/companies"
             ? WebTestHandler.Json(companies)
-            : WebTestHandler.Json(new OverviewResponse(totals, totals, new(2, 0, 1, 0), "Demo: results have no fiscal or legal validity", "Classified movements remain in totals.")))) { BaseAddress = new Uri("https://app.example.invalid/") };
+            : WebTestHandler.Json(new OverviewResponse(totals, totals, new(2, 0, 1, 0), "Demo: results have no fiscal or legal validity", "Classified movements remain in totals."))))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
         context.Services.AddSingleton(state);
         context.Services.AddSingleton(http);
         context.Services.AddSingleton<ApiClient>();

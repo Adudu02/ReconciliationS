@@ -54,6 +54,7 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
     private static HttpRequestMessage AuthRequest(string path, HttpContent? content = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = content };
+        request.Headers.Accept.ParseAdd("application/json, application/problem+json");
         request.Headers.Add("X-Refresh-Transport", "cookie");
         request.SetBrowserRequestCredentials(BrowserRequestCredentials.Include);
         return request;
@@ -86,6 +87,7 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
 
     private void Authorize(HttpRequestMessage request)
     {
+        if (request.Headers.Accept.Count == 0) request.Headers.Accept.ParseAdd("application/json, application/problem+json");
         request.Headers.Authorization = session.AccessToken is { } access ? new AuthenticationHeaderValue("Bearer", access) : null;
         if (session.Company is { } company && request.RequestUri!.OriginalString.StartsWith("companies/", StringComparison.Ordinal))
             request.Headers.Add("X-Company-Id", company.Id.ToString());
@@ -113,6 +115,12 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
             catch (JsonException) { }
         }
         throw new ApiProblemException((int)response.StatusCode, message);
+    }
+
+    public async Task<DecisionResponse> DecideAsync(Guid linkId, DecisionRequest decision, CancellationToken token = default)
+    {
+        using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, CompanyPath($"links/{linkId}/decisions")) { Content = JsonContent.Create(decision, Info<DecisionRequest>()) }, token);
+        return (await response.Content.ReadFromJsonAsync(Info<DecisionResponse>(), token))!;
     }
 
     public string CompanyPath(string resource) => $"companies/{session.Company?.Id ?? throw new ApiProblemException(400, "Select a company first.")}/{resource}";

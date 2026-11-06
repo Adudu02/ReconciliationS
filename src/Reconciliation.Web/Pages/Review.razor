@@ -1,0 +1,53 @@
+@page "/ui/review"
+@inject ReviewQueueViewModel Model
+@inject SessionState Session
+
+<section>
+    <p class="eyebrow">HUMAN REVIEW</p><h1>Review queue</h1>
+    <p>Suggestions are ordered by confidence. Invoice flags follow the suggested links.</p>
+    <button class="secondary" disabled="@Model.Busy" @onclick="Model.LoadAsync">Refresh queue</button>
+    <PageStatus Model="Model" />
+    @if (!Session.CanWrite) { <p class="muted">Read-only workspace. An accountant or administrator can decide on suggestions in an active company.</p> }
+    @foreach (var entry in Model.Entries)
+    {
+        <article class="panel review-item" @key="entry.Id">
+            <p class="eyebrow">@(entry.Kind == "link" ? "SUGGESTION" : "INVOICE FLAG") <span class="badge suggested">@entry.Confidence</span></p>
+            <h2>@(entry.Movement?.Description ?? "Invoice requires review")</h2>
+            <p>@entry.Movement?.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">Invoice summary</a></p>
+            <p class="muted">Invoice @entry.Invoice.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Invoice.Amount) · @entry.Invoice.IssuerRfc → @entry.Invoice.ReceiverRfc</p>
+            <p>@entry.Explanation</p>
+            <ul>@foreach (var criterion in entry.Criteria) { <li>@Criterion(criterion)</li> }</ul>
+            <ul>@foreach (var reason in entry.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@reason.Code</li> }</ul>
+            @if (Session.CanWrite && entry.LinkId is { } linkId)
+            {
+                <div class="actions"><button data-decision="confirm" disabled="@Model.Busy" @onclick="() => Model.DecideAsync(linkId, ConfirmRequest)">Confirm</button><button class="secondary" data-decision="reject" disabled="@Model.Busy" @onclick="() => Model.DecideAsync(linkId, RejectRequest)">Reject</button><button class="secondary" data-decision="change" disabled="@Model.Busy" @onclick="() => BeginChangeAsync(linkId, entry.CfdiId)">Change</button></div>
+                @if (Changing == linkId)
+                {
+                    <form @onsubmit="() => SaveChangeAsync(linkId)" @onsubmit:preventDefault>
+                        <label for="target">Target invoice</label><select id="target" required @bind="Target"><option value="">Choose an invoice</option>@foreach (var invoice in Model.Invoices) { <option value="@invoice.Id">@invoice.Uuid · @Display.Money(invoice.Total)</option> }</select>
+                        @if (Model.HasMoreInvoices) { <button type="button" class="secondary" @onclick="() => Model.LoadInvoicesAsync(true)">Load more invoices</button> }
+                        <label for="amount">Amount applied</label><input id="amount" type="number" min="0.01" step="0.01" required @bind="Amount" />
+                        <label for="note">Decision note (optional)</label><textarea id="note" maxlength="500" @bind="Note"></textarea>
+                        <button type="submit" disabled="@Model.Busy">Save change</button><button type="button" class="secondary" @onclick="() => Changing = null">Cancel change</button>
+                    </form>
+                }
+            }
+        </article>
+    }
+    @if (!Model.Busy && Model.Error is null && Model.Entries.Length == 0) { <p>No suggestions or invoice flags need review.</p> }
+    @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">Load more entries</button> }
+</section>
+
+@code {
+    private static readonly DecisionRequest ConfirmRequest = new("confirm");
+    private static readonly DecisionRequest RejectRequest = new("reject");
+    private Guid? Changing { get; set; }
+    private Guid? Target { get; set; }
+    private decimal Amount { get; set; }
+    private string? Note { get; set; }
+    protected override Task OnInitializedAsync() => Model.LoadAsync();
+    private async Task BeginChangeAsync(Guid linkId, Guid invoiceId) { Changing = linkId; Target = invoiceId; Amount = 0; Note = null; await Model.LoadInvoicesAsync(); }
+    private async Task SaveChangeAsync(Guid linkId) { await Model.DecideAsync(linkId, new("change", Target, Amount, Note: Note)); if (Model.Error is null) Changing = null; }
+    private static string Criterion(System.Text.Json.JsonElement criterion) => criterion.ValueKind == System.Text.Json.JsonValueKind.Object && criterion.TryGetProperty("code", out var code)
+        ? code.GetString() + (criterion.TryGetProperty("detail", out var detail) ? ": " + detail.GetString() : "") : criterion.ToString();
+}

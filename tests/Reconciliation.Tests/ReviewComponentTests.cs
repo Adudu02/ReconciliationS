@@ -65,7 +65,8 @@ public sealed class ReviewComponentTests
                     return WebTestHandler.Json(new DecisionResponse(new(Guid.NewGuid(), type, Guid.NewGuid(), DateTime.UtcNow), []));
                 }
                 return WebTestHandler.Json(new ReviewPage([], null, null, null));
-            })) { BaseAddress = new Uri("https://app.example.invalid/") };
+            }))
+            { BaseAddress = new Uri("https://app.example.invalid/") };
             var session = new SessionState();
             session.SelectCompany(new(Guid.NewGuid(), "AAA010101AAA", "Synthetic", null, "accountant"));
             using var api = new ApiClient(http, session);

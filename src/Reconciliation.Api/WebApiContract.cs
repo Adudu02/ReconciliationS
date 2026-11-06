@@ -8,6 +8,7 @@ internal static class WebApiContract
 {
     private sealed record UploadContract(IFormFile[] Files, string? Bank, string? AccountReference);
     private sealed record Operation(Type? Response, Type? Request = null, string Status = "200", string ContentType = "application/json");
+    private static readonly string[] ErrorStatuses = ["400", "401", "403", "404", "409"];
     private static readonly Dictionary<string, Operation> Operations = new(StringComparer.Ordinal)
     {
         ["POST auth/tokens"] = new(typeof(SessionTokens), typeof(LoginRequest)),
@@ -51,6 +52,11 @@ internal static class WebApiContract
             };
             if (contract.Status == "202" && context.Description.RelativePath!.EndsWith("reconciliation-runs", StringComparison.Ordinal))
                 operation.Responses["200"] = operation.Responses[contract.Status];
+        }
+        foreach (var statusCode in ErrorStatuses)
+        {
+            operation.Responses ??= new OpenApiResponses();
+            operation.Responses[statusCode] = new OpenApiResponse { Description = "Clients requesting application/problem+json receive problem details with actionable reason/state extensions. Legacy error bodies are preserved for other clients.", Content = new Dictionary<string, OpenApiMediaType> { ["application/problem+json"] = new() { Schema = await ReferenceAsync(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)) } } };
         }
         if (contract.Request is not null)
             operation.RequestBody = new OpenApiRequestBody

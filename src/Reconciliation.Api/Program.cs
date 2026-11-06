@@ -36,21 +36,27 @@ app.Use(async (HttpContext context, RequestDelegate next) =>
     await next(context);
 });
 app.UseWebShell();
+app.UseStatusCodePages(async status =>
+{
+    if (ProblemResults.Requested(status.HttpContext))
+        await Results.Problem(statusCode: status.HttpContext.Response.StatusCode).ExecuteAsync(status.HttpContext);
+});
 app.UseLoginProtection();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapAuthentication();
-app.MapCompanies();
-app.MapCompanyManagement();
-app.MapIngestion();
-app.MapJobs();
-app.MapAudit();
-app.MapMovements();
-app.MapDecisions();
-app.MapReview();
-app.MapSummaries();
-app.MapOverview();
-app.MapSat();
+var api = app.MapGroup("").AddEndpointFilter<ProblemResults>();
+api.MapAuthentication();
+api.MapCompanies();
+api.MapCompanyManagement();
+api.MapIngestion();
+api.MapJobs();
+api.MapAudit();
+api.MapMovements();
+api.MapDecisions();
+api.MapReview();
+api.MapSummaries();
+api.MapOverview();
+api.MapSat();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();
 app.Run();

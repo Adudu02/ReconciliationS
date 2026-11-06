@@ -7,4 +7,5 @@ builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.H
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.WorkspaceViewModel>();
+builder.Services.AddTransient<Reconciliation.Web.ViewModels.ReviewQueueViewModel>();
 await builder.Build().RunAsync();

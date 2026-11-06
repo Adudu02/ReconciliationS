@@ -13,6 +13,7 @@ public sealed class WebProblemTests(ApiFixture fixture)
     {
         var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
         using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json, application/problem+json");
         await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
         var queue = await client.GetFromJsonAsync<ReviewPage>($"/companies/{seed.Company}/review-queue", TestContext.Current.CancellationToken);
         var link = Assert.Single(queue!.Entries, row => row.Kind == "link").LinkId;
