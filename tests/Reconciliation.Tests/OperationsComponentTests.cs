@@ -78,7 +78,8 @@ public sealed class OperationsComponentTests
             if (request.RequestUri.AbsolutePath.Contains("/jobs/", StringComparison.Ordinal)) return WebTestHandler.Json(Job(job, session.Company!.Id, "succeeded", 2));
             if (request.RequestUri.AbsolutePath.EndsWith("reconciliation-runs", StringComparison.Ordinal)) return WebTestHandler.Json(new RunReceipt(job, "queued"));
             return WebTestHandler.Json(new ImportReportResponse(upload, [new(Guid.NewGuid(), "synthetic.csv", "imported", null, null, 2, 0)]));
-        })) { BaseAddress = new Uri("https://app.example.invalid/") };
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
         using var api = new ApiClient(http, session);
         using var jobs = new JobProgressViewModel(api, new ManualTimeProvider());
         var imports = new ImportViewModel(api, jobs, session) { Kind = "bank-statement", Bank = "reference", AccountReference = "Synthetic-account" };
@@ -122,7 +123,8 @@ public sealed class OperationsComponentTests
                 return new(HttpStatusCode.NoContent);
             }
             return WebTestHandler.Json(new MovementPage([], null, null));
-        })) { BaseAddress = new Uri("https://app.example.invalid/") };
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
         using var api = new ApiClient(http, session);
         var model = new MovementsViewModel(api, session);
         await model.ClassifyAsync(Guid.NewGuid(), "loan", "Synthetic classification");

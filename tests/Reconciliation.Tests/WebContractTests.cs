@@ -18,7 +18,7 @@ public sealed class WebContractTests(ApiFixture fixture)
         Assert.True(root.GetProperty("components").TryGetProperty("schemas", out var schemas));
         foreach (var (method, path) in new (string, string)[] {
             ("post", "/auth/tokens"), ("post", "/auth/refresh"), ("post", "/auth/logout"), ("get", "/companies"),
-            ("get", "/companies/{companyId}/overview"), ("get", "/companies/{companyId}/review-queue"),
+            ("get", "/companies/{companyId}/banks"), ("get", "/companies/{companyId}/overview"), ("get", "/companies/{companyId}/review-queue"),
             ("post", "/companies/{companyId}/links/{linkId}/decisions"), ("get", "/companies/{companyId}/cfdi"),
             ("get", "/companies/{companyId}/cfdi/{invoiceId}/summary"), ("post", "/companies/{companyId}/imports/cfdi"),
             ("post", "/companies/{companyId}/imports/bank-statement"), ("get", "/companies/{companyId}/imports/{uploadId}"),

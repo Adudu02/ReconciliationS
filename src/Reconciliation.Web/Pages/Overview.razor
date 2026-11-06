@@ -29,6 +29,7 @@
             <div><dt>Global invoice</dt><dd>@value.Alerts.Global</dd></div>
         </dl></section>
         <p class="muted">@value.TotalsNote</p>
+        <RunReconciliation Completed="Model.LoadOverviewAsync" />
     }
 </section>
 

@@ -13,6 +13,8 @@ public sealed class ApiProblemException(int status, string message) : Exception(
     public int Status { get; } = status;
 }
 
+public sealed record BrowserFileUpload(string Name, byte[] Content);
+
 public sealed class ApiClient(HttpClient http, SessionState session) : IDisposable
 {
     private static readonly string[] ProblemFields = ["detail", "reason", "error", "title"];
@@ -121,6 +123,29 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
     {
         using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, CompanyPath($"links/{linkId}/decisions")) { Content = JsonContent.Create(decision, Info<DecisionRequest>()) }, token);
         return (await response.Content.ReadFromJsonAsync(Info<DecisionResponse>(), token))!;
+    }
+
+    public async Task<RunReceipt> StartRunAsync(CancellationToken token = default)
+    {
+        using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, CompanyPath("reconciliation-runs")), token);
+        return (await response.Content.ReadFromJsonAsync(Info<RunReceipt>(), token))!;
+    }
+
+    public async Task ClassifyAsync(Guid movementId, ClassificationRequest classification, CancellationToken token = default)
+    {
+        using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Patch, CompanyPath($"movements/{movementId}")) { Content = JsonContent.Create(classification, Info<ClassificationRequest>()) }, token);
+    }
+
+    public async Task<ImportReceipt> ImportAsync(string kind, IReadOnlyList<BrowserFileUpload> files, string bank, string accountReference, CancellationToken token = default)
+    {
+        using var response = await SendAsync(() =>
+        {
+            var content = new MultipartFormDataContent();
+            foreach (var file in files) content.Add(new ByteArrayContent(file.Content), "files", file.Name);
+            if (kind == "bank-statement") { content.Add(new StringContent(bank), "bank"); content.Add(new StringContent(accountReference), "accountReference"); }
+            return new HttpRequestMessage(HttpMethod.Post, CompanyPath($"imports/{kind}")) { Content = content };
+        }, token);
+        return (await response.Content.ReadFromJsonAsync(Info<ImportReceipt>(), token))!;
     }
 
     public string CompanyPath(string resource) => $"companies/{session.Company?.Id ?? throw new ApiProblemException(400, "Select a company first.")}/{resource}";

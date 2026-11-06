@@ -1,0 +1,37 @@
+@page "/ui/imports"
+@inject ImportViewModel Model
+@inject SessionState Session
+@implements IDisposable
+
+<section>
+    <p class="eyebrow">DATA INGESTION</p><h1>Import files</h1>
+    @if (!Session.CanWrite) { <p>This workspace is read-only. Accountants and administrators can import into an active company.</p> }
+    else
+    {
+        <p>Upload CFDI 4.0 XML or one bank statement in the supported reference CSV format.</p>
+        <p class="muted">Up to 20 files, 10 MiB each, 20 MiB total. The API may enforce smaller configured limits.</p>
+        <form class="panel" @onsubmit="UploadAsync" @onsubmit:preventDefault>
+            <label for="kind">Import type</label><select id="kind" @bind="Model.Kind" disabled="@Model.Busy"><option value="cfdi">CFDI XML files</option><option value="bank-statement">Bank CSV statement</option></select>
+            @if (Model.Kind == "bank-statement")
+            {
+                <label for="bank">Supported bank format</label><select id="bank" @bind="Model.Bank" disabled="@Model.Busy">@foreach (var bank in Model.Banks) { <option value="@bank">@bank</option> }</select>
+                <label for="account">Account reference</label><input id="account" required maxlength="200" @bind="Model.AccountReference" disabled="@Model.Busy" />
+            }
+            <label for="files">Files</label><InputFile id="files" OnChange="SelectAsync" multiple="@(Model.Kind == "cfdi")" accept="@(Model.Kind == "cfdi" ? ".xml" : ".csv")" disabled="@Model.Busy" />
+            <p class="muted">@Model.Files.Length file(s) selected</p><button type="submit" disabled="@(Model.Busy || Model.Files.Length == 0)">Upload files</button>
+        </form>
+        <PageStatus Model="Model" /><JobProgress Model="Model.Jobs" />
+        @if (Model.Report is { } report)
+        {
+            <section class="panel table-wrap"><h2>Per-file report</h2><table><caption>Upload @report.UploadId</caption><thead><tr><th scope="col">File</th><th scope="col">Status</th><th scope="col">Details</th><th scope="col">Movements</th></tr></thead><tbody>@foreach (var file in report.Files) { <tr><th scope="row">@file.Name</th><td>@file.Status</td><td>@file.Reason</td><td>@file.ImportedMovements imported · @file.DuplicateMovements duplicates</td></tr> }</tbody></table><p><a href="/ui/overview">Open overview to run reconciliation</a></p></section>
+        }
+    }
+</section>
+
+@code {
+    private readonly CancellationTokenSource lifetime = new();
+    protected override Task OnInitializedAsync() => Session.CanWrite ? Model.LoadBanksAsync() : Task.CompletedTask;
+    private Task SelectAsync(InputFileChangeEventArgs args) => Model.SelectFilesAsync(args.GetMultipleFiles(args.FileCount));
+    private Task UploadAsync() => Model.UploadAsync(Model.Files, lifetime.Token);
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); Model.Jobs.Dispose(); }
+}

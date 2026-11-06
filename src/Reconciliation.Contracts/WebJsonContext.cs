@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 namespace Reconciliation.Contracts;
 
 [JsonSourceGenerationOptions(System.Text.Json.JsonSerializerDefaults.Web, RespectRequiredConstructorParameters = true)]
+[JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(LoginRequest))]
 [JsonSerializable(typeof(RefreshBody))]
 [JsonSerializable(typeof(SessionTokens))]

@@ -72,3 +72,7 @@ progress { accent-color: var(--accent); width: 100%; }
 .identifier { overflow-wrap: anywhere; font-size: .85rem; color: var(--muted); }
 .summary-values { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0; }
 .summary-values dd { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+
+.run { margin-top: 1.5rem; }
+input[type=file] { display: block; width: 100%; }
+small { font-size: .75rem; color: var(--muted); overflow-wrap: anywhere; }

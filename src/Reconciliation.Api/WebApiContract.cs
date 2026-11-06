@@ -16,6 +16,7 @@ internal static class WebApiContract
         ["POST auth/refresh"] = new(typeof(SessionTokens), typeof(RefreshBody)),
         ["POST auth/logout"] = new(null, Status: "204"),
         ["GET companies"] = new(typeof(CompanyItem[])),
+        ["GET companies/{companyId}/banks"] = new(typeof(string[])),
         ["GET companies/{companyId}/overview"] = new(typeof(OverviewResponse)),
         ["GET companies/{companyId}/review-queue"] = new(typeof(ReviewPage)),
         ["POST companies/{companyId}/links/{linkId}/decisions"] = new(typeof(DecisionResponse), typeof(DecisionRequest)),

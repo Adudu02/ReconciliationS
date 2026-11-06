@@ -56,6 +56,8 @@ public sealed class WorkspaceComponentTests
         context.Services.AddSingleton(http);
         context.Services.AddSingleton<ApiClient>();
         context.Services.AddTransient<WorkspaceViewModel>();
+        context.Services.AddSingleton(TimeProvider.System);
+        context.Services.AddTransient<JobProgressViewModel>();
         return state;
     }
 }
