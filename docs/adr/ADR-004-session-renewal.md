@@ -44,3 +44,14 @@ limits may affect users behind a shared NAT; configure and monitor them. Body-de
 client storage; cookie transport reduces JavaScript exposure. No per-request session database lookup is added.
 Deploy API and migrator together; rollback restores the previous API and reverts M0006 with Down. Versions and
 existing table/column names stay unchanged. No new NuGet dependency is needed.
+
+## Amendment: browser transport (2026-11-06)
+
+PR 8B adds Session.BrowserRefreshCookie (default false). When enabled, X-Refresh-Transport: cookie
+selects browser transport on login, refresh and logout; each requires an allowed Origin. Without
+the header, JSON API clients retain accessToken, refreshToken and expiresIn. The header alone
+is ignored when disabled. Legacy Session.RefreshCookie retains global precedence and behavior.
+Browser cookies remain HttpOnly, SameSite=Strict and Path=/auth; Secure is set for HTTPS requests.
+Plain HTTP localhost is only a local development convenience; production must use HTTPS.
+All transports share the same rotation, grace, replay revocation and logout logic. Browser access
+tokens live only in memory; the static shell contains no session or tenant data. See ADR-010.

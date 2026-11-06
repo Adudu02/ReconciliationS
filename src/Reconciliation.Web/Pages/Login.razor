@@ -1,0 +1,35 @@
+@page "/ui/login"
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<section class="login">
+    <p class="eyebrow">CFDI / DEMO</p>
+    <h1>Reconciliation for accounting teams</h1>
+    <p>Review invoices and bank movements in one company workspace.</p>
+    <p class="notice">Demo: results have no fiscal or legal validity.</p>
+    <form @onsubmit="SignInAsync" @onsubmit:preventDefault>
+        <h2>Sign in</h2>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required @bind="Email" />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required @bind="Password" />
+        @if (Error is not null) { <p role="alert" class="error">@Error</p> }
+        <button type="submit" disabled="@Busy">@(Busy ? "Signing in…" : "Sign in")</button>
+    </form>
+</section>
+
+@code {
+    private string Email { get; set; } = "";
+    private string Password { get; set; } = "";
+    private string? Error { get; set; }
+    private bool Busy { get; set; }
+    private async Task SignInAsync()
+    {
+        Busy = true;
+        Error = null;
+        try { await Api.LoginAsync(Email, Password); Password = ""; Navigation.NavigateTo("/ui/overview"); }
+        catch (ApiProblemException problem) { Error = problem.Message; }
+        catch (HttpRequestException) { Error = "The service is unavailable. Try again."; }
+        finally { Busy = false; }
+    }
+}

@@ -482,3 +482,12 @@ or historical duplicate pairs prevent restoring the old key. Stop API/workers an
 such data before an operator downgrade; Down never alters audit history. See [ADR-009](docs/adr/ADR-009-review-decisions-and-read-model.md).
 The opt-in `RUN_REVIEW_BENCHMARKS=1` test measures real queue/overview requests at 20k invoices/20k movements and
 writes `review-benchmark.json` beside test binaries, including actual SQL EXPLAIN ANALYZE as cfdi_app with RLS.
+
+Browser sessions can opt in without changing JSON clients: set `Session__BrowserRefreshCookie=true`
+and `Session__AllowedOrigins__0` to the exact browser origin (for local Compose, `http://localhost:8080`).
+The Web UI sends `X-Refresh-Transport: cookie` for login, refresh and logout. Each requires an allowed
+Origin, returns no JSON refresh token, and uses the existing rotation service. Access tokens stay
+in memory; reload silently renews with the HttpOnly, SameSite=Strict, Path=/auth refresh cookie.
+Legacy `Session__RefreshCookie=true` wins globally; leave it false to preserve JSON clients.
+Cookies are Secure on HTTPS. Plain HTTP localhost is a local development convenience; production
+must use HTTPS. The browser adds Origin automatically; scripts using cookie transport must supply it.

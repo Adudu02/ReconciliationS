@@ -30,6 +30,7 @@ public sealed class BrowserSessionTests(ApiFixture fixture)
         Assert.False(body.TryGetProperty("refreshToken", out _));
         var cookie = Assert.Single(login.Headers.GetValues("Set-Cookie"));
         Assert.Contains("httponly", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("path=/auth", cookie, StringComparison.OrdinalIgnoreCase);
         host.Client.DefaultRequestHeaders.Add("Cookie", cookie.Split(';')[0]);

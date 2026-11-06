@@ -8,6 +8,7 @@ public sealed class SessionOptions
     public int AbsoluteDays { get; init; } = 30;
     public int ReuseGraceSeconds { get; init; } = 10;
     public bool RefreshCookie { get; init; }
+    public bool BrowserRefreshCookie { get; init; }
     public string[] AllowedOrigins { get; init; } = [];
 
     public void Validate(TimeProvider timeProvider)

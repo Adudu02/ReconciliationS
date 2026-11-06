@@ -1,2 +1,30 @@
-<h1>CFDI reconciliation</h1>
-<p>Demo: results have no fiscal or legal validity.</p>
+@inject SessionState Session
+@inject ApiClient Api
+@implements IDisposable
+
+<a class="skip" href="#main">Skip to content</a>
+<header><a href="/ui/overview">CFDI reconciliation</a><span>DEMO</span></header>
+<main id="main">
+    @if (Loading) { <p role="status">Restoring session…</p> }
+    else if (!Session.IsAuthenticated) { <Login /> }
+    else
+    {
+        <p>You are signed in.</p>
+        <button @onclick="LogoutAsync">Sign out</button>
+    }
+</main>
+<footer>Demo: results have no fiscal or legal validity.</footer>
+
+@code {
+    private bool Loading { get; set; } = true;
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += Refresh;
+        try { await Api.RestoreAsync(); }
+        catch (HttpRequestException) { }
+        finally { Loading = false; }
+    }
+    private void Refresh() => _ = InvokeAsync(StateHasChanged);
+    private async Task LogoutAsync() => await Api.LogoutAsync();
+    public void Dispose() => Session.Changed -= Refresh;
+}

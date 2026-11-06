@@ -49,6 +49,8 @@ services:
     environment:
       <<: *sat
       Jobs__MaxAttempts: ${JOBS_MAX_ATTEMPTS:-5}
+      Session__BrowserRefreshCookie: ${Session__BrowserRefreshCookie:-false}
+      Session__AllowedOrigins__0: ${Session__AllowedOrigins__0:-http://localhost:8080}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY to a random secret of at least 32 bytes}
       ConnectionStrings__Default: Host=postgres;Port=5432;Username=cfdi_app;Password=${APP_DB_PASSWORD:-synthetic-local-app-password};Database=cfdi;GSS Encryption Mode=Disable
     volumes:

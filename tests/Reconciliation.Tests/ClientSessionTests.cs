@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Reconciliation.Contracts;
 using Reconciliation.Web;
 using Reconciliation.Web.Pages;
+using TestContext = Xunit.TestContext;
 
 namespace Reconciliation.Tests;
 
@@ -25,7 +26,8 @@ public sealed class ClientSessionTests
             if (++reads == 1) return new(HttpStatusCode.Unauthorized);
             Assert.Equal("synthetic-renewed", request.Headers.Authorization?.Parameter);
             return WebTestHandler.Json(Array.Empty<CompanyItem>());
-        })) { BaseAddress = new Uri("https://app.example.invalid/") };
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
         using var api = new ApiClient(http, session);
         await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
         Assert.True(session.IsAuthenticated);
@@ -43,7 +45,7 @@ public sealed class ClientSessionTests
         var session = new SessionState();
         using var http = new HttpClient(new WebTestHandler(_ => { calls++; return new(HttpStatusCode.Unauthorized); })) { BaseAddress = new Uri("https://app.example.invalid/") };
         using var api = new ApiClient(http, session);
-        var error = await Assert.ThrowsAsync<ApiProblem>(() => api.GetAsync<CompanyItem[]>("companies", TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ApiProblemException>(() => api.GetAsync<CompanyItem[]>("companies", TestContext.Current.CancellationToken));
         Assert.Equal(401, error.Status);
         Assert.Equal(2, calls);
         Assert.False(session.IsAuthenticated);
@@ -59,7 +61,8 @@ public sealed class ClientSessionTests
             Assert.Equal("cookie", Assert.Single(request.Headers.GetValues("X-Refresh-Transport")));
             Assert.Null(request.Content);
             return WebTestHandler.Json(new SessionTokens("synthetic-restored", 900));
-        })) { BaseAddress = new Uri("https://app.example.invalid/") };
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
         using var api = new ApiClient(http, session);
         Assert.True(await api.RestoreAsync(TestContext.Current.CancellationToken));
         Assert.True(session.IsAuthenticated);

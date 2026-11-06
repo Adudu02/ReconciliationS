@@ -84,15 +84,16 @@ public static class Authentication
     {
         routes.MapPost("/auth/tokens", async (TokenRequest credentials, HttpContext httpContext, SessionService sessions, SessionOptions sessionOptions, CancellationToken cancellationToken) =>
         {
+            if (BrowserCookie(httpContext, sessionOptions) && !AllowedOrigin(httpContext, sessionOptions)) return Results.StatusCode(403);
             var pair = await sessions.LoginAsync(credentials, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             return pair is null ? Results.Unauthorized() : DeliverPair(httpContext, pair, sessionOptions);
         }).AllowAnonymous();
         routes.MapPost("/auth/refresh", async (HttpContext httpContext, SessionService sessions, SessionOptions sessionOptions, CancellationToken cancellationToken) =>
         {
             string? refreshToken;
-            if (sessionOptions.RefreshCookie)
+            if (CookieTransport(httpContext, sessionOptions))
             {
-                if (!sessionOptions.AllowedOrigins.Contains(httpContext.Request.Headers.Origin.ToString(), StringComparer.Ordinal))
+                if (!AllowedOrigin(httpContext, sessionOptions))
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
                 refreshToken = httpContext.Request.Cookies[RefreshCookieName];
             }
@@ -107,11 +108,12 @@ public static class Authentication
         }).AllowAnonymous().RequireRateLimiting(LoginProtection.SessionIpPolicy);
         routes.MapPost("/auth/logout", async (HttpContext httpContext, SessionService sessions, SessionOptions sessionOptions, TimeProvider timeProvider, CancellationToken cancellationToken) =>
         {
+            if (BrowserCookie(httpContext, sessionOptions) && !AllowedOrigin(httpContext, sessionOptions)) return Results.StatusCode(403);
             if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
             var status = await sessions.LogoutAsync(userId, sessionId, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
-            if (status == StatusCodes.Status204NoContent && sessionOptions.RefreshCookie)
+            if (status == StatusCodes.Status204NoContent && CookieTransport(httpContext, sessionOptions))
             {
-                var cookie = RefreshCookieOptions();
+                var cookie = RefreshCookieOptions(sessionOptions.RefreshCookie || httpContext.Request.IsHttps);
                 cookie.Expires = timeProvider.GetUtcNow().AddDays(-1);
                 cookie.MaxAge = TimeSpan.Zero;
                 httpContext.Response.Cookies.Append(RefreshCookieName, "", cookie);
@@ -126,17 +128,21 @@ public static class Authentication
         return routes;
     }
 
+    private static bool BrowserCookie(HttpContext context, SessionOptions options) => !options.RefreshCookie && options.BrowserRefreshCookie && context.Request.Headers["X-Refresh-Transport"] == "cookie";
+    private static bool CookieTransport(HttpContext context, SessionOptions options) => options.RefreshCookie || BrowserCookie(context, options);
+    private static bool AllowedOrigin(HttpContext context, SessionOptions options) => options.AllowedOrigins.Contains(context.Request.Headers.Origin.ToString(), StringComparer.Ordinal);
+
     private static IResult DeliverPair(HttpContext httpContext, TokenResponse pair, SessionOptions options)
     {
-        if (!options.RefreshCookie) return Results.Ok(pair);
-        httpContext.Response.Cookies.Append(RefreshCookieName, pair.RefreshToken!, RefreshCookieOptions());
+        if (!CookieTransport(httpContext, options)) return Results.Ok(pair);
+        httpContext.Response.Cookies.Append(RefreshCookieName, pair.RefreshToken!, RefreshCookieOptions(options.RefreshCookie || httpContext.Request.IsHttps));
         return Results.Ok(pair with { RefreshToken = null });
     }
 
-    private static CookieOptions RefreshCookieOptions() => new()
+    private static CookieOptions RefreshCookieOptions(bool secure) => new()
     {
         HttpOnly = true,
-        Secure = true,
+        Secure = secure,
         SameSite = SameSiteMode.Strict,
         Path = "/auth"
     };
