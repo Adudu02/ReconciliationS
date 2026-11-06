@@ -39,6 +39,7 @@ app.MapIngestion();
 app.MapJobs();
 app.MapAudit();
 app.MapMovements();
+app.MapDecisions();
 app.MapSat();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();

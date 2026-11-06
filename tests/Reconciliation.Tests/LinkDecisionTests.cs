@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using Dapper;
+using FluentMigrator.Runner;
+using Microsoft.Extensions.DependencyInjection;
+using Reconciliation.Migrator.Migrations;
 
 namespace Reconciliation.Tests;
 
@@ -14,6 +17,32 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         Assert.True(await owner.ExecuteScalarAsync<bool>("SELECT coalesce((SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid=to_regclass('link_decision')),false)"));
         Assert.True(await owner.ExecuteScalarAsync<bool>("SELECT has_table_privilege('cfdi_app','link_decision','SELECT,INSERT')"));
         Assert.False(await owner.ExecuteScalarAsync<bool>("SELECT has_table_privilege('cfdi_app','link_decision','UPDATE') OR has_table_privilege('cfdi_app','link_decision','DELETE')"));
+    }
+
+    [Fact]
+    public async Task M0012_up_down_up_preserves_imported_data_and_audit()
+    {
+        await using var database = new PostgresFixture();
+        await database.InitializeAsync();
+        using var services = new ServiceCollection().AddFluentMigratorCore().ConfigureRunner(r => r.AddPostgres()
+            .WithGlobalConnectionString(database.OwnerConnectionString).ScanIn(typeof(M0001CompanyUserMembership).Assembly).For.Migrations()).AddLogging().BuildServiceProvider(validateScopes: false);
+        using var scope = services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        await using var owner = await database.OpenOwnerAsync();
+        var company = await owner.ExecuteScalarAsync<Guid>("INSERT INTO company(rfc,name) VALUES('AAA010101AAA','Synthetic review migration') RETURNING id");
+        await owner.ExecuteAsync("SELECT set_config('app.company_id',@value,false); SELECT append_audit_entry(@company,'system',NULL,'synthetic.migration','[]','{\"source\":\"migration-test\"}')", new { value = company.ToString(), company });
+        await owner.ExecuteAsync("""
+            WITH file AS (INSERT INTO import_file(company_id,upload_id,filename,kind,status,reason,sha256)
+              VALUES(@company,gen_random_uuid(),'synthetic.xml','cfdi','rejected','Migration fixture',sha256('synthetic'::bytea)) RETURNING id)
+            INSERT INTO cfdi(company_id,import_file_id,uuid,type,direction,issuer_rfc,receiver_rfc,issued_at,stamped_at,currency,subtotal,total)
+            SELECT @company,id,gen_random_uuid(),'I','issued','AAA010101AAA','BBB010101BBB','2026-10-10','2026-10-10','MXN',100,100 FROM file
+            """, new { company });
+        var hash = await owner.ExecuteScalarAsync<string>("SELECT encode(hash,'hex') FROM audit_entry WHERE company_id=@company", new { company });
+        runner.MigrateDown(11);
+        Assert.Null(await owner.ExecuteScalarAsync<string>("SELECT to_regclass('link_decision')::text"));
+        runner.MigrateUp();
+        Assert.Equal(hash, await owner.ExecuteScalarAsync<string>("SELECT encode(hash,'hex') FROM audit_entry WHERE company_id=@company", new { company }));
+        Assert.Equal(1, await owner.ExecuteScalarAsync<int>("SELECT count(*) FROM cfdi WHERE company_id=@company", new { company }));
     }
 
     [Theory]

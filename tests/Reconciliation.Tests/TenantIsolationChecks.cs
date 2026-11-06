@@ -16,7 +16,7 @@ namespace Reconciliation.Tests;
 
 internal static class TenantIsolationChecks
 {
-    private sealed record Resources(Guid InvoiceId, Guid InvoiceUuid, Guid UploadId, Guid FileId, Guid JobId, Guid MovementId);
+    private sealed record Resources(Guid InvoiceId, Guid InvoiceUuid, Guid UploadId, Guid FileId, Guid JobId, Guid MovementId, Guid LinkId);
     public static async Task<IEnumerable<string>> TenantTablesAsync(NpgsqlConnection owner) =>
         await owner.QueryAsync<string>(new CommandDefinition("""
             SELECT DISTINCT table_name FROM information_schema.columns
@@ -94,7 +94,7 @@ internal static class TenantIsolationChecks
                 }
                 client.DefaultRequestHeaders.Remove("X-Company-Id");
                 client.DefaultRequestHeaders.Add("X-Company-Id", a.ToString());
-                if (route.Contains("{uuid:", StringComparison.Ordinal) || route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal) || route.Contains("{movementId:", StringComparison.Ordinal))
+                if (route.Contains("{linkId:", StringComparison.Ordinal) || route.Contains("{uuid:", StringComparison.Ordinal) || route.Contains("{invoiceId:", StringComparison.Ordinal) || route.Contains("{uploadId:", StringComparison.Ordinal) || route.Contains("{fileId:", StringComparison.Ordinal) || route.Contains("{jobId:", StringComparison.Ordinal) || route.Contains("{movementId:", StringComparison.Ordinal))
                 {
                     using var foreignResource = Request(method, route, a, other.Id, resourceB);
                     using var hidden = await client.SendAsync(foreignResource, TestContext.Current.CancellationToken);
@@ -120,8 +120,12 @@ internal static class TenantIsolationChecks
             INSERT INTO bank_movement(company_id,bank_account_id,movement_date,description,credit,debit,balance)
             SELECT @company,id,'2026-10-10','Synthetic isolation movement',1,0,1 FROM account RETURNING id
             """, new { company }, cancellationToken: TestContext.Current.CancellationToken));
+        var linkId = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("""
+            INSERT INTO link(company_id,movement_id,cfdi_id,amount_applied,state,origin,criteria,explanation)
+            VALUES(@company,@movementId,@invoice,1,'suggested','automatic','[]','Synthetic isolation suggestion') RETURNING id
+            """, new { company, movementId, invoice = report.Files[0].CfdiId!.Value }, cancellationToken: TestContext.Current.CancellationToken));
         var invoiceUuid = await owner.ExecuteScalarAsync<Guid>(new CommandDefinition("SELECT uuid FROM cfdi WHERE id=@id", new { id = report.Files[0].CfdiId!.Value }, cancellationToken: TestContext.Current.CancellationToken));
-        return new Resources(report.Files[0].CfdiId!.Value, invoiceUuid, report.UploadId, report.Files[0].FileId, jobId, movementId);
+        return new Resources(report.Files[0].CfdiId!.Value, invoiceUuid, report.UploadId, report.Files[0].FileId, jobId, movementId, linkId);
     }
 
     private static async Task<string> SnapshotAsync(NpgsqlConnection owner, Guid company)
@@ -147,7 +151,8 @@ internal static class TenantIsolationChecks
             .Replace("{uploadId:guid}", resources.UploadId.ToString(), StringComparison.Ordinal)
             .Replace("{fileId:guid}", resources.FileId.ToString(), StringComparison.Ordinal)
             .Replace("{jobId:guid}", resources.JobId.ToString(), StringComparison.Ordinal)
-            .Replace("{movementId:guid}", resources.MovementId.ToString(), StringComparison.Ordinal));
+            .Replace("{movementId:guid}", resources.MovementId.ToString(), StringComparison.Ordinal)
+            .Replace("{linkId:guid}", resources.LinkId.ToString(), StringComparison.Ordinal));
         // A new endpoint must get a real positive baseline and a cross-company request here.
         switch ($"{method} {route}")
         {
@@ -168,6 +173,9 @@ internal static class TenantIsolationChecks
             case "GET /companies/{companyId:guid}/cfdi/{invoiceId:guid}/xml":
             case "GET /companies/{companyId:guid}/imports/files/{fileId:guid}/original":
             case "POST /test/decisions":
+                break;
+            case "POST /companies/{companyId:guid}/links/{linkId:guid}/decisions":
+                request.Content = JsonContent.Create(new { type = "reject" });
                 break;
             case "POST /companies/{companyId:guid}/imports/cfdi":
                 request.Content = IngestionHttpTests.CfdiBody(SyntheticCfdi.Invoice());
