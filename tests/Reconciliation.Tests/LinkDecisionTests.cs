@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Dapper;
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
+using Reconciliation.Core.Ingestion;
 using Reconciliation.Migrator.Migrations;
 
 namespace Reconciliation.Tests;
@@ -43,6 +44,17 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         runner.MigrateUp();
         Assert.Equal(hash, await owner.ExecuteScalarAsync<string>("SELECT encode(hash,'hex') FROM audit_entry WHERE company_id=@company", new { company }));
         Assert.Equal(1, await owner.ExecuteScalarAsync<int>("SELECT count(*) FROM cfdi WHERE company_id=@company", new { company }));
+        await owner.ExecuteAsync("""
+            WITH account AS (INSERT INTO bank_account(company_id,bank,account_reference) VALUES(@company,'reference','Synthetic rollback') RETURNING id),
+            movement AS (INSERT INTO bank_movement(company_id,bank_account_id,movement_date,description,credit,debit,balance)
+              SELECT @company,id,'2026-10-10','Synthetic rollback',100,0,100 FROM account RETURNING id)
+            INSERT INTO link(company_id,movement_id,cfdi_id,amount_applied,state,origin,criteria,explanation)
+            SELECT @company,m.id,c.id,60,s.state,'user','[]','Synthetic historical decision' FROM movement m,cfdi c,
+              (VALUES('closed'),('reconciled')) s(state) WHERE c.company_id=@company
+            """, new { company });
+        var refusal = Assert.ThrowsAny<Exception>(() => runner.MigrateDown(11));
+        Assert.Contains("historical duplicate link pairs", refusal.ToString(), StringComparison.Ordinal);
+        Assert.Equal(2, await owner.ExecuteScalarAsync<int>("SELECT count(*) FROM link WHERE company_id=@company", new { company }));
     }
 
     [Theory]
@@ -95,6 +107,27 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         using var response = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "change", amountApplied = 60m }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains(state, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Confirm_attaches_both_valid_payment_references()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 5800, 5800);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        var link = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = seed.Company });
+        await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(seed.Company, seed.Actor,
+            [UploadedFile.FromBytes("synthetic-payment.xml", SyntheticCfdi.Payment(seed.Uuid))], TestContext.Current.CancellationToken);
+        var payment = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM cfdi_payment WHERE company_id=@company", new { company = seed.Company });
+        var complement = await fixture.Database.ScalarAsync<Guid>("SELECT cfdi_id FROM cfdi_payment WHERE id=@payment", new { payment });
+        var path = $"/companies/{seed.Company}/links/{link}/decisions";
+        using var invalid = await client.PostAsJsonAsync(path, new { type = "confirm", paymentCfdiId = complement }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var foreign = await client.PostAsJsonAsync(path, new { type = "confirm", paymentCfdiId = Guid.NewGuid(), paymentRef = payment }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        using var valid = await client.PostAsJsonAsync(path, new { type = "confirm", paymentCfdiId = complement, paymentRef = payment }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
+        Assert.Equal(payment, await fixture.Database.ScalarAsync<Guid>("SELECT payment_ref FROM link WHERE id=@link AND payment_cfdi_id=@complement", new { link, complement }));
     }
 
     [Fact]

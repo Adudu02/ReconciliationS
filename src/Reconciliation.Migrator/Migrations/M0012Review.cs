@@ -6,6 +6,8 @@ namespace Reconciliation.Migrator.Migrations;
 public sealed class M0012Review : Migration
 {
     public override void Up() => Execute.Sql($$"""
+        ALTER TABLE link DROP CONSTRAINT link_company_id_movement_id_cfdi_id_payment_cfdi_id_key;
+        CREATE UNIQUE INDEX link_active_pair_idx ON link(company_id,movement_id,cfdi_id,payment_cfdi_id) NULLS NOT DISTINCT WHERE state IN ('suggested','reconciled');
         CREATE TABLE link_decision (
           company_id uuid NOT NULL REFERENCES company(id),id uuid NOT NULL DEFAULT gen_random_uuid(),
           link_id uuid NOT NULL,type text NOT NULL CHECK(type IN ('confirm','reject','change')),
@@ -23,6 +25,14 @@ public sealed class M0012Review : Migration
         """);
 
     public override void Down() => Execute.Sql("""
+        DO $$ BEGIN
+          IF EXISTS(SELECT FROM link GROUP BY company_id,movement_id,cfdi_id,payment_cfdi_id HAVING count(*)>1) THEN
+            RAISE EXCEPTION 'M0012 rollback refused: historical duplicate link pairs must be preserved';
+          END IF;
+        END $$;
+        DROP INDEX link_active_pair_idx;
+        ALTER TABLE link ADD CONSTRAINT link_company_id_movement_id_cfdi_id_payment_cfdi_id_key
+          UNIQUE NULLS NOT DISTINCT(company_id,movement_id,cfdi_id,payment_cfdi_id);
         DROP INDEX cfdi_list_idx,link_review_queue_idx;
         DROP TABLE link_decision;
         """);
