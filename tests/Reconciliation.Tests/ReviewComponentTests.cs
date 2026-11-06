@@ -87,6 +87,6 @@ public sealed class ReviewComponentTests
         context.Services.AddTransient<ReviewQueueViewModel>();
     }
 
-    private static ReviewPage Queue() => new([new("link", Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 2), 11600, "AAA010101AAA", "XEXX010101000"), [JsonSerializer.SerializeToElement(new { code = "amount close", detail = "Synthetic criterion" })], "high", "Synthetic suggestion", [new("complement overdue", true)], Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 10), 5800, "Synthetic payment"))], null, null, null);
+    private static ReviewPage Queue() => new([new("link", Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 2), 11600, "AAA010101AAA", "XEXX010101000"), [new("amount close", 10, "Synthetic criterion")], "high", "Synthetic suggestion", [new("complement overdue", true)], Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 10), 5800, "Synthetic payment"))], null, null, null);
 }
 

@@ -15,7 +15,7 @@ public abstract class PageViewModel
         catch (ApiProblemException problem) { Error = problem.Message; }
         catch (HttpRequestException) { Error = "The service is unavailable. Try again."; }
         catch (JsonException) { Error = "The API response could not be read. Refresh the page."; }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { Error = "The request was cancelled or timed out. Refresh to check the current state."; }
         finally { Busy = false; }
     }
 }

@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Reconciliation.Contracts;
 
 public sealed record LoginRequest(string Email, string Password);
@@ -13,7 +11,8 @@ public sealed record OverviewAlerts(long ComplementOverdue, long CancellationInP
 public sealed record OverviewResponse(ResourceTotals Invoices, ResourceTotals Movements, OverviewAlerts Alerts, string Disclaimer, string TotalsNote);
 public sealed record MovementBrief(DateOnly Date, decimal Amount, string Description);
 public sealed record InvoiceBrief(DateTime Date, decimal Amount, string IssuerRfc, string ReceiverRfc);
-public sealed record ReviewEntry(string Kind, Guid Id, Guid CfdiId, InvoiceBrief Invoice, JsonElement[] Criteria, string? Confidence, string Explanation, ReviewReason[] Reasons, Guid? LinkId = null, Guid? MovementId = null, MovementBrief? Movement = null);
+public sealed record ReviewCriterion(string Code, int Points, string Detail);
+public sealed record ReviewEntry(string Kind, Guid Id, Guid CfdiId, InvoiceBrief Invoice, ReviewCriterion[] Criteria, string? Confidence, string Explanation, ReviewReason[] Reasons, Guid? LinkId = null, Guid? MovementId = null, MovementBrief? Movement = null);
 public sealed record ReviewPage(ReviewEntry[] Entries, int? NextAfterRank, DateOnly? NextAfterDate, Guid? NextAfterId);
 public sealed record DecisionRequest(string Type, Guid? NewCfdiId = null, decimal? AmountApplied = null, Guid? PaymentCfdiId = null, Guid? PaymentRef = null, string? Note = null);
 public sealed record DecisionItem(Guid Id, string Type, Guid DecidedBy, DateTime DecidedAt);

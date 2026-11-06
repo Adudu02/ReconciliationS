@@ -16,7 +16,7 @@
             <p>@entry.Movement?.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">Invoice summary</a></p>
             <p class="muted">Invoice @entry.Invoice.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Invoice.Amount) · @entry.Invoice.IssuerRfc → @entry.Invoice.ReceiverRfc</p>
             <p>@entry.Explanation</p>
-            <ul>@foreach (var criterion in entry.Criteria) { <li>@Criterion(criterion)</li> }</ul>
+            <ul>@foreach (var criterion in entry.Criteria) { <li>@criterion.Code · @criterion.Points points: @criterion.Detail</li> }</ul>
             <ul>@foreach (var reason in entry.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@reason.Code</li> }</ul>
             @if (Session.CanWrite && entry.LinkId is { } linkId)
             {
@@ -48,6 +48,5 @@
     protected override Task OnInitializedAsync() => Model.LoadAsync();
     private async Task BeginChangeAsync(Guid linkId, Guid invoiceId) { Changing = linkId; Target = invoiceId; Amount = 0; Note = null; await Model.LoadInvoicesAsync(); }
     private async Task SaveChangeAsync(Guid linkId) { await Model.DecideAsync(linkId, new("change", Target, Amount, Note: Note)); if (Model.Error is null) Changing = null; }
-    private static string Criterion(System.Text.Json.JsonElement criterion) => criterion.ValueKind == System.Text.Json.JsonValueKind.Object && criterion.TryGetProperty("code", out var code)
-        ? code.GetString() + (criterion.TryGetProperty("detail", out var detail) ? ": " + detail.GetString() : "") : criterion.ToString();
+
 }

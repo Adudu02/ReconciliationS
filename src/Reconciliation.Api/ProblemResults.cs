@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.WebUtilities;
+using Reconciliation.Core.Matching;
 
 namespace Reconciliation.Api;
 
@@ -25,6 +26,8 @@ internal sealed class ProblemResults : IEndpointFilter
                         if (property.Name is "error" or "reason" && property.Value.ValueKind == JsonValueKind.String) title = property.Value.GetString();
                     }
         }
+        if (status.StatusCode == 400 && context.Arguments.OfType<LinkDecisionRequest>().Any())
+            title = "Invalid decision. Use confirm, reject or change; amounts must be positive with at most two decimals, notes at most 500 characters, and payment identifiers provided together. Only change accepts a new invoice or amount.";
         return Results.Problem(statusCode: status.StatusCode, title: title ?? ReasonPhrases.GetReasonPhrase(status.StatusCode.Value), extensions: extensions);
     }
 }
