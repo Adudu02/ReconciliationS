@@ -12,10 +12,49 @@ namespace Reconciliation.Tests;
 public sealed class PendingTenancyScenarios(ApiFixture fixture)
 {
     [Fact(DisplayName = "Viewer cannot decide")]
-    public void Viewer_cannot_decide_on_real_link() => Assert.Fail("Replace with real link-decision scenario.");
+    public async Task Viewer_cannot_decide_on_real_link()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var admin = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, admin, seed.Company);
+        var viewer = await fixture.SeedUserAsync();
+        using var membership = await admin.PostAsJsonAsync($"/companies/{seed.Company}/members", new { userId = viewer.Id, role = "viewer" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, membership.StatusCode);
+        var link = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = seed.Company });
+        var before = await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@company", new { company = seed.Company });
+        using var client = await fixture.LoginAsync(viewer.Email, seed.Company);
+        using var response = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("suggested", await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@link", new { link }));
+        Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link_decision WHERE link_id=@link", new { link }));
+        Assert.Equal(before, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@company", new { company = seed.Company }));
+    }
 
     [Fact(DisplayName = "Different roles")]
-    public void Different_roles_on_real_links() => Assert.Fail("Replace with real link-decision scenario.");
+    public async Task Different_roles_on_real_links()
+    {
+        var a = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        var b = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var adminA = await fixture.LoginAsync(a.Email, a.Company);
+        using var adminB = await fixture.LoginAsync(b.Email, b.Company);
+        await MatchingRunScenario.RunAsync(fixture, adminA, a.Company);
+        await MatchingRunScenario.RunAsync(fixture, adminB, b.Company);
+        var user = await fixture.SeedUserAsync();
+        using var memberA = await adminA.PostAsJsonAsync($"/companies/{a.Company}/members", new { userId = user.Id, role = "accountant" }, TestContext.Current.CancellationToken);
+        using var memberB = await adminB.PostAsJsonAsync($"/companies/{b.Company}/members", new { userId = user.Id, role = "viewer" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, memberA.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, memberB.StatusCode);
+        var linkA = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = a.Company });
+        var linkB = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = b.Company });
+        using var clientA = await fixture.LoginAsync(user.Email, a.Company);
+        using var clientB = await fixture.LoginAsync(user.Email, b.Company);
+        using var accepted = await clientA.PostAsJsonAsync($"/companies/{a.Company}/links/{linkA}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        using var read = await clientB.GetAsync($"/companies/{b.Company}/cfdi/{b.Invoice}", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        using var refused = await clientB.PostAsJsonAsync($"/companies/{b.Company}/links/{linkB}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+    }
     [Fact(DisplayName = "Cross-company attempt in the test suite")]
     public async Task Real_invoice_cross_company_read()
     {
