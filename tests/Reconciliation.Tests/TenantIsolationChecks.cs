@@ -69,6 +69,15 @@ internal static class TenantIsolationChecks
                 Assert.NotNull(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
                 continue;
             }
+            if (route == "/companies" && methods.Contains("GET"))
+            {
+                using var directory = await client.GetAsync("/companies", TestContext.Current.CancellationToken);
+                var rows = (await directory.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).EnumerateArray();
+                Assert.Equal([a], rows.Select(row => row.GetProperty("id").GetGuid()));
+                using var deniedDirectory = await anonymous.GetAsync("/companies", TestContext.Current.CancellationToken);
+                Assert.Equal(HttpStatusCode.Unauthorized, deniedDirectory.StatusCode);
+                continue;
+            }
             Assert.Null(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
             var policy = await AuthorizationPolicy.CombineAsync(policies, endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>());
             Assert.NotNull(policy);

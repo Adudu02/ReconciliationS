@@ -30,7 +30,9 @@ public sealed class CompanyDirectoryTests(ApiFixture fixture)
         Assert.Equal("accountant", Assert.Single(rows, row => row.GetProperty("id").GetGuid() == a).GetProperty("role").GetString());
         Assert.NotEqual(JsonValueKind.Null, Assert.Single(rows, row => row.GetProperty("id").GetGuid() == archived).GetProperty("archivedAt").ValueKind);
         var empty = await fixture.SeedUserAsync();
-        await owner.ExecuteAsync(new CommandDefinition("UPDATE app_user SET is_operator=true WHERE id=@Id", empty, cancellationToken: TestContext.Current.CancellationToken));
+        using (var noMemberships = await fixture.LoginAsync(empty.Email))
+            Assert.Empty((await noMemberships.GetFromJsonAsync<JsonElement>("/companies", TestContext.Current.CancellationToken)).EnumerateArray());
+        await owner.ExecuteAsync(new CommandDefinition("UPDATE app_user SET is_operator=true WHERE id=@Id", new { empty.Id }, cancellationToken: TestContext.Current.CancellationToken));
         using var platform = await fixture.LoginAsync(empty.Email);
         Assert.Empty((await platform.GetFromJsonAsync<JsonElement>("/companies", TestContext.Current.CancellationToken)).EnumerateArray());
         using var anonymous = fixture.App.CreateClient();

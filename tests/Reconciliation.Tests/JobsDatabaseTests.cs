@@ -58,7 +58,7 @@ public sealed class JobsDatabaseTests(ApiFixture fixture)
 
     internal static async Task AssertQueueRoleBoundaryAsync(NpgsqlConnection owner)
     {
-        Assert.Equal(["cfdi_queue_owner"], await owner.QueryAsync<string>(new CommandDefinition("SELECT rolname FROM pg_roles WHERE rolbypassrls AND NOT rolsuper ORDER BY rolname", cancellationToken: TestContext.Current.CancellationToken)));
+        Assert.Equal(["cfdi_directory_owner", "cfdi_queue_owner"], await owner.QueryAsync<string>(new CommandDefinition("SELECT rolname FROM pg_roles WHERE rolbypassrls AND NOT rolsuper ORDER BY rolname", cancellationToken: TestContext.Current.CancellationToken)));
         Assert.True(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT NOT rolsuper AND NOT rolbypassrls FROM pg_roles WHERE rolname='cfdi_app'", cancellationToken: TestContext.Current.CancellationToken)));
         Assert.False(await owner.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole FROM pg_roles WHERE rolname='cfdi_queue_owner'", cancellationToken: TestContext.Current.CancellationToken)));
         Assert.Empty(await owner.QueryAsync<string>(new CommandDefinition("""

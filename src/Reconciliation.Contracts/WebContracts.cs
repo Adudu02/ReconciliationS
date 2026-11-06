@@ -1,0 +1,34 @@
+using System.Text.Json;
+
+namespace Reconciliation.Contracts;
+
+public sealed record LoginRequest(string Email, string Password);
+public sealed record RefreshBody(string? RefreshToken = null);
+public sealed record SessionTokens(string AccessToken, int ExpiresIn, string? RefreshToken = null);
+public sealed record CompanyItem(Guid Id, string Rfc, string Name, DateTime? ArchivedAt, string Role);
+public sealed record ReviewReason(string Code, bool RequiresReview);
+public sealed record StateTotal(string State, long Count, decimal Amount);
+public sealed record ResourceTotals(long Count, decimal Amount, StateTotal[] States);
+public sealed record OverviewAlerts(long ComplementOverdue, long CancellationInProcess, long EfosWarning, long Global);
+public sealed record OverviewResponse(ResourceTotals Invoices, ResourceTotals Movements, OverviewAlerts Alerts, string Disclaimer, string TotalsNote);
+public sealed record MovementBrief(DateOnly Date, decimal Amount, string Description);
+public sealed record InvoiceBrief(DateTime Date, decimal Amount, string IssuerRfc, string ReceiverRfc);
+public sealed record ReviewEntry(string Kind, Guid Id, Guid CfdiId, InvoiceBrief Invoice, JsonElement[] Criteria, string? Confidence, string Explanation, ReviewReason[] Reasons, Guid? LinkId = null, Guid? MovementId = null, MovementBrief? Movement = null);
+public sealed record ReviewPage(ReviewEntry[] Entries, int? NextAfterRank, DateOnly? NextAfterDate, Guid? NextAfterId);
+public sealed record DecisionRequest(string Type, Guid? NewCfdiId = null, decimal? AmountApplied = null, Guid? PaymentCfdiId = null, Guid? PaymentRef = null, string? Note = null);
+public sealed record DecisionItem(Guid Id, string Type, Guid DecidedBy, DateTime DecidedAt);
+public sealed record AffectedLink(Guid Id, string State, decimal AmountApplied, Guid CfdiId, string MovementState, string InvoiceState);
+public sealed record DecisionResponse(DecisionItem Decision, AffectedLink[] Links);
+public sealed record InvoiceItem(Guid Id, Guid Uuid, string Type, string Direction, DateTime IssuedAt, decimal Total, string? State, decimal? PendingAmount, DateOnly? DueDate, bool? ComplementOverdue);
+public sealed record InvoicePage(InvoiceItem[] Invoices, DateTime? NextAfterIssuedAt, Guid? NextAfterId);
+public sealed record SummaryLink(Guid Id, Guid MovementId, DateOnly Date, string Description, decimal Amount, decimal AmountApplied, string State, string? Confidence, Guid? PaymentCfdiId, Guid? PaymentRef, string ComplementStatus, DateOnly? DueDate, DateTime? PaymentDate, string? PaymentForm, string? CashPaymentWarning);
+public sealed record InvoiceSummary(Guid Id, Guid Uuid, decimal Total, decimal CreditNotes, decimal NetPayable, decimal Paid, decimal PaidPercentage, decimal Pending, decimal Uncovered, string State, string Direction, string? PaymentMethod, string SatStatus, string? CancellationStatus, bool EfosWarning, ReviewReason[] Reasons, bool RequiresReview, SummaryLink[] Links);
+public sealed record ImportReceipt(Guid JobId, Guid UploadId);
+public sealed record RunReceipt(Guid JobId, string State);
+public sealed record ImportFileResult(Guid FileId, string Name, string Status, string? Reason, Guid? CfdiId, int ImportedMovements, int DuplicateMovements);
+public sealed record ImportReportResponse(Guid UploadId, ImportFileResult[] Files);
+public sealed record JobAttempt(int AttemptNo, DateTime StartedAt, DateTime? FinishedAt, string Outcome, string? ErrorKind, string? Error);
+public sealed record JobResponse(Guid Id, Guid CompanyId, string Type, string State, string Payload, Guid? InputRef, int Attempts, int MaxAttempts, DateTime RunAfter, string? LockedBy, DateTime? LockedUntil, int ProgressDone, int ProgressTotal, string? LastError, Guid CreatedBy, DateTime CreatedAt, DateTime? FinishedAt, JobAttempt[] History);
+public sealed record MovementItem(Guid Id, DateOnly Date, string Description, decimal Credit, decimal Debit, string? Reference, string State, string? Classification, string? Note, string Reason, decimal ReconciledAmount, decimal SuggestedAmount, decimal PendingAmount, decimal UncoveredAmount);
+public sealed record MovementPage(MovementItem[] Movements, DateOnly? NextAfterDate, Guid? NextAfterId);
+public sealed record ClassificationRequest(string? Classification, string? Note = null);

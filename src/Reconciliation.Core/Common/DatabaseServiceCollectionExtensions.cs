@@ -20,6 +20,7 @@ public static class DatabaseServiceCollectionExtensions
 
         services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
         services.AddSingleton<Reconciliation.Core.Tenancy.CompanyScope>();
+        services.AddSingleton<Reconciliation.Core.Tenancy.CompanyDirectory>();
         services.AddSingleton<IDatabaseHealth, NpgsqlDatabaseHealth>();
         return services;
     }

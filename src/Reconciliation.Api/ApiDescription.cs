@@ -10,6 +10,7 @@ internal static class ApiDescription
 
     internal static IServiceCollection AddVersionedApiDescription(this IServiceCollection services) => services.AddOpenApi(options =>
     {
+        options.AddOperationTransformer(WebApiContract.DescribeAsync);
         options.AddOperationTransformer((operation, context, _) =>
         {
             var metadata = context.Description.ActionDescriptor.EndpointMetadata;

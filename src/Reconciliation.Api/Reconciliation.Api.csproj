@@ -3,4 +3,7 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <ProjectReference Include="..\Reconciliation.Core\Reconciliation.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Reconciliation.Contracts/Reconciliation.Contracts.csproj" />
+  </ItemGroup>
 </Project>

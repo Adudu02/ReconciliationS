@@ -15,6 +15,8 @@ public static class CompanyEndpoints
 {
     public static IEndpointRouteBuilder MapCompanies(this IEndpointRouteBuilder routes)
     {
+        routes.MapGet("/companies", async (HttpContext context, CompanyDirectory directory, CancellationToken token) =>
+            Results.Ok(await directory.ListAsync(context.User.UserId()!.Value, token))).RequireAuthorization();
         routes.MapGet("/companies/{companyId:guid}", (Guid companyId, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
             {
