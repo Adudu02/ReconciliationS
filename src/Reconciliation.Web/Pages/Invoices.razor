@@ -1,0 +1,22 @@
+@page "/ui/invoices"
+@inject InvoiceViewModel Model
+
+<section>
+    <p class="eyebrow">INCOME CFDI</p><h1>Invoices</h1>
+    <form class="filters" @onsubmit="Model.LoadAsync" @onsubmit:preventDefault>
+        <div><label for="state">State</label><select id="state" @bind="Model.State" disabled="@Model.Busy"><option value="">All states</option><option value="pending">Pending</option><option value="suggested">Suggested</option><option value="reconciled">Reconciled</option></select></div>
+        <div><label for="complement">Complement status</label><select id="complement" @bind="Model.ComplementStatus" disabled="@Model.Busy"><option value="">All complements</option><option value="missing">Missing (includes overdue)</option><option value="overdue">Overdue</option></select></div>
+        <button type="submit" disabled="@Model.Busy">Apply filters</button>
+    </form>
+    <PageStatus Model="Model" />
+    <div class="panel table-wrap"><table><caption>Imported income invoices</caption><thead><tr><th scope="col">Invoice</th><th scope="col">Issued</th><th scope="col">Direction</th><th scope="col">State</th><th scope="col">Total</th><th scope="col">Pending</th><th scope="col">Complement due</th></tr></thead><tbody>
+        @foreach (var invoice in Model.Invoices)
+        {
+            <tr><th scope="row"><a href="/ui/invoices/@invoice.Id">@invoice.Uuid</a></th><td>@invoice.IssuedAt.ToString("yyyy-MM-dd")</td><td>@invoice.Direction</td><td><span class="badge @invoice.State">@invoice.State</span></td><td class="money">@Display.Money(invoice.Total)</td><td class="money">@(invoice.PendingAmount is { } pending ? Display.Money(pending) : "—")</td><td>@(invoice.DueDate?.ToString("yyyy-MM-dd") ?? "—") @(invoice.ComplementOverdue == true ? "overdue" : "")</td></tr>
+        }
+    </tbody></table></div>
+    @if (!Model.Busy && Model.Error is null && Model.Invoices.Length == 0) { <p>No invoices match these filters.</p> }
+    @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">Load more invoices</button> }
+</section>
+
+@code { protected override Task OnInitializedAsync() => Model.LoadAsync(); }

@@ -68,3 +68,7 @@ progress { accent-color: var(--accent); width: 100%; }
 @media (max-width: 1000px) { main { padding: 2rem; } .sidebar { flex-basis: 180px; width: 180px; } .resource-grid { grid-template-columns: 1fr; } .alerts dl { grid-template-columns: repeat(2,1fr); } }
 @media (max-width: 640px) { .topbar { padding: 1rem; flex-wrap: wrap; gap: .7rem; } .identity { width: 100%; text-align: left; order: 1; } .topbar button { padding: .5rem; font-size: .8rem; } .workspace { display: block; } .sidebar { width: 100%; display: flex; flex-wrap: wrap; padding: .75rem; border-right: 0; border-bottom: 1px solid var(--line); gap: .2rem; } .sidebar .eyebrow { display: none; } .sidebar a { padding: .55rem; font-size: .8rem; } main { padding: 1.5rem 1rem; } footer { padding: 1.5rem 1rem; } .panel { padding: 1rem; } .login { margin: 1rem 0; } .login form { padding: 1.25rem; } .filters { display: grid; } .filters>* { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.identifier { overflow-wrap: anywhere; font-size: .85rem; color: var(--muted); }
+.summary-values { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0; }
+.summary-values dd { font-size: 1.3rem; font-variant-numeric: tabular-nums; }

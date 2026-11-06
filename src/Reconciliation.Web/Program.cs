@@ -8,4 +8,5 @@ builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.WorkspaceViewModel>();
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.ReviewQueueViewModel>();
+builder.Services.AddTransient<Reconciliation.Web.ViewModels.InvoiceViewModel>();
 await builder.Build().RunAsync();

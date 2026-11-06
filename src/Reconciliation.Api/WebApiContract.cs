@@ -6,6 +6,7 @@ namespace Reconciliation.Api;
 
 internal static class WebApiContract
 {
+    private sealed record LegacyError(string? Error = null, string? Reason = null, string? State = null);
     private sealed record UploadContract(IFormFile[] Files, string? Bank, string? AccountReference);
     private sealed record Operation(Type? Response, Type? Request = null, string Status = "200", string ContentType = "application/json");
     private static readonly string[] ErrorStatuses = ["400", "401", "403", "404", "409"];
@@ -56,7 +57,7 @@ internal static class WebApiContract
         foreach (var statusCode in ErrorStatuses)
         {
             operation.Responses ??= new OpenApiResponses();
-            operation.Responses[statusCode] = new OpenApiResponse { Description = "Clients requesting application/problem+json receive problem details with actionable reason/state extensions. Legacy error bodies are preserved for other clients.", Content = new Dictionary<string, OpenApiMediaType> { ["application/problem+json"] = new() { Schema = await ReferenceAsync(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)) } } };
+            operation.Responses[statusCode] = new OpenApiResponse { Description = "Clients requesting application/problem+json receive problem details with actionable reason/state extensions. Legacy error bodies are preserved for other clients.", Content = new Dictionary<string, OpenApiMediaType> { ["application/problem+json"] = new() { Schema = await ReferenceAsync(typeof(Microsoft.AspNetCore.Mvc.ProblemDetails)) }, ["application/json"] = new() { Schema = await ReferenceAsync(typeof(LegacyError)) } } };
         }
         if (contract.Request is not null)
             operation.RequestBody = new OpenApiRequestBody
