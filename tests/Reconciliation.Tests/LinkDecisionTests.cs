@@ -66,6 +66,38 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
     }
 
     [Fact]
+    public async Task Change_same_invoice_amount_creates_new_user_link_and_does_not_flap()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        var link = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = seed.Company });
+        using var response = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "change", amountApplied = 60m }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("closed", await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@link", new { link }));
+        Assert.Equal(60m, await fixture.Database.ScalarAsync<decimal>("SELECT amount_applied FROM link WHERE company_id=@company AND origin='user' AND state='reconciled'", new { company = seed.Company }));
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        Assert.Equal(2, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link WHERE company_id=@company", new { company = seed.Company }));
+        Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link_decision WHERE link_id=@link", new { link }));
+    }
+
+    [Theory]
+    [InlineData("reconciled")]
+    [InlineData("rejected")]
+    [InlineData("closed")]
+    public async Task Decisions_on_non_suggestions_return_current_state(string state)
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
+        var link = await owner.ExecuteScalarAsync<Guid>("UPDATE link SET state=@state WHERE company_id=@company RETURNING id", new { state, company = seed.Company });
+        using var response = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "change", amountApplied = 60m }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains(state, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Concurrent_decisions_have_exactly_one_winner()
     {
         var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
