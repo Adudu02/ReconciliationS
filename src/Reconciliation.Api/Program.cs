@@ -40,6 +40,7 @@ app.MapJobs();
 app.MapAudit();
 app.MapMovements();
 app.MapDecisions();
+app.MapReview();
 app.MapSat();
 app.MapOpenApi("/openapi.json").AllowAnonymous();
 app.MapHealth();

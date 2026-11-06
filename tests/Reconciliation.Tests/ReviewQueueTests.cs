@@ -32,7 +32,7 @@ public sealed class ReviewQueueTests(ApiFixture fixture)
         await owner.ExecuteAsync("""
             INSERT INTO link(company_id,movement_id,cfdi_id,amount_applied,state,origin,criteria,explanation)
             VALUES(@Company,@Movement,@Invoice,120,'reconciled','user','[]','Synthetic overpayment');
-            UPDATE cfdi SET is_global=true WHERE id=@Invoice
+            UPDATE cfdi SET is_global=true,payment_method='PUE' WHERE id=@Invoice
             """, seed);
         using var client = await fixture.LoginAsync(seed.Email, seed.Company);
         var body = await client.GetFromJsonAsync<JsonElement>($"/companies/{seed.Company}/review-queue", TestContext.Current.CancellationToken);
