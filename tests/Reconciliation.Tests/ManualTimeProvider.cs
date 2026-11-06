@@ -25,6 +25,14 @@ public sealed class ManualTimeProvider : TimeProvider
         }
         foreach (var timer in due) timer.Fire();
     }
+    public bool AdvanceNextTimer()
+    {
+        long due;
+        lock (gate) due = timers.Select(timer => timer.Due).DefaultIfEmpty(long.MaxValue).Min();
+        if (due == long.MaxValue) return false;
+        Advance(TimeSpan.FromTicks(Math.Max(0, due - Interlocked.Read(ref utcTicks))));
+        return true;
+    }
     public async Task WaitForTimerAsync(TimeSpan maximumDelay)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
