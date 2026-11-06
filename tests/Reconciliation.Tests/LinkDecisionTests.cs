@@ -170,6 +170,9 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         using var confirmed = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{replacement}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
         Assert.Equal("closed", await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@original", new { original }));
+        var result = await confirmed.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Contains(result.GetProperty("links").EnumerateArray(), item => item.GetProperty("id").GetGuid() == original && item.GetProperty("state").GetString() == "closed");
+        Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@Company AND action='link.confirmed' AND items @> @item::jsonb", new { seed.Company, item = System.Text.Json.JsonSerializer.Serialize(new[] { new { kind = "link", id = original.ToString() } }) }));
     }
 
     [Fact]
