@@ -131,6 +131,26 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
     }
 
     [Fact]
+    public async Task Confirming_replacement_closes_obsolete_cancellation_marker()
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        await using var owner = await fixture.Database.OpenOwnerAsync();
+        var original = await owner.ExecuteScalarAsync<Guid>("UPDATE link SET review_reason='cancelled invoice' WHERE company_id=@Company RETURNING id", seed);
+        var replacement = await owner.ExecuteScalarAsync<Guid>("""
+            WITH invoice AS (
+              INSERT INTO cfdi(company_id,import_file_id,uuid,type,direction,issuer_rfc,receiver_rfc,issued_at,stamped_at,currency,subtotal,total)
+              SELECT company_id,import_file_id,gen_random_uuid(),type,direction,issuer_rfc,receiver_rfc,issued_at,stamped_at,currency,subtotal,total FROM cfdi WHERE id=@Invoice RETURNING id
+            ) INSERT INTO link(company_id,movement_id,cfdi_id,amount_applied,state,origin,criteria,explanation)
+            SELECT @Company,@Movement,id,100,'suggested','automatic','[]','Synthetic replacement' FROM invoice RETURNING id
+            """, seed);
+        using var confirmed = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{replacement}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        Assert.Equal("closed", await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@original", new { original }));
+    }
+
+    [Fact]
     public async Task Concurrent_decisions_have_exactly_one_winner()
     {
         var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
