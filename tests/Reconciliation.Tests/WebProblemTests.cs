@@ -20,6 +20,8 @@ public sealed class WebProblemTests(ApiFixture fixture)
         using var invalid = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "wrong" }, TestContext.Current.CancellationToken);
         Assert.Equal("application/problem+json", invalid.Content.Headers.ContentType?.MediaType);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        var validation = await invalid.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+        Assert.Contains("500 characters", validation.GetProperty("title").GetString(), StringComparison.Ordinal);
         using var rejected = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "reject" }, TestContext.Current.CancellationToken);
         rejected.EnsureSuccessStatusCode();
         using var conflict = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
