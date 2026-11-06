@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the AS-BUILT database diagrams (migrations M0001 to M0012) as SVG and PNG.
+"""Draw the AS-BUILT database diagrams (migrations M0001 to M0013) as SVG and PNG.
 
 Writes into docs/diagrams/database/:
   database-erd-implemented[-es]      tables, columns and foreign keys, grouped by area
@@ -23,7 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / 'docs/diagrams/database'
 
 ES = {
-    'As-built data model (migrations M0001 to M0012)': 'Modelo de datos construido (migraciones M0001 a M0012)',
+    'As-built data model (migrations M0001 to M0013)': 'Modelo de datos construido (migraciones M0001 a M0013)',
     'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company':
         'PK clave primaria · FK clave foránea · UK único · RLS = seguridad a nivel de fila forzada por empresa',
     'Tenancy and access': 'Multiempresa y acceso',
@@ -90,6 +90,10 @@ ES.update({
     'attempt writes through restricted definer only': 'intentos escritos solo por dueño restringido',
     'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.':
         'cfdi_queue_owner: NOLOGIN BYPASSRLS, permisos solo en job/job_attempt.',
+    'cfdi_directory_owner: NOLOGIN BYPASSRLS; SELECT 7 directory columns only.':
+        'cfdi_directory_owner: NOLOGIN BYPASSRLS; SELECT solo en 7 columnas del directorio.',
+    'user_companies(uuid): STABLE; matching app.user_id; EXECUTE only cfdi_app.':
+        'user_companies(uuid): STABLE; app.user_id coincidente; EXECUTE solo cfdi_app.',
     'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.':
         'cfdi_app: NOBYPASSRLS; funciones fijadas, sin EXECUTE para PUBLIC.',
 })
@@ -367,12 +371,12 @@ def erd(ctx):
         'cfdi_relation': (c[4], 740), 'cfdi_payment': (c[3], 1170), 'cfdi_payment_doc': (c[4], 1170),
     }
     lay = Layout(pos)
-    width, height = 1700, 1910
-    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0012)',
+    width, height = 1700, 1950
+    out = svg_open(width, height, 'As-built data model (migrations M0001 to M0013)',
                    'PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company', ctx)
     out += zone(18, 78, 1002, 570, 'tenancy', 'Tenancy and access', ctx)
     out += zone(1028, 78, 662, 480, 'sessions', 'Sessions (per user, outside company RLS)', ctx)
-    out += zone(18, 1470, 1672, 420, 'jobs', 'Jobs, review decisions and SAT cache (forced RLS; restricted queue claims)', ctx)
+    out += zone(18, 1470, 1672, 460, 'jobs', 'Jobs, review decisions and SAT cache (forced RLS; restricted queue claims)', ctx)
     out += zone(18, 690, 1672, 750, 'ingestion', 'Ingestion (every table carries company_id and forced RLS)', ctx)
     out += link(lay, 'company', 'id', 'right', 'membership', 'company_id', 'left')
     out += link(lay, 'app_user', 'id', 'left', 'membership', 'user_id', 'right')
@@ -399,7 +403,9 @@ def erd(ctx):
     out.append(f'<path d="M{lx} {ly} H690 V{dy} H{dx}" fill="none" stroke="#b7791f" stroke-width="1.5"/>')
     out += link(lay, 'job', 'id', 'right', 'job_attempt', 'job_id', 'left')
     for y, text in [(1850, 'cfdi_queue_owner: NOLOGIN BYPASSRLS, grants only on job/job_attempt.'),
-                    (1870, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
+                    (1870, 'cfdi_directory_owner: NOLOGIN BYPASSRLS; SELECT 7 directory columns only.'),
+                    (1890, 'user_companies(uuid): STABLE; matching app.user_id; EXECUTE only cfdi_app.'),
+                    (1910, 'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.')]:
         out.append(f'<text x="730" y="{y}" font-size="12" fill="#222">{esc(ctx.tr(text))}</text>')
     px, py = lay.anchor('cfdi', 'left', 'uuid')
     qx, qy = lay.anchor('sat_status_cache', 'left', 'uuid')
@@ -504,7 +510,7 @@ def security(ctx):
     cols = [('Table', 180), ('Area', 110), ('Forced RLS', 100), ('Privileges of role cfdi_app', 430), ('Immutability / triggers', 380)]
     width = sum(w for _, w in cols) + 40
     row_h = 30
-    height = 150 + row_h * (len(order) + 1)
+    height = 220 + row_h * (len(order) + 1)
     out = svg_open(width, height, 'Row security, privileges and immutability',
                    'S = SELECT · I = INSERT · U(columns) = UPDATE only on the named columns · no table grants DELETE', ctx)
     y = 80
@@ -527,6 +533,11 @@ def security(ctx):
             weight = ' font-weight="bold"' if title == 'Table' else ''
             out.append(f'<text x="{cx + 10}" y="{ry + 20}" font-size="12"{weight} fill="#111">{esc(v)}</text>')
             cx += w
+    for offset, text in enumerate([
+            'cfdi_directory_owner: NOLOGIN BYPASSRLS; SELECT 7 directory columns only.',
+            'user_companies(uuid): STABLE; matching app.user_id; EXECUTE only cfdi_app.',
+            'cfdi_app: NOBYPASSRLS; functions pinned and EXECUTE not granted to PUBLIC.']):
+        out.append(f'<text x="30" y="{height - 72 + offset * 22}" font-size="12" fill="#222">{esc(ctx.tr(text))}</text>')
     out.append('</svg>')
     return width, height, out
 

@@ -16,7 +16,7 @@
       "id": "user",
       "type": "external",
       "label": "Lector / auditor",
-      "sublabel": "lee, nunca cambia"
+      "sublabel": "UI web + API"
     },
     {
       "id": "api",

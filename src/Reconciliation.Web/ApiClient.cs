@@ -40,11 +40,19 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
 
     private async Task<bool> RefreshAsync(CancellationToken token)
     {
-        using var request = AuthRequest("auth/refresh");
-        using var response = await http.SendAsync(request, token);
-        if (!response.IsSuccessStatusCode) { session.Clear(); return false; }
-        session.Authenticate((await response.Content.ReadFromJsonAsync(Info<SessionTokens>(), token))!);
-        return true;
+        try
+        {
+            using var request = AuthRequest("auth/refresh");
+            using var response = await http.SendAsync(request, token);
+            if (response.IsSuccessStatusCode)
+            {
+                session.Authenticate((await response.Content.ReadFromJsonAsync(Info<SessionTokens>(), token))!);
+                return true;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or OperationCanceledException) { }
+        session.Clear();
+        return false;
     }
 
     public async Task LogoutAsync(CancellationToken token = default)

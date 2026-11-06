@@ -16,7 +16,7 @@
       "id": "user",
       "type": "external",
       "label": "Contador",
-      "sublabel": "importa y decide"
+      "sublabel": "UI web + API"
     },
     {
       "id": "api",

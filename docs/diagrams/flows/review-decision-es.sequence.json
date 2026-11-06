@@ -14,9 +14,9 @@
   "participants": [
     {
       "id": "user",
-      "type": "external",
-      "label": "Contador",
-      "sublabel": "confirma o rechaza"
+      "type": "frontend",
+      "label": "UI del contador",
+      "sublabel": "cliente HTTP bearer"
     },
     {
       "id": "api",

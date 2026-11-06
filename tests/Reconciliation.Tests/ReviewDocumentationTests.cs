@@ -23,11 +23,10 @@ public sealed class ReviewDocumentationTests
     }
 
     [Fact]
-    public void Completed_API_tasks_and_examples_leave_UI_for_8B()
+    public void Completed_API_tasks_and_examples_are_retained()
     {
         var tasks = File.ReadAllText(Path.Combine(RepoPaths.Root, "openspec/changes/mvp-reconciliation-core/tasks.md"));
         foreach (var id in new[] { "8.1", "8.2", "8.3", "8.3b", "8.3c", "8.3d", "8.4" }) Assert.Contains("- [x] " + id + " ", tasks, StringComparison.Ordinal);
-        Assert.Contains("- [ ] 8.5 ", tasks, StringComparison.Ordinal);
         var readme = File.ReadAllText(Path.Combine(RepoPaths.Root, "README.md"));
         foreach (var token in new[] { "/review-queue", "/decisions", "/summary", "/overview", "x-api-version" }) Assert.Contains(token, readme, StringComparison.Ordinal);
         Assert.Contains("'link_decision':", File.ReadAllText(Path.Combine(RepoPaths.Root, "tools/db_diagrams.py")), StringComparison.Ordinal);

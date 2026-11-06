@@ -14,9 +14,9 @@
   "participants": [
     {
       "id": "user",
-      "type": "external",
-      "label": "Accountant",
-      "sublabel": "confirms or rejects"
+      "type": "frontend",
+      "label": "Accountant Web UI",
+      "sublabel": "bearer HTTP client"
     },
     {
       "id": "api",

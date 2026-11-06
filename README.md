@@ -491,3 +491,70 @@ in memory; reload silently renews with the HttpOnly, SameSite=Strict, Path=/auth
 Legacy `Session__RefreshCookie=true` wins globally; leave it false to preserve JSON clients.
 Cookies are Secure on HTTPS. Plain HTTP localhost is a local development convenience; production
 must use HTTPS. The browser adds Origin automatically; scripts using cookie transport must supply it.
+
+## Web UI
+
+The API container serves the standalone Blazor WebAssembly app at **http://localhost:8080** (or the
+free port selected in your Compose override). The shell is anonymous; every company data call uses the
+same documented API with a bearer token. It contains no tenant data or secrets. The UI is English only.
+Results have no fiscal or legal validity; the notice appears on login, overview and the footer.
+
+Enable the browser transport in your environment before starting the stack:
+
+```bash
+export Session__BrowserRefreshCookie=true
+export Session__AllowedOrigins__0=http://localhost:8080
+# Set JWT_SIGNING_KEY through the environment, as in the Compose instructions above.
+docker compose up --build --wait
+# When finished:
+docker compose down -v
+```
+
+Use an existing member's email/password to sign in. Bootstrap the first operator and create a company/member
+through the documented API as described above; an operator with no memberships sees an empty company picker.
+Select a company; the header shows its name and role. Import CFDI XML, switch the import type for a bank CSV,
+then open Overview and run reconciliation. Polling shows progress until success/failure and the import page
+shows its per-file report. Open Review queue to confirm/reject/change a suggestion. Invoice list filters
+include state and missing/overdue complements; summaries show confirmed paid percentage, pending, payment
+CFDI, due dates, warnings and reasons. Movements supports classification for accountants/administrators.
+Viewers and archived companies are read-only. There is no administration, audit or SAT-management page.
+
+Access tokens stay **in memory**; never localStorage, sessionStorage or URLs. Reload silently renews through
+an HttpOnly, SameSite=Strict, Path=/auth cookie, then asks for company selection. Browser auth calls send
+`X-Refresh-Transport: cookie`; Origin must exactly match the allow-list, including scheme and port.
+Use localhost consistently. Production requires HTTPS; local HTTP is only a development convenience.
+Legacy `Session__RefreshCookie=true` still wins globally; keep it false to retain JSON-token API clients.
+A 401 gets one coordinated refresh/retry; failure returns to login. Separate tabs do not share access tokens.
+
+The UI sends `Accept: application/json, application/problem+json`. On errors the API then returns RFC 7807
+problem details; requests with no Accept or `*/*` retain legacy bodies byte-for-byte. OpenAPI documents both
+media types for 400/401/403/404/409. Request/response schemas are generated with the existing framework;
+`Reconciliation.Contracts` contains DTOs only and the typed client uses source-generated JSON metadata.
+
+The shell has a strict Content-Security-Policy, nosniff and no-referrer. index.html is no-cache; only
+fingerprinted framework assets are immutable. Data APIs and `/auth`, `/openapi.json`, `/health` cannot become
+an HTML fallback. No UI-only data endpoint or database access is added. GET /companies lists only the caller's
+memberships through M0013's restricted directory function (see ADR-010).
+
+Browser upload limits match default ingestion bounds: 20 files, 10 MiB each, 20 MiB total; API configuration
+can be stricter. The solution and CI build/test the Web app; Docker publishes it into the API's wwwroot.
+For the UI use the published Compose image; running only the API project from source does not publish WASM.
+The payload is trimmed without AOT/workload installation. Polling backs off from 1 to 5 seconds; SSE is deferred.
+
+The in-process worked-example test uses the same ApiClient/view-models as the pages. A repeatable real-browser
+check is `tools/ui_smoke.mjs`, using installed `/usr/bin/google-chrome` and Node's built-in WebSocket:
+
+```bash
+# Disposable stack only, synthetic operator credentials through environment; never CI or real data.
+export UI_SMOKE_DISPOSABLE=1
+export UI_SMOKE_URL=http://localhost:8080
+export UI_SMOKE_OPERATOR_EMAIL=synthetic-ui-operator@example.invalid
+# Set UI_SMOKE_OPERATOR_PASSWORD to that disposable operator's synthetic password in your environment.
+node tools/ui_smoke.mjs
+```
+
+It creates a synthetic company via the API and drives browser login, company selection, both imports, run,
+queue, one confirm and the 50% / 5,800.00-pending summary. It checks reload renewal, light/dark layouts and
+anonymous shell/authenticated data boundaries, then removes its Chrome process/profile. The caller must tear
+down the disposable stack with `docker compose down -v`. Three synthetic 1440×900 screenshots are under
+`docs/build-log/images/pr13-*.png`. No Playwright/Selenium dependency is used.

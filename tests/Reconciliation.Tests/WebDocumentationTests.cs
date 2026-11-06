@@ -21,7 +21,7 @@ public sealed class WebDocumentationTests
     public void PR13_logs_delivery_verification_payload_and_limits_in_both_languages(string file)
     {
         var text = File.ReadAllText(RepoPaths.Doc("build-log/" + file));
-        foreach (var token in new[] { "PR-13: Minimal web UI", "ADR-010", "Reconciliation.Web", "M0013", "user_companies", "cfdi_directory_owner", "app.user_id", "Session__BrowserRefreshCookie", "X-Refresh-Transport", "application/problem+json", "17 operations", "50%", "5,800.00", "7,319,437", "12,544,724", "docx@9.5.1", "pdf2image==1.17.0", "SSE", "pr13-login.png", "pr13-overview.png", "pr13-review-queue.png" })
+        foreach (var token in new[] { "PR-13: Minimal web UI", "ADR-010", "Reconciliation.Web", "M0013", "user_companies", "cfdi_directory_owner", "app.user_id", "Session__BrowserRefreshCookie", "X-Refresh-Transport", "application/problem+json", "17 operations", "50%", "5,800.00", "7,319,437", "12,544,744", "docx@9.5.1", "pdf2image==1.17.0", "SSE", "pr13-login.png", "pr13-overview.png", "pr13-review-queue.png" })
             Assert.Contains(token, text, StringComparison.Ordinal);
     }
 

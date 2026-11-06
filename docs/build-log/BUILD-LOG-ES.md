@@ -13,7 +13,7 @@ Fuente de verdad de los elementos de trabajo: `openspec/changes/mvp-reconciliati
 
 | Carpeta | Qué contiene | Por qué está separada |
 |---|---|---|
-| `docs/adr/` | Registros de decisiones de arquitectura (ADR-001 a ADR-008) | Una decisión = un archivo; las enmiendas conservan historia; cambios mayores usan otro ADR |
+| `docs/adr/` | Registros de decisiones de arquitectura (ADR-001 a ADR-010) | Una decisión = un archivo; las enmiendas conservan historia; cambios mayores usan otro ADR |
 | `docs/build-log/` | Esta bitácora en español e inglés, y `exports/` con los PDF/Word generados | Lo que se actualiza en cada PR; los exportados no se mezclan con el texto fuente |
 | `docs/requirements/` | BRS y SRS (inglés y español) | Documentos de requisitos que casi no cambian |
 | `docs/reference/` | Formato CSV bancario de referencia y la ficha del proyecto con enlaces de consulta | Material de consulta que las pruebas leen o que se cita |
@@ -27,7 +27,7 @@ leen `docs/adr/`, `docs/reference/` y `docs/build-log/`), y usa `git mv` para co
 
 ![Mapa de estado de la construcción](../diagrams/progress/status-map-es.png)
 
-**66 de 85 tareas completas. API de revisión 8A y decisiones reales de roles/auditoría implementadas; UI 8.5 sigue para otro PR 8B. FX 6.11 y evidencia SAT real 7.6 continúan pendientes.**
+**67 de 85 tareas completas. API 8A y Web UI 8B implementadas, con decisiones reales de roles/auditoría. FX 6.11 y evidencia SAT real 7.6 siguen pendientes.**
 Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py --lang es`
 (sin `--lang es` genera la versión en inglés).
 
@@ -47,7 +47,8 @@ Regenera la imagen después de marcar tareas: `python3 tools/progress_diagram.py
 ### 2.1 Vista general: qué está construido hoy
 
 ```
- Cliente HTTP (curl, navegador, pruebas)
+ Navegador: Reconciliation.Web (Blazor WASM), y curl/pruebas
+        |  static shell anónimo desde API; datos por HTTP bearer
         |  HTTPS + cabecera "Authorization: Bearer <JWT>" + "X-Company-Id: <uuid>"
         v
  +--------------------------+        +-----------------------------+
@@ -85,12 +86,12 @@ Cada flecha es una frontera con una razón de ser:
 - **El migrador es un programa aparte** con otro rol de base de datos: el dueño del esquema (`cfdi`) crea y cambia
   tablas; la aplicación (`cfdi_app`) solo puede lo que se le concede.
 
-El diseño completo, incluido lo que aún no existe (UI de revisión, telemetría), es este:
+El diseño completo, incluida la telemetría futura, es este:
 
 ![Vista de contenedores del diseño (Docker Compose)](../../openspec/changes/mvp-reconciliation-core/diagrams/containers.png)
 
 Existen API, worker de sondeo, tablas PostgreSQL de empresa/ingesta/sesiones/trabajos y stub SOAP SAT.
-También existen la cadena de auditoría y conciliación 6A/6B. SAT sin conexión real está implementado. Faltan FX 6.11, evidencia SAT real 7.6, decisiones y OpenTelemetry.
+También existen la cadena de auditoría y conciliación 6A/6B. SAT sin conexión real está implementado. También existen las decisiones y la UI web. Faltan FX 6.11, evidencia SAT real 7.6 y OpenTelemetry.
 
 ### 2.2 Ciclo de una solicitud autenticada
 
@@ -197,7 +198,7 @@ Convenciones de empresa: `id uuid` generado por la base (job_attempt usa clave c
 RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
 por empresa que empiezan con `company_id` (`M0005`); el worker global además necesita índices de vencimiento/lease.
 
-El esquema construido (migraciones M0001 a M0010), dibujado a partir de las propias migraciones:
+El esquema construido (migraciones M0001 a M0013), dibujado a partir de las propias migraciones:
 
 ![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
 
@@ -314,6 +315,14 @@ JOBS_MAX_ATTEMPTS también configura el encolado de la API. pending_original nun
 La aceptación mueve exactamente esos bytes a original, limpia los pendientes y cuenta RetentionYears desde la
 aceptación. Un rechazo conserva solo hash/motivo.
 
+### 3.1c Nombres y configuración del navegador
+
+`Reconciliation.Web` se ejecuta solo en navegador; `Reconciliation.Contracts` contiene DTO. `ApiClient`,
+`SessionState` y modelos de vista manejan HTTP/sesión/páginas. `Session__BrowserRefreshCookie` habilita la opción;
+`X-Refresh-Transport: cookie` la selecciona por solicitud. `Origin` debe coincidir con la lista permitida.
+M0013 ejecuta `user_companies` con `cfdi_directory_owner` y un `app.user_id` LOCAL coincidente.
+La API sirve el static shell anónimo; cada llamada de datos sigue necesitando bearer.
+
 ### 3.2 Cabeceras, rutas, campos y códigos HTTP
 
 | Nombre | Dónde aparece | Significado |
@@ -397,19 +406,20 @@ aceptación. Un rechazo conserva solo hash/motivo.
 
 | Pieza | Tipo | Para qué sirve | Dónde |
 |---|---|---|---|
-| Archivo de solución | Compilación | Agrupa los seis proyectos para que un solo `dotnet build` compile todo | `Reconciliation.slnx` |
+| Archivo de solución | Compilación | Agrupa los ocho proyectos para que un solo `dotnet build` compile todo | `Reconciliation.slnx` |
 | Reglas de compilación compartidas | Compilación | Todos los proyectos usan la misma configuración: .NET 10, verificación de nulos, las advertencias son errores | `Directory.Build.props`, `.editorconfig`, `global.json` |
 | **Biblioteca Core** | Área de módulos | El código que comparten ambos hosts: multiempresa, ingesta, conciliación, auditoría encadenada y código común de base de datos y salud | `src/Reconciliation.Core` |
-| **Host de la API** | Host | La API web que llamarán los usuarios. Atiende autenticación, empresas, miembros, configuración, archivo, importaciones, corridas de conciliación, lectura/clasificación de movimientos, salud y OpenAPI | `src/Reconciliation.Api` |
+| **Cliente web** | Navegador | Reconciliation.Web, Blazor WASM independiente; cliente puro de la API documentada | `src/Reconciliation.Web`, `src/Reconciliation.Contracts` |
+| **Host de la API** | Host | Sirve el shell web anónimo y la API bearer: sesiones, empresas, importaciones/jobs, revisión/decisiones, resúmenes, movimientos, configuración, auditoría y SAT | `src/Reconciliation.Api` |
 | **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | SOAP Consulta con resultados controlados dentro de la red; no requiere SAT en vivo | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0011` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0013` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
 | Requisitos y plan | Docs | BRS, SRS, diagramas y el cambio de OpenSpec que define el trabajo | `docs/requirements/`, `docs/diagrams/`, `openspec/` |
-| Pruebas | Pruebas | 374 casos xUnit: 367 aprobados, 4 escenarios pendientes y 3 benchmarks optativos; PostgreSQL real | `tests/Reconciliation.Tests` |
+| Pruebas | Pruebas | 662 casos xUnit: 658 aprobados y 4 benchmarks optativos; PostgreSQL real y bUnit | `tests/Reconciliation.Tests` |
 | Mapa de progreso | Herramienta | Dibuja la imagen de estado a partir de `tasks.md` | `tools/progress_diagram.py` |
 
 ## 5. Registro de pull requests
@@ -417,6 +427,36 @@ aceptación. Un rechazo conserva solo hash/motivo.
 Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la pieza), **Cómo funciona** (paso a paso),
 **Nombres y variables** (qué significa cada término nuevo), **Por qué así** (decisión y alternativa descartada),
 **Qué aprendes** (idea de C#, SQL o herramientas) y **Verificado** (cómo se comprobó). Las entradas anteriores a PR-5 usan los nombres que tenía el código entonces; el mapa de nombres de PR-5 los traduce.
+
+### PR-13: Minimal web UI
+
+**Propósito.** Completar la tarea 8.5 (PR 8B) con Reconciliation.Web, una aplicación independiente net10.0 Blazor WebAssembly servida por el contenedor de la API. Permite iniciar sesión, elegir/cambiar empresa, consultar totales y alertas, revisar y decidir, ver resúmenes de facturas, importar archivos, conciliar y clasificar movimientos. Inicio, resumen general y pie muestran: results have no fiscal or legal validity. ADR-010 registra el límite entre navegador y API y las alternativas.
+
+**Cómo funciona.** El static shell anónimo no contiene datos empresariales ni secretos. El navegador usa únicamente HTTP documentado con bearer; referencia solo los DTO de Reconciliation.Contracts, nunca Core, Migrator o una base de datos. Las páginas delegan a modelos de vista comprobables. CompanyScope, RLS, roles vigentes, bloqueo de escritura en empresas archivadas y auditoría permanecen en API/PostgreSQL. El viewer no ve acciones de escritura. Las listas conservan cursores keyset de la API. Los trabajos consultan progreso con TimeProvider a 1/2/4/5/5 segundos, terminan al llegar a succeeded/failed y se cancelan al abandonar el componente. La solución y CI existentes compilan y prueban Web; Docker publica archivos recortados en wwwroot de la API, sin AOT ni instalar workloads.
+
+**Nombres y decisiones.** Session__BrowserRefreshCookie es false por defecto; se habilita y se configura el Origin exacto de la UI. X-Refresh-Transport: cookie selecciona la rotación ADR-004 para inicio, renovación y cierre. El acceso queda en memoria; el refresh usa HttpOnly, SameSite=Strict, Path=/auth y Secure con HTTPS. Recargar renueva sin pedir contraseña y vuelve al selector de empresa. RefreshCookie global conserva precedencia; los clientes JSON sin cabecera no cambian. Un 401 permite una renovación coordinada y un reintento. El shell usa CSP (con wasm-unsafe-eval), nosniff, no-referrer y no-cache para index.html; solo archivos de framework con huella son immutable. La UI solicita application/problem+json. Sin Accept o con */*, los cuerpos anteriores se conservan byte por byte; OpenAPI describe ambos medios y hay pruebas para 400/401/403/404/409.
+
+**API completa.** Faltaba GET /companies. M0013 agrega user_companies(uuid), STABLE, con propietario cfdi_directory_owner (NOLOGIN, BYPASSRLS y SELECT por columna solo en cuatro campos de company y tres de membership). Exige app.user_id coincidente, fijado LOCAL desde el JWT en la misma transacción. PUBLIC no ejecuta la función; cfdi_app sí, pero sigue NOBYPASSRLS. No se amplía ninguna política RLS. Se prueban membresías propias/vacías/operador/archivadas, contexto ausente o distinto, permisos mínimos y Up/Down/Up eliminando función/rol limpiamente. OpenAPI integrado genera esquemas referenciados, multipart binario y criterios tipados. Los DTO exigen campos de constructor y se deserializan respuestas reales; el ejemplo verifica 17 operations contra el documento. El cliente escrito a mano evita dependencias de generación para esta superficie pequeña.
+
+**Qué aprendí.** Servir un shell público no vuelve públicos los datos: cada llamada bearer es el límite real. Consultar el directorio entre empresas exige un permiso pequeño y explícito, no debilitar RLS. Los campos JSON obligatorios y las pruebas HTTP reales detectan desajustes que compartir DTO por sí solo no detecta. El tiempo simulado hace inmediatas las pruebas de sondeo; Chrome real prueba WASM publicado, CSP y cookies que bUnit no puede demostrar.
+
+**Verificado.** Compilación en contenedor SDK: 0 advertencias/errores. Suite final: 662 pruebas, 658 correctas y cuatro benchmarks optativos omitidos; dotnet format --verify-no-changes correcto. Sin escenarios de dominio/UI pendientes omitidos. Cliente/modelos reales recorren inicio → empresa → XML sintético y dos movimientos → ejecución/sondeo → dos sugerencias → confirmar una → 50% pagado / 5,800.00 pendiente, ambos movimientos → totales aditivos; un viewer lee los mismos datos sin acciones. No hay complemento antes de ejecutar; la prueba separada de respuestas reales conserva el ejemplo con CFDI de pago. Compose desechable también pasó el recorrido completo en navegador: ambas cargas, ejecución, confirmación, resumen y renovación al recargar. Chrome headless instalado + WebSocket de Node no requieren Playwright/Selenium. Se comprobaron 1440/768/390 px sin desbordamiento horizontal, modo oscuro, cero excepciones de navegador sin manejar y 92 recursos con huella e immutable. El primer arnés cambió un puerto automático al configurar Origin; se corrigió eligiendo puertos libres antes de arrancar. Cada intento ejecutó down -v. Se eliminaron Chrome/perfil y contenedores/redes/volúmenes del stack.
+
+**Tamaño y documentación.** _framework publicado ocupa 7,319,437 bytes sin compresión y 12,544,744 con copias .br/.gz (2,347,811 Brotli; 2,877,496 gzip). Son tamaños de archivo, no mediciones de transferencia. Arquitectura pasó 9/9 verificaciones showcase sin advertencias y se entregó junto con seis secuencias actualizadas. Los controles fijos del visor Archify siguen en inglés en los diagramas de contenido español. Arquitectura muestra navegador y static shell servido por la API; las etiquetas de revisión/contador/viewer distinguen UI y API. Se regeneraron diagramas de base/progreso y Word/PDF bilingües. Herramientas solo de exportación: docx@9.5.1 con npm --ignore-scripts y pdf2image==1.17.0 en /tmp; se borraron sus directorios después de renderizar e inspeccionar. No se agregaron a ejecución ni CI.
+
+**Límites.** UI solo en inglés; sin páginas para contraseña, operador/administración, auditoría o gestión SAT. Recargar pide elegir empresa; las pestañas no coordinan tokens de acceso. Límite de navegador: 20 archivos, 10 MiB por archivo, 20 MiB total; API puede ser más estricta. Sin modo offline ni despliegue productivo. SSE queda como mejora posible, sin endpoint en este PR. Reopen y N:M manual independiente conservan las brechas ADR-009. No se creó CODEX-SESSION-8B.md. Solo commits locales.
+
+#### Inicio de sesión sintético
+
+![Inicio sintético de la UI](images/pr13-login.png)
+
+#### Resumen después de importar y conciliar
+
+![Resumen general sintético de la UI](images/pr13-overview.png)
+
+#### Cola antes de confirmar
+
+![Cola de revisión sintética de la UI](images/pr13-review-queue.png)
 
 ### PR-12: Review, summaries and API
 
@@ -1062,12 +1102,12 @@ migración subir/bajar/subir en una base de datos real y la ejecución `41122200
   silenciar la advertencia.
 - El primer andamiaje fue en TypeScript. Se descartó cuando el stack cambió a C#; nada dependía de él.
 
-## 6. Siguiente trabajo: decisiones de revisión del grupo 8
+## 6. Siguiente trabajo: herramientas de datos del grupo 9
 
-Grupo 7 SAT sin conexión real está implementado, incluida cancelación por API/worker. Phase 2, tarea 7.6, requiere
-un CFDI de pago real anonimizado y respuesta SAT en vivo. FX 6.11 espera contrato de cambio por documento. Decisiones,
-cola y N:M manuales siguen en grupo 8; 5.3 y 2.4 esperan esas acciones. La suite normal mantiene tres escenarios
-futuros del grupo 8 y tres benchmarks optativos omitidos.
+8A/8B y los escenarios antes omitidos de roles/auditoría están implementados. Siguen generación sintética
+repetible, anonimización, datos de demostración y detección de filtraciones. FX 6.11, SAT real 7.6,
+observabilidad y entrega productiva conservan su alcance separado. Cuatro benchmarks son optativos;
+no queda escenario de dominio/UI omitido.
 
 ## 7. El resto del camino
 

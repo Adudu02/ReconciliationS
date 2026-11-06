@@ -7,29 +7,203 @@
     "quality_profile": "showcase"
   },
   "components": [
-    { "id": "users", "type": "external", "label": "Client", "sublabel": "browser / curl", "pos": [40, 340], "size": [130, 64] },
-    { "id": "api", "type": "backend", "label": "Reconciliation.Api", "sublabel": "ASP.NET Core minimal API", "pos": [260, 340], "size": [170, 64], "tag": "JWT + live roles" },
-    { "id": "migrator", "type": "backend", "label": "Reconciliation.Migrator", "sublabel": "runs once, then exits", "pos": [560, 130], "size": [190, 64] },
-    { "id": "pg", "type": "database", "label": "Company tables", "sublabel": "forced RLS; audit hash chain", "pos": [540, 340], "size": [170, 64], "tag": "cfdi_app: no BYPASSRLS" },
-    { "id": "queue", "type": "database", "label": "Job queue tables", "sublabel": "job, job_attempt", "pos": [820, 340], "size": [170, 64], "tag": "SKIP LOCKED" },
-    { "id": "worker", "type": "backend", "label": "Reconciliation.Worker", "sublabel": "polls, heartbeats, retries", "pos": [680, 520], "size": [170, 64] },
-    { "id": "sat", "type": "external", "label": "SAT stub", "sublabel": "SOAP Consulta + local controls", "pos": [960, 520], "size": [170, 64], "tag": "internal only" }
+    {
+      "id": "users",
+      "type": "frontend",
+      "label": "Reconciliation.Web",
+      "sublabel": "Blazor WASM \u00b7 browser",
+      "pos": [
+        40,
+        340
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Reconciliation.Api",
+      "sublabel": "serves static shell + API",
+      "pos": [
+        360,
+        340
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "JWT + live roles"
+    },
+    {
+      "id": "migrator",
+      "type": "backend",
+      "label": "Reconciliation.Migrator",
+      "sublabel": "runs once, then exits",
+      "pos": [
+        660,
+        130
+      ],
+      "size": [
+        190,
+        64
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "Company tables",
+      "sublabel": "forced RLS; audit hash chain",
+      "pos": [
+        640,
+        340
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "cfdi_app: no BYPASSRLS"
+    },
+    {
+      "id": "queue",
+      "type": "database",
+      "label": "Job queue tables",
+      "sublabel": "job, job_attempt",
+      "pos": [
+        920,
+        340
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "SKIP LOCKED"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Reconciliation.Worker",
+      "sublabel": "polls, heartbeats, retries",
+      "pos": [
+        780,
+        520
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "sat",
+      "type": "external",
+      "label": "SAT stub",
+      "sublabel": "SOAP Consulta + local controls",
+      "pos": [
+        1060,
+        520
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "internal only"
+    }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Docker Compose network", "wraps": ["api", "migrator", "pg", "queue", "worker", "sat"] },
-    { "kind": "security-group", "label": "PostgreSQL", "wraps": ["pg", "queue"] }
+    {
+      "kind": "region",
+      "label": "Docker Compose network",
+      "wraps": [
+        "api",
+        "migrator",
+        "pg",
+        "queue",
+        "worker",
+        "sat"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "PostgreSQL",
+      "wraps": [
+        "pg",
+        "queue"
+      ]
+    }
   ],
   "connections": [
-    { "id": "client-to-api", "from": "users", "to": "api", "label": "HTTPS + JWT", "variant": "emphasis" },
-    { "id": "api-to-pg", "from": "api", "to": "pg", "label": "company tx" },
-    { "id": "migrator-to-pg", "from": "migrator", "to": "pg", "label": "runs first: schema, roles", "variant": "security", "fromSide": "bottom", "toSide": "top" },
-    { "id": "worker-to-pg", "from": "worker", "to": "pg", "label": "short company tx", "fromSide": "top", "toSide": "bottom" },
-    { "id": "worker-claim", "from": "worker", "to": "queue", "label": "claim_next_job", "fromSide": "top", "toSide": "bottom" },
-    { "id": "worker-to-sat", "from": "worker", "to": "sat", "label": "SOAP Consulta" }
+    {
+      "id": "client-to-api",
+      "from": "users",
+      "to": "api",
+      "label": "shell / bearer API",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-to-pg",
+      "from": "api",
+      "to": "pg",
+      "label": "company tx"
+    },
+    {
+      "id": "migrator-to-pg",
+      "from": "migrator",
+      "to": "pg",
+      "label": "runs first: schema, roles",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "worker-to-pg",
+      "from": "worker",
+      "to": "pg",
+      "label": "short company tx",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "worker-claim",
+      "from": "worker",
+      "to": "queue",
+      "label": "claim_next_job",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "worker-to-sat",
+      "from": "worker",
+      "to": "sat",
+      "label": "SOAP Consulta"
+    }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Request path", "items": ["Company reads and writes use tenant transactions", "An upload stores its files and the job in that same transaction, then returns 202"] },
-    { "dot": "amber", "title": "Background work", "items": ["The queue is two PostgreSQL tables, no broker", "status_check: read, HTTP without DB, fenced write"] },
-    { "dot": "violet", "title": "Isolation", "items": ["API and worker use cfdi_app without an RLS bypass", "Queue and audit append functions have separate restricted owners", "Audit chain and sat_status_cache live inside PostgreSQL"] }
+    {
+      "dot": "cyan",
+      "title": "Request path",
+      "items": [
+        "Anonymous static shell; bearer HTTP for browser data",
+        "Company reads and writes use tenant transactions",
+        "Uploads store files and a job, then return 202"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Background work",
+      "items": [
+        "The queue is two PostgreSQL tables, no broker",
+        "status_check: read, HTTP without DB, fenced write"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Isolation",
+      "items": [
+        "API and worker use cfdi_app without an RLS bypass",
+        "Queue, audit and directory functions have restricted owners",
+        "Audit chain and sat_status_cache live inside PostgreSQL"
+      ]
+    }
   ]
 }
