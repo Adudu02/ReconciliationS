@@ -57,6 +57,28 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         Assert.Equal(2, await owner.ExecuteScalarAsync<int>("SELECT count(*) FROM link WHERE company_id=@company", new { company }));
     }
 
+    [Fact]
+    public async Task M0012_down_refuses_to_delete_user_decisions_and_preserves_schema()
+    {
+        await using var host = new ApiFixture();
+        await host.InitializeAsync();
+        var seed = await MatchingFiscalScenario.SeedAsync(host, 100, 100);
+        using var client = await host.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(host, client, seed.Company);
+        var link = await host.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = seed.Company });
+        using var confirmed = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        using var services = new ServiceCollection().AddFluentMigratorCore().ConfigureRunner(r => r.AddPostgres()
+            .WithGlobalConnectionString(host.Database.OwnerConnectionString).ScanIn(typeof(M0001CompanyUserMembership).Assembly).For.Migrations()).AddLogging().BuildServiceProvider(validateScopes: false);
+        using var scope = services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        var refusal = Assert.ThrowsAny<Exception>(() => runner.MigrateDown(11));
+        Assert.Contains("user decisions", refusal.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, await host.Database.ScalarAsync<int>("SELECT count(*) FROM link_decision WHERE link_id=@link", new { link }));
+        Assert.True(await host.Database.ScalarAsync<bool>("SELECT to_regclass('link_active_pair_idx') IS NOT NULL"));
+        Assert.Equal("reconciled", await host.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@link", new { link }));
+    }
+
     [Theory]
     [InlineData("confirm", "reconciled")]
     [InlineData("reject", "rejected")]
