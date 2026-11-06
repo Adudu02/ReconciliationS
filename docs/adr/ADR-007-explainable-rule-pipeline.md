@@ -221,3 +221,13 @@ cancellation markers from retained SAT status without rewriting audit evidence. 
 FX stretch 6.11 remains open. The parser stores TipoCambioP, not document-level EquivalenciaDR/exchange data; exact
 dual-currency capacities across multi-document payments need their own fiscal contract. No speculative FX columns,
 conversion, exchange gain/loss calculation, review queue endpoint or group 7 SAT adapter is added here.
+
+## Amendments in group 8A
+
+ADR-009 and M0012 replace the original unconditional pair unique constraint with an active-only unique index,
+NULLS NOT DISTINCT on the same company/movement/invoice/payment-CFDI columns WHERE state IN ('suggested','reconciled').
+This permits retained closed history plus a new user link when changing only the amount on the same invoice.
+User rejections and user change closures explicitly block automatic pair re-proposal. Primary-key engine/replacement
+upserts keep explicit eligibility/tombstone checks. Down refuses retained decisions or duplicate historical pairs;
+it never deletes them or changes audit history to force a downgrade. Group 8A now implements confirm/reject/change,
+review queue, summaries, overview and documented API; reopen, standalone manual N:M creation and UI 8.5 remain pending.

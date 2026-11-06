@@ -84,13 +84,13 @@
 
 ## 8. Review, summaries and API (days 6–8)
 
-- [ ] 8.1 Implement the review queue endpoint with ordering and reasons and verify the queue scenario passes
-- [ ] 8.2 Implement confirm, reject and change decisions with audit and verify the three decision scenarios pass
-- [ ] 8.3 Implement invoice summary and company overview endpoints and verify the worked-example summary shows 50% paid and 5,800.00 pending
-- [ ] 8.3b Add complement status to the summary, the complement filter and the overview alerts, and verify the missing, overdue and alert-count scenarios
-- [ ] 8.3c Implement the supported-banks list, the movement classification, the settings and the original-file endpoints from the design catalogue, and verify each is in the OpenAPI document
-- [ ] 8.3d (stretch if time is short) Show the cash payment warning above 2,000.00 and verify the state is unchanged
-- [ ] 8.4 Generate the versioned OpenAPI document with the disclaimer and verify it covers every endpoint
+- [x] 8.1 Implement the review queue endpoint with ordering and reasons and verify the queue scenario passes
+- [x] 8.2 Implement confirm, reject and change decisions with audit and verify the three decision scenarios pass
+- [x] 8.3 Implement invoice summary and company overview endpoints and verify the worked-example summary shows 50% paid and 5,800.00 pending
+- [x] 8.3b Add complement status to the summary, the complement filter and the overview alerts, and verify the missing, overdue and alert-count scenarios
+- [x] 8.3c Implement the supported-banks list, the movement classification, the settings and the original-file endpoints from the design catalogue, and verify each is in the OpenAPI document
+- [x] 8.3d (stretch if time is short) Show the cash payment warning above 2,000.00 and verify the state is unchanged
+- [x] 8.4 Generate the versioned OpenAPI document with the disclaimer and verify it covers every endpoint
 - [ ] 8.5 Build the minimal UI (review queue, invoice summary, overview) using only the API, and verify the worked example can be completed through it
 
 ## 9. Test data tooling (days 3–7, in parallel)

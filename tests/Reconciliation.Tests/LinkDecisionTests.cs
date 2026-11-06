@@ -97,6 +97,12 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         Assert.Equal(before + 1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@company", new { company = seed.Company }));
         using var repeat = await client.PostAsJsonAsync(path, new { type }, TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.Conflict, repeat.StatusCode);
+        if (type == "reject")
+            await fixture.App.Services.GetRequiredService<CfdiImporter>().ImportAsync(seed.Company, seed.Actor,
+                [UploadedFile.FromBytes("synthetic-later-complement.xml", SyntheticCfdi.Payment(seed.Uuid, remaining: "0.00", previous: "100.00", paid: "100.00"))], TestContext.Current.CancellationToken);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        Assert.Equal(expected, await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@link", new { link }));
+        Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link WHERE company_id=@company", new { company = seed.Company }));
     }
 
     [Fact]
@@ -173,6 +179,29 @@ public sealed class LinkDecisionTests(ApiFixture fixture)
         var result = await confirmed.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(TestContext.Current.CancellationToken);
         Assert.Contains(result.GetProperty("links").EnumerateArray(), item => item.GetProperty("id").GetGuid() == original && item.GetProperty("state").GetString() == "closed");
         Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@Company AND action='link.confirmed' AND items @> @item::jsonb", new { seed.Company, item = System.Text.Json.JsonSerializer.Serialize(new[] { new { kind = "link", id = original.ToString() } }) }));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Confirmation_rechecks_movement_and_invoice_capacity_without_recording_refused_decision(bool movementCapacity)
+    {
+        var seed = await MatchingFiscalScenario.SeedAsync(fixture, 100, 100);
+        using var client = await fixture.LoginAsync(seed.Email, seed.Company);
+        await MatchingRunScenario.RunAsync(fixture, client, seed.Company);
+        var link = await fixture.Database.ScalarAsync<Guid>("SELECT id FROM link WHERE company_id=@company", new { company = seed.Company });
+        if (movementCapacity)
+        {
+            await using var owner = await fixture.Database.OpenOwnerAsync();
+            await owner.ExecuteAsync("UPDATE bank_movement SET credit=50 WHERE id=@Movement", seed);
+        }
+        else await MatchingFiscalScenario.ImportNoteAsync(fixture, seed, 50);
+        var before = await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@company", new { company = seed.Company });
+        using var response = await client.PostAsJsonAsync($"/companies/{seed.Company}/links/{link}/decisions", new { type = "confirm" }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("suggested", await fixture.Database.ScalarAsync<string>("SELECT state FROM link WHERE id=@link", new { link }));
+        Assert.Equal(0, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM link_decision WHERE link_id=@link", new { link }));
+        Assert.Equal(before, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id=@company", new { company = seed.Company }));
     }
 
     [Fact]

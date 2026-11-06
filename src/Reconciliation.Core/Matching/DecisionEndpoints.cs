@@ -77,9 +77,19 @@ public static class DecisionEndpoints
             INSERT INTO link_decision(company_id,link_id,type,decided_by,detail) VALUES(@companyId,@linkId,@Type,@actor,@detail::jsonb)
             RETURNING id,type,decided_by AS DecidedBy,decided_at AS DecidedAt
             """, new { companyId, linkId, request.Type, actor, detail }, transaction, cancellationToken: token));
+        var markers = Array.Empty<ClosedMarker>();
+        if (request.Type is "confirm" or "change")
+            markers = (await connection.QueryAsync<ClosedMarker>(Command("""
+                UPDATE link l SET state='closed',decided_by=@actor,decided_at=clock_timestamp() FROM cfdi c
+                WHERE l.company_id=c.company_id AND l.cfdi_id=c.id AND l.movement_id=@MovementId AND l.state='suggested'
+                  AND l.review_reason IN ('cancelled invoice','cancelled payment complement') AND l.id<>@linkId
+                RETURNING l.id,c.uuid
+                """, new { actor, link.MovementId, linkId }, transaction, cancellationToken: token))).ToArray();
         var uuid = await connection.ExecuteScalarAsync<Guid>(Command("SELECT uuid FROM cfdi WHERE id=@CfdiId", link, transaction, cancellationToken: token));
+        var items = new List<AuditItem> { new("link", linkId.ToString()), new("movement", link.MovementId.ToString()), new("cfdi", uuid.ToString()) };
+        foreach (var marker in markers) { items.Add(new("link", marker.Id.ToString())); items.Add(new("cfdi", marker.Uuid.ToString())); }
         await AuditLog.WriteAsync(connection, transaction, companyId, actor, "link." + (request.Type == "confirm" ? "confirmed" : request.Type == "reject" ? "rejected" : "closed"),
-            new { link.State }, new { state, decision.Id }, token, [new("link", linkId.ToString()), new("movement", link.MovementId.ToString()), new("cfdi", uuid.ToString())]);
+            new { link.State }, new { state, decision.Id, closedMarkers = markers.Select(marker => marker.Id).ToArray() }, token, items);
         Guid? newLinkId = null;
         if (request.Type == "change")
         {
@@ -91,20 +101,16 @@ public static class DecisionEndpoints
             await AuditLog.WriteAsync(connection, transaction, companyId, actor, "link.created", null, new { id = newLinkId, state = "reconciled", amount }, token,
                 [new("link", newLinkId.ToString()!), new("movement", link.MovementId.ToString()), new("cfdi", targetUuid.ToString())]);
         }
-        if (request.Type is "confirm" or "change")
-            await connection.ExecuteAsync(Command("""
-                UPDATE link SET state='closed',decided_by=@actor,decided_at=clock_timestamp()
-                WHERE movement_id=@MovementId AND state='suggested' AND review_reason IN ('cancelled invoice','cancelled payment complement') AND id<>@linkId
-                """, new { actor, link.MovementId, linkId }, transaction, cancellationToken: token));
         var affected = await connection.ExecuteScalarAsync<string>(Command("""
             SELECT coalesce(jsonb_agg(jsonb_build_object('id',l.id,'state',l.state,'amountApplied',l.amount_applied,'cfdiId',l.cfdi_id,
               'movementState',m.state,'invoiceState',c.state)),'[]')::text FROM link l
             JOIN movement_state() m ON m.company_id=l.company_id AND m.id=l.movement_id
-            JOIN cfdi_state() c ON c.company_id=l.company_id AND c.id=l.cfdi_id WHERE l.id=@linkId OR l.id=@newLinkId
-            """, new { linkId, newLinkId }, transaction, cancellationToken: token));
+            JOIN cfdi_state() c ON c.company_id=l.company_id AND c.id=l.cfdi_id WHERE l.id=@linkId OR l.id=@newLinkId OR l.id=ANY(@markerIds)
+            """, new { linkId, newLinkId, markerIds = markers.Select(marker => marker.Id).ToArray() }, transaction, cancellationToken: token));
         return Results.Ok(new { decision, links = JsonSerializer.Deserialize<JsonElement>(affected!) });
     }, cancellationToken);
 
+    private sealed record ClosedMarker(Guid Id, Guid Uuid);
     private sealed record DecisionLink(Guid Id, Guid MovementId, Guid CfdiId, decimal Amount, string State, string Origin, string? ReviewReason);
     private sealed record DecisionRow(Guid Id, string Type, Guid DecidedBy, DateTime DecidedAt);
     private sealed record TargetInvoice(string Type, string Direction, string SatStatus, Guid Uuid);

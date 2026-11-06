@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1700" height="1910" viewBox="0 0 1700 1910" font-family="Liberation Sans, Arial, sans-serif">
 <rect width="1700" height="1910" fill="#fff"/>
-<text x="850.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">As-built data model (migrations M0001 to M0011)</text>
+<text x="850.0" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">As-built data model (migrations M0001 to M0012)</text>
 <text x="850.0" y="54" text-anchor="middle" font-size="12.5" fill="#555">PK primary key · FK foreign key · UK unique · RLS = forced row-level security by company</text>
 <rect x="18" y="78" width="1002" height="570" rx="10" fill="#dbeafe" fill-opacity="0.35" stroke="#1d4ed8" stroke-dasharray="6 4"/>
 <text x="30" y="98" font-size="13.5" font-weight="bold" fill="#1d4ed8">Tenancy and access</text>
 <rect x="1028" y="78" width="662" height="480" rx="10" fill="#ede9fe" fill-opacity="0.35" stroke="#6d28d9" stroke-dasharray="6 4"/>
 <text x="1040" y="98" font-size="13.5" font-weight="bold" fill="#6d28d9">Sessions (per user, outside company RLS)</text>
 <rect x="18" y="1470" width="1672" height="420" rx="10" fill="#fff7ed" fill-opacity="0.35" stroke="#c2410c" stroke-dasharray="6 4"/>
-<text x="30" y="1490" font-size="13.5" font-weight="bold" fill="#c2410c">Jobs and SAT cache (forced RLS; restricted global queue claims)</text>
+<text x="30" y="1490" font-size="13.5" font-weight="bold" fill="#c2410c">Jobs, review decisions and SAT cache (forced RLS; restricted queue claims)</text>
 <rect x="18" y="690" width="1672" height="750" rx="10" fill="#dcfce7" fill-opacity="0.35" stroke="#15803d" stroke-dasharray="6 4"/>
 <text x="30" y="710" font-size="13.5" font-weight="bold" fill="#15803d">Ingestion (every table carries company_id and forced RLS)</text>
 <path d="M310.0 154.5 L340.0 154.5 L340.0 154.5 L370.0 154.5" fill="none" stroke="#475569" stroke-width="1.5"/>
@@ -57,6 +57,7 @@
 <text x="318.0" y="1003.5" font-size="12" font-weight="bold" fill="#111" text-anchor="start">N</text>
 <path d="M1330 774.5 H1350 V1320 H170.0 V1263" fill="none" stroke="#a16207" stroke-width="1.5"/>
 <text x="360" y="1305" font-size="11" fill="#444">link FKs use company_id + id; payment_ref targets cfdi_payment</text>
+<path d="M310 991.5 H690 V1578.5 H710" fill="none" stroke="#b7791f" stroke-width="1.5"/>
 <path d="M310.0 1544.5 L340.0 1544.5 L340.0 1561.5 L370.0 1561.5" fill="none" stroke="#475569" stroke-width="1.5"/>
 <text x="318.0" y="1539.5" font-size="12" font-weight="bold" fill="#111" text-anchor="start">1</text>
 <text x="362.0" y="1556.5" font-size="12" font-weight="bold" fill="#111" text-anchor="end">N</text>
@@ -113,6 +114,32 @@
 <text x="1208" y="1803.5" font-size="10.5" fill="#555">uuid nullable</text>
 <text x="1060" y="1820.5" font-size="11.5" fill="#111">last_error_kind</text>
 <text x="1208" y="1820.5" font-size="10.5" fill="#555">text nullable</text>
+<rect x="710" y="1510" width="280" height="153" rx="6" fill="#fff" stroke="#a16207" stroke-width="1.6"/>
+<path d="M710 1536 V1516 a6 6 0 0 1 6 -6 H984 a6 6 0 0 1 6 6 V1536 Z" fill="#fef9c3" stroke="#a16207" stroke-width="1.6"/>
+<text x="720" y="1528" font-size="14" font-weight="bold" fill="#111">link_decision</text>
+<rect x="946" y="1516" width="36" height="15" rx="7" fill="#fff4e0" stroke="#c77c00"/><text x="964" y="1527" font-size="10" font-weight="bold" fill="#8a5300" text-anchor="middle">RLS</text>
+<text x="720" y="1548.5" font-size="11.5" font-weight="bold" fill="#111">company_id</text>
+<text x="868" y="1548.5" font-size="10.5" fill="#555">uuid</text>
+<text x="982" y="1548.5" font-size="10" font-weight="bold" fill="#a16207" text-anchor="end">PK FK</text>
+<rect x="711" y="1553" width="278" height="17" fill="#f8fafc"/>
+<text x="720" y="1565.5" font-size="11.5" font-weight="bold" fill="#111">id</text>
+<text x="868" y="1565.5" font-size="10.5" fill="#555">uuid</text>
+<text x="982" y="1565.5" font-size="10" font-weight="bold" fill="#a16207" text-anchor="end">PK</text>
+<text x="720" y="1582.5" font-size="11.5" fill="#111">link_id</text>
+<text x="868" y="1582.5" font-size="10.5" fill="#555">uuid</text>
+<text x="982" y="1582.5" font-size="10" font-weight="bold" fill="#a16207" text-anchor="end">FK</text>
+<rect x="711" y="1587" width="278" height="17" fill="#f8fafc"/>
+<text x="720" y="1599.5" font-size="11.5" fill="#111">type</text>
+<text x="868" y="1599.5" font-size="10.5" fill="#555">text (3 types)</text>
+<text x="982" y="1599.5" font-size="10" font-weight="bold" fill="#a16207" text-anchor="end">CHECK</text>
+<text x="720" y="1616.5" font-size="11.5" fill="#111">decided_by</text>
+<text x="868" y="1616.5" font-size="10.5" fill="#555">uuid</text>
+<text x="982" y="1616.5" font-size="10" font-weight="bold" fill="#a16207" text-anchor="end">FK</text>
+<rect x="711" y="1621" width="278" height="17" fill="#f8fafc"/>
+<text x="720" y="1633.5" font-size="11.5" fill="#111">decided_at</text>
+<text x="868" y="1633.5" font-size="10.5" fill="#555">timestamptz</text>
+<text x="720" y="1650.5" font-size="11.5" fill="#111">detail</text>
+<text x="868" y="1650.5" font-size="10.5" fill="#555">jsonb object</text>
 <rect x="30" y="940" width="280" height="323" rx="6" fill="#fff" stroke="#a16207" stroke-width="1.6"/>
 <path d="M30 966 V946 a6 6 0 0 1 6 -6 H304 a6 6 0 0 1 6 6 V966 Z" fill="#fef9c3" stroke="#a16207" stroke-width="1.6"/>
 <text x="40" y="958" font-size="14" font-weight="bold" fill="#111">link</text>
