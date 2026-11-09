@@ -1,0 +1,18 @@
+@inherits LocalizedComponentBase
+@inject IDocumentLanguage Document
+
+<div class="lang-switch" role="group" aria-label="@T["lang.group"]">
+    <button type="button" class="secondary" lang="es" aria-pressed="@Pressed("es")" aria-label="@T["lang.es"]" title="@T["lang.es"]" @onclick="SpanishAsync">ES</button>
+    <button type="button" class="secondary" lang="en" aria-pressed="@Pressed("en")" aria-label="@T["lang.en"]" title="@T["lang.en"]" @onclick="EnglishAsync">EN</button>
+</div>
+
+@code {
+    private string Pressed(string language) => T.Language == language ? "true" : "false";
+    private Task SpanishAsync() => SelectAsync("es");
+    private Task EnglishAsync() => SelectAsync("en");
+    private async Task SelectAsync(string language)
+    {
+        T.Set(language);
+        await Document.SetAsync(T.Language);
+    }
+}

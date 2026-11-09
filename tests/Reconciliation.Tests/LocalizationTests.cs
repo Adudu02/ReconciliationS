@@ -1,6 +1,15 @@
+using System.Net;
+using System.Reflection;
 using System.Text.RegularExpressions;
+using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 using Reconciliation.Contracts;
+using Reconciliation.Web;
 using Reconciliation.Web.Localization;
+using Reconciliation.Web.Pages;
+using Reconciliation.Web.Shared;
+using TestContext = Xunit.TestContext;
 
 namespace Reconciliation.Tests;
 
@@ -263,4 +272,161 @@ public sealed class LocalizationTests
 
     private static List<string> Placeholders(string value) =>
         Regex.Matches(value, @"\{\d+\}").Select(match => match.Value).Order().ToList();
+}
+
+public sealed class LanguageSwitchTests
+{
+    private static readonly CompanyItem Company = new(Guid.NewGuid(), "AAA010101AAA", "Synthetic company", null, "accountant");
+
+    private static (SessionState Session, ApiClient Api) Services(BunitContext context, string language)
+    {
+        TestLanguage.Register(context, language);
+        var session = new SessionState();
+        var http = new HttpClient(new WebTestHandler(request => request.RequestUri!.AbsolutePath == "/auth/tokens"
+            ? WebTestHandler.Json(new SessionTokens("synthetic-access", 900))
+            : new(HttpStatusCode.Unauthorized)))
+        { BaseAddress = new Uri("https://app.example.invalid/") };
+        var api = new ApiClient(http, session);
+        context.Services.AddSingleton(session);
+        context.Services.AddSingleton(api);
+        return (session, api);
+    }
+
+    private static async Task<SessionState> Authenticated(BunitContext context, string language)
+    {
+        var (session, api) = Services(context, language);
+        await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
+        session.SelectCompany(Company);
+        // An unknown route renders the shell's NotFound content, so no page (and none of its services) is needed.
+        context.Services.GetRequiredService<NavigationManager>().NavigateTo("/ui/missing");
+        return session;
+    }
+
+    private static bool HasSubscribers(Localizer localizer) =>
+        typeof(Localizer).GetField("Changed", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(localizer) is not null;
+
+    [Fact]
+    public async Task Login_renders_in_spanish_by_default()
+    {
+        await using var context = new BunitContext();
+        Services(context, "es");
+        var page = context.Render<Login>();
+        Assert.Contains("Iniciar sesión", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("los resultados no tienen validez fiscal ni legal", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Correo electrónico", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Contraseña", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Switch_to_english_rerenders_and_sets_document_language()
+    {
+        await using var context = new BunitContext();
+        Services(context, "es");
+        var document = context.Services.GetRequiredService<RecordingDocumentLanguage>();
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Iniciar sesión", app.Markup, StringComparison.Ordinal));
+        Assert.Equal("true", app.Find("button[lang=es]").GetAttribute("aria-pressed"));
+        Assert.Equal("false", app.Find("button[lang=en]").GetAttribute("aria-pressed"));
+        Assert.Equal(["es"], document.Languages);
+
+        app.Find("button[lang=en]").Click();
+
+        app.WaitForAssertion(() => Assert.Contains("Sign in", app.Markup, StringComparison.Ordinal));
+        Assert.DoesNotContain("Iniciar sesión", app.Markup, StringComparison.Ordinal);
+        Assert.Contains("Demo: results have no fiscal or legal validity.", app.Markup, StringComparison.Ordinal);
+        Assert.Equal("false", app.Find("button[lang=es]").GetAttribute("aria-pressed"));
+        Assert.Equal("true", app.Find("button[lang=en]").GetAttribute("aria-pressed"));
+        Assert.Equal(["es", "en"], document.Languages);
+    }
+
+    [Fact]
+    public async Task Switch_renders_two_labelled_buttons_that_name_their_own_language()
+    {
+        await using var context = new BunitContext();
+        Services(context, "es");
+        var page = context.Render<LanguageSwitch>();
+        Assert.Equal("group", page.Find(".lang-switch").GetAttribute("role"));
+        Assert.Equal("Idioma", page.Find(".lang-switch").GetAttribute("aria-label"));
+        var buttons = page.FindAll(".lang-switch button");
+        Assert.Equal(["ES", "EN"], buttons.Select(button => button.TextContent.Trim()));
+        Assert.Equal(["es", "en"], buttons.Select(button => button.GetAttribute("lang")));
+    }
+
+    [Theory]
+    [InlineData("/ui/login?lang=en", "en", "Sign in")]
+    [InlineData("/ui/login?lang=es", "es", "Iniciar sesión")]
+    [InlineData("/ui/login?lang=zz", "es", "Iniciar sesión")]
+    [InlineData("/ui/login", "es", "Iniciar sesión")]
+    public async Task Query_parameter_selects_initial_language(string uri, string expected, string text)
+    {
+        await using var context = new BunitContext();
+        Services(context, "en");
+        var document = context.Services.GetRequiredService<RecordingDocumentLanguage>();
+        context.Services.GetRequiredService<NavigationManager>().NavigateTo(uri);
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains(text, app.Markup, StringComparison.Ordinal));
+        Assert.Equal(expected, context.Services.GetRequiredService<Localizer>().Language);
+        Assert.Equal(expected, document.Languages[0]);
+    }
+
+    [Fact]
+    public async Task Switching_language_keeps_the_selected_company()
+    {
+        await using var context = new BunitContext();
+        var session = await Authenticated(context, "es");
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Cambiar de empresa", app.Markup, StringComparison.Ordinal));
+        Assert.Contains("Contador", app.Find(".identity").TextContent, StringComparison.Ordinal);
+
+        app.Find("button[lang=en]").Click();
+
+        app.WaitForAssertion(() => Assert.Contains("Switch company", app.Markup, StringComparison.Ordinal));
+        Assert.Contains("Accountant", app.Find(".identity").TextContent, StringComparison.Ordinal);
+        Assert.Equal(Company, session.Company);
+        Assert.Contains("Synthetic company", app.Find(".identity").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Archived_company_is_labelled_in_the_active_language()
+    {
+        await using var context = new BunitContext();
+        var session = await Authenticated(context, "es");
+        session.SelectCompany(Company with { ArchivedAt = DateTime.UtcNow });
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Archivada · solo lectura", app.Find(".identity").TextContent, StringComparison.Ordinal));
+        app.Find("button[lang=en]").Click();
+        app.WaitForAssertion(() => Assert.Contains("Archived · read-only", app.Find(".identity").TextContent, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Shell_chrome_is_localized_including_accessible_names()
+    {
+        await using var context = new BunitContext();
+        await Authenticated(context, "es");
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Cambiar de empresa", app.Markup, StringComparison.Ordinal));
+        Assert.Equal("Saltar al contenido", app.Find("a.skip").TextContent);
+        Assert.Equal("Espacio de trabajo", app.Find("nav.sidebar").GetAttribute("aria-label"));
+        Assert.Equal(["Resumen", "Bandeja de revisión", "Facturas", "Movimientos", "Importar archivos"],
+            app.FindAll("nav.sidebar a").Select(link => link.TextContent.Trim()));
+        Assert.Contains("Demostración: los resultados no tienen validez fiscal ni legal.", app.Find("footer").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Página no disponible", app.Find("main").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Volver al resumen", app.Find("main").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Components_release_the_language_subscription_when_disposed()
+    {
+        await using var context = new BunitContext();
+        Services(context, "es");
+        var localizer = context.Services.GetRequiredService<Localizer>();
+        Assert.False(HasSubscribers(localizer));
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Iniciar sesión", app.Markup, StringComparison.Ordinal));
+        Assert.True(HasSubscribers(localizer));
+
+        await context.DisposeComponentsAsync();
+
+        Assert.False(HasSubscribers(localizer));
+    }
 }

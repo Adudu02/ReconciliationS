@@ -9,19 +9,39 @@ public static partial class Catalog
         ["nav.invoices"] = "Facturas",
         ["nav.movements"] = "Movimientos",
         ["nav.imports"] = "Importar archivos",
+        ["nav.label"] = "Espacio de trabajo",
+        ["nav.eyebrow"] = "CONCILIACIÓN",
 
         ["topbar.switch-company"] = "Cambiar de empresa",
         ["topbar.sign-out"] = "Cerrar sesión",
-        ["topbar.demo"] = "Demostración",
+        ["topbar.demo"] = "DEMO",
+        ["topbar.skip"] = "Saltar al contenido",
 
         ["login.title"] = "Iniciar sesión",
-        ["login.eyebrow"] = "Acceso",
-        ["login.intro"] = "Ingrese con su correo electrónico y contraseña para revisar la conciliación de su empresa.",
+        ["login.eyebrow"] = "CFDI / DEMO",
+        ["login.heading"] = "Conciliación para equipos contables",
+        ["login.intro"] = "Revise facturas y movimientos bancarios en un solo espacio de trabajo por empresa.",
         ["login.email"] = "Correo electrónico",
         ["login.password"] = "Contraseña",
         ["login.sign-in"] = "Iniciar sesión",
         ["login.signing-in"] = "Iniciando sesión…",
-        ["login.service-unavailable"] = "El servicio no está disponible en este momento. Intente de nuevo en unos minutos.",
+        ["login.service-unavailable"] = "El servicio no está disponible. Intente de nuevo.",
+
+        ["shell.restoring"] = "Restaurando la sesión…",
+        ["shell.service-unavailable"] = "El servicio no está disponible. Intente iniciar sesión de nuevo.",
+        ["shell.sign-out-unreachable"] = "No se pudo contactar al servicio para cerrar la sesión. Intente de nuevo.",
+        ["shell.not-found.title"] = "Página no disponible",
+        ["shell.not-found.back"] = "Volver al resumen",
+
+        ["company.archived-read-only"] = "Archivada · solo lectura",
+        ["picker.eyebrow"] = "ESPACIO DE TRABAJO",
+        ["picker.title"] = "Elija una empresa",
+        ["picker.intro"] = "Su membresía determina las acciones disponibles en cada empresa.",
+        ["picker.empty"] = "No hay membresías de empresa disponibles. Solicite acceso a un administrador de la empresa.",
+
+        ["lang.group"] = "Idioma",
+        ["lang.es"] = "Español",
+        ["lang.en"] = "English",
 
         ["notice.disclaimer"] = "Demostración: los resultados no tienen validez fiscal ni legal.",
 

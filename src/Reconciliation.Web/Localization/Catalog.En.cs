@@ -9,19 +9,39 @@ public static partial class Catalog
         ["nav.invoices"] = "Invoices",
         ["nav.movements"] = "Movements",
         ["nav.imports"] = "Import files",
+        ["nav.label"] = "Workspace",
+        ["nav.eyebrow"] = "RECONCILIATION",
 
         ["topbar.switch-company"] = "Switch company",
         ["topbar.sign-out"] = "Sign out",
-        ["topbar.demo"] = "Demo",
+        ["topbar.demo"] = "DEMO",
+        ["topbar.skip"] = "Skip to content",
 
         ["login.title"] = "Sign in",
-        ["login.eyebrow"] = "Access",
-        ["login.intro"] = "Sign in with your email and password to review your company's reconciliation.",
+        ["login.eyebrow"] = "CFDI / DEMO",
+        ["login.heading"] = "Reconciliation for accounting teams",
+        ["login.intro"] = "Review invoices and bank movements in one company workspace.",
         ["login.email"] = "Email",
         ["login.password"] = "Password",
         ["login.sign-in"] = "Sign in",
         ["login.signing-in"] = "Signing in…",
-        ["login.service-unavailable"] = "The service is unavailable right now. Try again in a few minutes.",
+        ["login.service-unavailable"] = "The service is unavailable. Try again.",
+
+        ["shell.restoring"] = "Restoring session…",
+        ["shell.service-unavailable"] = "The service is unavailable. Try signing in again.",
+        ["shell.sign-out-unreachable"] = "Sign out could not reach the service. Try again.",
+        ["shell.not-found.title"] = "Page unavailable",
+        ["shell.not-found.back"] = "Return to the overview",
+
+        ["company.archived-read-only"] = "Archived · read-only",
+        ["picker.eyebrow"] = "WORKSPACE",
+        ["picker.title"] = "Choose a company",
+        ["picker.intro"] = "Your membership controls the actions available in each company.",
+        ["picker.empty"] = "No company memberships are available. Ask a company administrator for access.",
+
+        ["lang.group"] = "Language",
+        ["lang.es"] = "Español",
+        ["lang.en"] = "English",
 
         ["notice.disclaimer"] = "Demo: results have no fiscal or legal validity.",
 

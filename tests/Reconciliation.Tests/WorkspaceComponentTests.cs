@@ -15,17 +15,49 @@ public sealed class WorkspaceComponentTests
         await using var context = new BunitContext();
         var archived = new CompanyItem(Guid.NewGuid(), "AAA010101AAA", "Synthetic archive", DateTime.UtcNow, "accountant");
         var active = new CompanyItem(Guid.NewGuid(), "AAA010101AAA", "Synthetic active", null, "accountant");
+        TestLanguage.Register(context, "en");
         var session = Register(context, [archived, active]);
         var picker = context.Render<CompanyPicker>();
         picker.WaitForAssertion(() => Assert.Equal(2, picker.FindAll("button[data-company]").Count));
-        Assert.Contains("accountant", picker.Markup, StringComparison.Ordinal);
-        Assert.Contains("Archived", picker.Markup, StringComparison.Ordinal);
+        Assert.Contains("Accountant", picker.Markup, StringComparison.Ordinal);
+        Assert.Contains("Archived · read-only", picker.Markup, StringComparison.Ordinal);
         picker.Find($"button[data-company='{archived.Id}']").Click();
         Assert.Equal(archived, session.Company);
         Assert.False(session.CanWrite);
         picker.Find($"button[data-company='{active.Id}']").Click();
         Assert.Equal(active, session.Company);
         Assert.True(session.CanWrite);
+    }
+
+    [Fact]
+    public async Task Company_picker_is_spanish_by_default_and_follows_a_language_switch()
+    {
+        await using var context = new BunitContext();
+        var archived = new CompanyItem(Guid.NewGuid(), "AAA010101AAA", "Synthetic archive", DateTime.UtcNow, "accountant");
+        TestLanguage.Register(context, "es");
+        Register(context, [archived]);
+        var picker = context.Render<CompanyPicker>();
+        picker.WaitForAssertion(() => Assert.Single(picker.FindAll("button[data-company]")));
+        Assert.Contains("Elija una empresa", picker.Markup, StringComparison.Ordinal);
+        Assert.Contains("Contador", picker.Markup, StringComparison.Ordinal);
+        Assert.Contains("Archivada · solo lectura", picker.Markup, StringComparison.Ordinal);
+
+        context.Services.GetRequiredService<Reconciliation.Web.Localization.Localizer>().Set("en");
+
+        picker.WaitForAssertion(() => Assert.Contains("Choose a company", picker.Markup, StringComparison.Ordinal));
+        Assert.Contains("Accountant", picker.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Company_picker_explains_an_empty_membership_list_in_both_languages()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        Register(context, []);
+        var picker = context.Render<CompanyPicker>();
+        picker.WaitForAssertion(() => Assert.Contains("No hay membresías de empresa disponibles", picker.Markup, StringComparison.Ordinal));
+        context.Services.GetRequiredService<Reconciliation.Web.Localization.Localizer>().Set("en");
+        picker.WaitForAssertion(() => Assert.Contains("No company memberships are available", picker.Markup, StringComparison.Ordinal));
     }
 
     [Fact]
