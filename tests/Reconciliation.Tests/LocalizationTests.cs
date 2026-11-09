@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Bunit;
@@ -10,6 +11,7 @@ using Reconciliation.Web;
 using Reconciliation.Web.Localization;
 using Reconciliation.Web.Pages;
 using Reconciliation.Web.Shared;
+using Reconciliation.Web.ViewModels;
 using TestContext = Xunit.TestContext;
 
 namespace Reconciliation.Tests;
@@ -279,13 +281,13 @@ public sealed class LanguageSwitchTests
 {
     private static readonly CompanyItem Company = new(Guid.NewGuid(), "AAA010101AAA", "Synthetic company", null, "accountant");
 
-    private static (SessionState Session, ApiClient Api) Services(BunitContext context, string language)
+    private static (SessionState Session, ApiClient Api) Services(BunitContext context, string language, Func<HttpRequestMessage, HttpResponseMessage>? respond = null)
     {
         TestLanguage.Register(context, language);
         var session = new SessionState();
-        var http = new HttpClient(new WebTestHandler(request => request.RequestUri!.AbsolutePath == "/auth/tokens"
+        var http = new HttpClient(new WebTestHandler(respond ?? (request => request.RequestUri!.AbsolutePath == "/auth/tokens"
             ? WebTestHandler.Json(new SessionTokens("synthetic-access", 900))
-            : new(HttpStatusCode.Unauthorized)))
+            : new(HttpStatusCode.Unauthorized))))
         { BaseAddress = new Uri("https://app.example.invalid/") };
         var api = new ApiClient(http, session);
         context.Services.AddSingleton(session);
@@ -293,9 +295,9 @@ public sealed class LanguageSwitchTests
         return (session, api);
     }
 
-    private static async Task<SessionState> Authenticated(BunitContext context, string language)
+    private static async Task<SessionState> Authenticated(BunitContext context, string language, Func<HttpRequestMessage, HttpResponseMessage>? respond = null)
     {
-        var (session, api) = Services(context, language);
+        var (session, api) = Services(context, language, respond);
         await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
         session.SelectCompany(Company);
         // An unknown route renders the shell's NotFound content, so no page (and none of its services) is needed.
@@ -388,6 +390,45 @@ public sealed class LanguageSwitchTests
     }
 
     [Fact]
+    public async Task A_shown_shell_error_changes_language_when_the_switch_is_clicked()
+    {
+        await using var context = new BunitContext();
+        await Authenticated(context, "es", request => request.RequestUri!.AbsolutePath switch
+        {
+            "/auth/tokens" => WebTestHandler.Json(new SessionTokens("synthetic-access", 900)),
+            "/auth/logout" => throw new HttpRequestException("Synthetic transport failure"),
+            _ => new(HttpStatusCode.Unauthorized)
+        });
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.NotEmpty(app.FindAll("button.sign-out")));
+        await app.InvokeAsync(() => app.Find("button.sign-out").Click());
+        app.WaitForAssertion(() => Assert.Contains("No se pudo contactar al servicio para cerrar la sesión", app.Find("[role=alert]").TextContent, StringComparison.Ordinal));
+
+        app.Find("button[lang=en]").Click();
+
+        app.WaitForAssertion(() => Assert.Contains("Sign out could not reach the service. Try again.", app.Find("[role=alert]").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain("No se pudo contactar", app.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_shown_login_error_changes_language_when_the_switch_is_clicked()
+    {
+        await using var context = new BunitContext();
+        Services(context, "es", _ => throw new HttpRequestException("Synthetic transport failure"));
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.NotEmpty(app.FindAll("form")));
+        app.Find("#email").Change("synthetic@example.invalid");
+        app.Find("#password").Change("synthetic-password");
+        await app.InvokeAsync(() => app.Find("form").Submit());
+        app.WaitForAssertion(() => Assert.Contains("El servicio no está disponible. Intente de nuevo.", app.Find("form [role=alert]").TextContent, StringComparison.Ordinal));
+
+        app.Find("button[lang=en]").Click();
+
+        app.WaitForAssertion(() => Assert.Contains("The service is unavailable. Try again.", app.Find("form [role=alert]").TextContent, StringComparison.Ordinal));
+        Assert.DoesNotContain("El servicio no está disponible", app.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Archived_company_is_labelled_in_the_active_language()
     {
         await using var context = new BunitContext();
@@ -465,5 +506,235 @@ public sealed class LanguageSwitchTests
         await context.DisposeComponentsAsync();
 
         Assert.False(HasSubscribers(localizer));
+    }
+}
+
+public sealed class ErrorLocalizationTests
+{
+    private static readonly Uri Base = new("https://app.example.invalid/");
+
+    private static SessionState Writer(string role = "accountant")
+    {
+        var session = new SessionState();
+        session.SelectCompany(new(Guid.NewGuid(), "AAA010101AAA", "Synthetic", null, role));
+        return session;
+    }
+
+    private static ApiClient Client(SessionState session, Func<HttpRequestMessage, HttpResponseMessage> respond) =>
+        new(new HttpClient(new WebTestHandler(respond)) { BaseAddress = Base }, session);
+
+    private static HttpResponseMessage Problem(HttpStatusCode status, object body) => new(status) { Content = JsonContent.Create(body) };
+
+    [Fact]
+    public async Task Server_problem_detail_is_kept_verbatim_under_a_spanish_headline()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var session = Writer();
+        context.Services.AddSingleton(session);
+        context.Services.AddSingleton(new HttpClient(new WebTestHandler(request => request.Method == HttpMethod.Post
+            ? Problem(HttpStatusCode.Conflict, new { detail = "Link already decided" })
+            : WebTestHandler.Json(new ReviewPage([new("link", Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 2), 11600, "AAA010101AAA", "XEXX010101000"), [new("amount close", 10, "Synthetic criterion")], "high", "Synthetic suggestion", [], Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 10), 5800, "Synthetic payment"))], null, null, null))))
+        { BaseAddress = Base });
+        context.Services.AddSingleton<ApiClient>();
+        context.Services.AddTransient<ReviewQueueViewModel>();
+        var page = context.Render<Review>();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("button[data-decision]")));
+
+        await page.InvokeAsync(() => page.Find("button[data-decision=confirm]").Click());
+
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[role=alert]")));
+        var alert = page.Find("[role=alert]");
+        Assert.Contains("La solicitud entra en conflicto con el estado actual", alert.TextContent, StringComparison.Ordinal);
+        Assert.Contains("already decided", alert.TextContent, StringComparison.Ordinal);
+        Assert.Equal("Link already decided", alert.QuerySelector("small[lang=en]")!.TextContent);
+    }
+
+    [Fact]
+    public async Task Server_problem_in_english_shows_the_raw_text_only()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "en");
+        var session = Writer();
+        using var api = Client(session, _ => Problem(HttpStatusCode.Conflict, new { detail = "Link already decided" }));
+        var model = new WorkspaceViewModel(api);
+        await model.LoadCompaniesAsync();
+        var page = context.Render<PageStatus>(p => p.Add(x => x.Model, model));
+        Assert.Equal("Link already decided", page.Find("[role=alert]").TextContent.Trim());
+        Assert.Empty(page.FindAll("small"));
+    }
+
+    [Fact]
+    public async Task Client_errors_follow_the_active_language()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var localizer = context.Services.GetRequiredService<Localizer>();
+        using var http = new HttpClient(new WebTestHandler(_ => throw new HttpRequestException("Synthetic transport failure"))) { BaseAddress = Base };
+        using var api = new ApiClient(http, Writer());
+        var model = new WorkspaceViewModel(api);
+        await model.LoadCompaniesAsync();
+        var page = context.Render<PageStatus>(p => p.Add(x => x.Model, model));
+        Assert.Equal("El servicio no está disponible. Intente de nuevo.", page.Find("[role=alert]").TextContent.Trim());
+
+        localizer.Set("en");
+
+        page.WaitForAssertion(() => Assert.Equal("The service is unavailable. Try again.", page.Find("[role=alert]").TextContent.Trim()));
+    }
+
+    [Fact]
+    public async Task Server_error_headline_also_follows_a_switch_while_the_raw_text_stays_english()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var localizer = context.Services.GetRequiredService<Localizer>();
+        using var api = Client(Writer(), _ => Problem(HttpStatusCode.Forbidden, new { detail = "Synthetic forbidden detail" }));
+        var model = new WorkspaceViewModel(api);
+        await model.LoadCompaniesAsync();
+        var page = context.Render<PageStatus>(p => p.Add(x => x.Model, model));
+        Assert.Contains("No tiene permiso", page.Find("[role=alert]").TextContent, StringComparison.Ordinal);
+        Assert.Equal("Synthetic forbidden detail", page.Find("small[lang=en]").TextContent);
+
+        localizer.Set("en");
+
+        page.WaitForAssertion(() => Assert.Equal("Synthetic forbidden detail", page.Find("[role=alert]").TextContent.Trim()));
+    }
+
+    [Fact]
+    public async Task Busy_text_is_localized()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var localizer = context.Services.GetRequiredService<Localizer>();
+        var gate = new TaskCompletionSource<HttpResponseMessage>();
+        using var http = new HttpClient(new GatedHandler(gate.Task)) { BaseAddress = Base };
+        using var api = new ApiClient(http, Writer());
+        var model = new WorkspaceViewModel(api);
+        var loading = model.LoadCompaniesAsync();
+        var page = context.Render<PageStatus>(p => p.Add(x => x.Model, model));
+        Assert.Equal("Cargando…", page.Find("[role=status]").TextContent.Trim());
+        localizer.Set("en");
+        page.WaitForAssertion(() => Assert.Equal("Loading…", page.Find("[role=status]").TextContent.Trim()));
+        gate.SetResult(WebTestHandler.Json(Array.Empty<CompanyItem>()));
+        await loading;
+    }
+
+    [Theory]
+    [InlineData(400, "error.status-400")]
+    [InlineData(401, "error.status-401")]
+    [InlineData(403, "error.status-403")]
+    [InlineData(404, "error.status-404")]
+    [InlineData(409, "error.status-409")]
+    [InlineData(413, "error.status-413")]
+    [InlineData(422, "error.status-422")]
+    [InlineData(429, "error.status-429")]
+    [InlineData(418, "error.status-other")]
+    [InlineData(302, "error.status-other")]
+    [InlineData(500, "error.status-server")]
+    [InlineData(503, "error.status-server")]
+    public void Status_chooses_the_headline_key(int status, string key)
+    {
+        var error = new ApiProblemException(status, "Synthetic server text").ToUiError();
+        Assert.Equal(new UiError(key, "Synthetic server text", status), error);
+        Assert.True(Catalog.Es.ContainsKey(key) && Catalog.En.ContainsKey(key));
+    }
+
+    [Fact]
+    public void A_problem_with_a_key_is_client_originated_and_keeps_its_english_message()
+    {
+        var problem = new ApiProblemException(400, "Select a company first.", "error.select-company");
+        Assert.Equal("Select a company first.", problem.Message);
+        Assert.Equal(new UiError("error.select-company", null, 400), problem.ToUiError());
+    }
+
+    [Fact]
+    public async Task Missing_company_and_ended_session_become_client_keys()
+    {
+        var noCompany = new WorkspaceViewModel(Client(new SessionState(), _ => new(HttpStatusCode.OK)));
+        await noCompany.LoadOverviewAsync();
+        Assert.Equal("error.select-company", noCompany.Error!.Key);
+        Assert.Null(noCompany.Error.Raw);
+
+        var session = new SessionState();
+        var api = Client(session, request => request.RequestUri!.AbsolutePath == "/auth/tokens" ? WebTestHandler.Json(new SessionTokens("synthetic-expired", 900)) : new(HttpStatusCode.Unauthorized));
+        await api.LoginAsync("synthetic@example.invalid", "synthetic-password", TestContext.Current.CancellationToken);
+        session.SelectCompany(new(Guid.NewGuid(), "AAA010101AAA", "Synthetic", null, "accountant"));
+        var ended = new WorkspaceViewModel(api);
+        await ended.LoadOverviewAsync();
+        Assert.Equal("error.session-ended", ended.Error!.Key);
+        Assert.Null(ended.Error.Raw);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "error.status-403")]
+    [InlineData(HttpStatusCode.NotFound, "error.status-404")]
+    [InlineData(HttpStatusCode.InternalServerError, "error.status-server")]
+    public async Task Responses_without_server_text_render_the_status_headline_alone(HttpStatusCode status, string key)
+    {
+        var model = new WorkspaceViewModel(Client(Writer(), _ => new(status)));
+        await model.LoadCompaniesAsync();
+        Assert.Equal(new UiError(key, null, (int)status), model.Error);
+    }
+
+    [Fact]
+    public async Task Server_text_becomes_the_raw_part_of_the_error()
+    {
+        var model = new WorkspaceViewModel(Client(Writer(), _ => Problem(HttpStatusCode.UnprocessableEntity, new { detail = "Synthetic invalid" })));
+        await model.LoadCompaniesAsync();
+        Assert.Equal(new UiError("error.status-422", "Synthetic invalid", 422), model.Error);
+    }
+
+    [Theory]
+    [InlineData("network", "error.service-unavailable")]
+    [InlineData("json", "error.unreadable-response")]
+    [InlineData("timeout", "error.cancelled")]
+    public async Task Transport_failures_become_client_keys(string failure, string key)
+    {
+        var model = new WorkspaceViewModel(Client(Writer(), _ => failure switch
+        {
+            "json" => new(HttpStatusCode.OK) { Content = new StringContent("{") },
+            "timeout" => throw new TaskCanceledException("Synthetic timeout"),
+            _ => throw new HttpRequestException("Synthetic transport failure")
+        }));
+        await model.LoadCompaniesAsync();
+        Assert.Equal(new UiError(key), model.Error);
+    }
+
+    [Fact]
+    public async Task Read_only_and_validation_messages_become_keys()
+    {
+        var viewer = Writer("viewer");
+        var review = new ReviewQueueViewModel(Client(viewer, _ => WebTestHandler.Json(new ReviewPage([], null, null, null))), viewer);
+        await review.DecideAsync(Guid.NewGuid(), new("confirm", null, null));
+        Assert.Equal(new UiError("error.read-only"), review.Error);
+
+        var writer = Writer();
+        var change = new ReviewQueueViewModel(Client(writer, _ => WebTestHandler.Json(new ReviewPage([], null, null, null))), writer);
+        await change.DecideAsync(Guid.NewGuid(), new("change", null, 12.345m));
+        Assert.Equal(new UiError("error.choose-amount"), change.Error);
+
+        var imports = new ImportViewModel(Client(viewer, _ => new(HttpStatusCode.OK)), new JobProgressViewModel(Client(viewer, _ => new(HttpStatusCode.OK)), TimeProvider.System), viewer);
+        await imports.UploadAsync([new("a.xml", [1])], TestContext.Current.CancellationToken);
+        Assert.Equal(new UiError("error.read-only"), imports.Error);
+
+        var writerImports = new ImportViewModel(Client(writer, _ => new(HttpStatusCode.OK)), new JobProgressViewModel(Client(writer, _ => new(HttpStatusCode.OK)), TimeProvider.System), writer);
+        await writerImports.UploadAsync([], TestContext.Current.CancellationToken);
+        Assert.Equal(new UiError("error.choose-import"), writerImports.Error);
+        await writerImports.SelectFilesAsync([]);
+        Assert.Equal(new UiError("error.choose-files"), writerImports.Error);
+    }
+
+    [Fact]
+    public async Task A_failed_job_becomes_a_key()
+    {
+        var session = Writer();
+        var jobs = new JobProgressViewModel(Client(session, _ => WebTestHandler.Json(OperationsComponentTests.Job(Guid.NewGuid(), session.Company!.Id, "failed", 0))), TimeProvider.System);
+        await jobs.WatchAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
+        Assert.Equal(new UiError("error.job-failed"), jobs.Error);
+    }
+
+    private sealed class GatedHandler(Task<HttpResponseMessage> gate) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => gate;
     }
 }

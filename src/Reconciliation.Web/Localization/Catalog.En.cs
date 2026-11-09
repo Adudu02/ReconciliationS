@@ -114,5 +114,29 @@ public static partial class Catalog
 
         ["explanation.equal-matches"] = "{0} other invoices matched equally",
         ["explanation.capped-matches"] = "{0}+ others may have matched equally",
+
+        ["status.loading"] = "Loading…",
+
+        ["error.service-unavailable"] = "The service is unavailable. Try again.",
+        ["error.unreadable-response"] = "The API response could not be read. Refresh the page.",
+        ["error.cancelled"] = "The request was cancelled or timed out. Refresh to check the current state.",
+        ["error.session-ended"] = "Your session has ended. Sign in again.",
+        ["error.select-company"] = "Select a company first.",
+        ["error.read-only"] = "This workspace is read-only for your membership.",
+        ["error.job-failed"] = "The job failed. Check the per-file report where available and try again.",
+        ["error.choose-files"] = "Choose 1–20 files, up to 10 MiB each and 20 MiB in total.",
+        ["error.unreadable-files"] = "The selected files could not be read within the upload limit.",
+        ["error.choose-import"] = "Choose valid files and a bank/account reference for one statement. Limits: 20 files, 10 MiB each, 20 MiB total.",
+        ["error.choose-amount"] = "Choose an invoice and a positive amount with at most two decimal places.",
+        ["error.status-400"] = "The request was not accepted. Check the data and try again.",
+        ["error.status-401"] = "Your session has ended. Sign in again.",
+        ["error.status-403"] = "You do not have permission for this action. Check your company role and browser session settings.",
+        ["error.status-404"] = "This item is unavailable in the selected company.",
+        ["error.status-409"] = "The request conflicts with the current state. Refresh and try again.",
+        ["error.status-413"] = "The upload is too large. Reduce its size and try again.",
+        ["error.status-422"] = "The data could not be processed. Check it and try again.",
+        ["error.status-429"] = "Too many requests. Wait a moment and try again.",
+        ["error.status-server"] = "The service had a problem completing the request. Try again later.",
+        ["error.status-other"] = "The request could not be completed. Try again.",
     };
 }

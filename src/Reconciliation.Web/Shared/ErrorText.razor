@@ -1,0 +1,11 @@
+@inherits LocalizedComponentBase
+@* Renders a UiError. Client keys are shown in the active language. Server text (Raw) stays verbatim: English shows it alone,
+   Spanish shows a localized status headline followed by the raw text marked lang="en". *@
+@if (Error is { } error)
+{
+    <p class="error" role="alert">@if (error.Raw is null) { @T[error.Key] } else if (T.Language == "en") { @error.Raw } else { @T[error.Key]<text> </text><small lang="en">@error.Raw</small> }</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public UiError? Error { get; set; }
+}

@@ -13,6 +13,7 @@ public sealed class InvoiceComponentTests
     public async Task Summary_shows_worked_amounts_both_movements_payment_CFDI_and_cash_warning()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var summary = Summary();
         Register(context, _ => WebTestHandler.Json(summary));
         var page = context.Render<InvoiceDetail>(p => p.Add(x => x.InvoiceId, summary.Id));
@@ -30,6 +31,7 @@ public sealed class InvoiceComponentTests
     public async Task Missing_overdue_complement_due_date_is_visible_in_summary()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var summary = Summary();
         summary = summary with { Links = [summary.Links[0] with { ComplementStatus = "overdue", DueDate = new(2026, 11, 5), PaymentCfdiId = null, PaymentRef = null }] };
         Register(context, _ => WebTestHandler.Json(summary));
@@ -42,6 +44,7 @@ public sealed class InvoiceComponentTests
     public async Task Invoice_filters_are_sent_to_API_and_keyset_paging_keeps_them()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var calls = new List<string>();
         var first = new InvoiceItem(Guid.NewGuid(), Guid.NewGuid(), "I", "issued", new(2026, 10, 2), 11600, "pending", 5800, new(2026, 11, 5), true);
         Register(context, request =>

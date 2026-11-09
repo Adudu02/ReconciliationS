@@ -64,6 +64,7 @@ public sealed class WorkspaceComponentTests
     public async Task Overview_shows_additive_totals_alert_counts_and_demo_disclaimer()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var company = new CompanyItem(Guid.NewGuid(), "AAA010101AAA", "Synthetic company", null, "viewer");
         Register(context, [company]).SelectCompany(company);
         var page = context.Render<Overview>();

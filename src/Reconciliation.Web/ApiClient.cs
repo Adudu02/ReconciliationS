@@ -5,12 +5,28 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.AspNetCore.Components.WebAssembly.Http;
 using Reconciliation.Contracts;
+using Reconciliation.Web.Localization;
 
 namespace Reconciliation.Web;
 
-public sealed class ApiProblemException(int status, string message) : Exception(message)
+/// <summary>
+/// A failed API call. <see cref="Exception.Message"/> stays English. <see cref="Key"/> is set when the sentence is the client's own
+/// (a catalog key the UI localizes); without a key the message is server text and is shown verbatim under a status headline.
+/// </summary>
+public sealed class ApiProblemException(int status, string message, string? key = null) : Exception(message)
 {
     public int Status { get; } = status;
+    public string? Key { get; } = key;
+
+    /// <summary>The catalog key of the headline for an HTTP status: its own key for the common statuses, one for any 5xx, otherwise a generic one.</summary>
+    public static string StatusKey(int status) => status switch
+    {
+        400 or 401 or 403 or 404 or 409 or 413 or 422 or 429 => $"error.status-{status}",
+        >= 500 => "error.status-server",
+        _ => "error.status-other"
+    };
+
+    public UiError ToUiError() => Key is { } key ? new UiError(key, null, Status) : new UiError(StatusKey(Status), Message, Status);
 }
 
 public sealed record BrowserFileUpload(string Name, byte[] Content);
@@ -83,7 +99,7 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
             try
             {
                 if (session.AccessToken == attemptedToken && !await RefreshAsync(token))
-                    throw new ApiProblemException(401, "Your session has ended. Sign in again.");
+                    throw new ApiProblemException(401, "Your session has ended. Sign in again.", "error.session-ended");
             }
             finally { refreshGate.Release(); }
             using var retry = create();
@@ -106,6 +122,8 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
     private static async Task CheckAsync(HttpResponseMessage response, CancellationToken token)
     {
         if (response.IsSuccessStatusCode) return;
+        var status = (int)response.StatusCode;
+        // Without usable server text the status headline stands alone (keyed); with server text it is kept verbatim as the raw part.
         var message = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized => "Your session has ended. Sign in again.",
@@ -113,18 +131,19 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
             HttpStatusCode.NotFound => "This item is unavailable in the selected company.",
             _ => "The request could not be completed. Try again."
         };
-        if ((int)response.StatusCode < 500)
+        string? key = ApiProblemException.StatusKey(status);
+        if (status < 500)
         {
             try
             {
                 var problem = await response.Content.ReadFromJsonAsync(Info<JsonElement>(), token);
                 foreach (var field in ProblemFields)
-                    if (problem.TryGetProperty(field, out var text) && text.ValueKind == JsonValueKind.String) { message = text.GetString()!; break; }
-                if (problem.TryGetProperty("state", out var state)) message = $"This suggestion was already decided ({state.GetString()}). Refresh the queue.";
+                    if (problem.TryGetProperty(field, out var text) && text.ValueKind == JsonValueKind.String) { message = text.GetString()!; key = null; break; }
+                if (problem.TryGetProperty("state", out var state)) { message = $"This suggestion was already decided ({state.GetString()}). Refresh the queue."; key = null; }
             }
             catch (JsonException) { }
         }
-        throw new ApiProblemException((int)response.StatusCode, message);
+        throw new ApiProblemException(status, message, key);
     }
 
     public async Task<DecisionResponse> DecideAsync(Guid linkId, DecisionRequest decision, CancellationToken token = default)
@@ -156,7 +175,7 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
         return (await response.Content.ReadFromJsonAsync(Info<ImportReceipt>(), token))!;
     }
 
-    public string CompanyPath(string resource) => $"companies/{session.Company?.Id ?? throw new ApiProblemException(400, "Select a company first.")}/{resource}";
+    public string CompanyPath(string resource) => $"companies/{session.Company?.Id ?? throw new ApiProblemException(400, "Select a company first.", "error.select-company")}/{resource}";
 
     public async Task<T> GetAsync<T>(string path, CancellationToken token = default)
     {

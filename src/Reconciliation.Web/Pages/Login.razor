@@ -14,7 +14,7 @@
         <input id="email" type="email" autocomplete="username" required @bind="Email" />
         <label for="password">@T["login.password"]</label>
         <input id="password" type="password" autocomplete="current-password" required @bind="Password" />
-        @if (Error is not null) { <p role="alert" class="error">@Error</p> }
+        <ErrorText Error="Error" />
         <button type="submit" disabled="@Busy">@(Busy ? T["login.signing-in"] : T["login.sign-in"])</button>
     </form>
 </section>
@@ -22,15 +22,15 @@
 @code {
     private string Email { get; set; } = "";
     private string Password { get; set; } = "";
-    private string? Error { get; set; }
+    private UiError? Error { get; set; }
     private bool Busy { get; set; }
     private async Task SignInAsync()
     {
         Busy = true;
         Error = null;
         try { await Api.LoginAsync(Email, Password); Password = ""; Navigation.NavigateTo("/ui/overview"); }
-        catch (ApiProblemException problem) { Error = problem.Message; }
-        catch (HttpRequestException) { Error = T["login.service-unavailable"]; }
+        catch (ApiProblemException problem) { Error = problem.ToUiError(); }
+        catch (HttpRequestException) { Error = new("login.service-unavailable"); }
         finally { Busy = false; }
     }
 }

@@ -114,5 +114,29 @@ public static partial class Catalog
 
         ["explanation.equal-matches"] = "{0} facturas más coincidieron por igual",
         ["explanation.capped-matches"] = "{0}+ facturas más podrían haber coincidido por igual",
+
+        ["status.loading"] = "Cargando…",
+
+        ["error.service-unavailable"] = "El servicio no está disponible. Intente de nuevo.",
+        ["error.unreadable-response"] = "No se pudo leer la respuesta de la API. Actualice la página.",
+        ["error.cancelled"] = "La solicitud se canceló o agotó el tiempo de espera. Actualice para comprobar el estado actual.",
+        ["error.session-ended"] = "Su sesión ha terminado. Inicie sesión de nuevo.",
+        ["error.select-company"] = "Seleccione primero una empresa.",
+        ["error.read-only"] = "Este espacio de trabajo es de solo lectura para su membresía.",
+        ["error.job-failed"] = "El trabajo falló. Revise el informe por archivo, cuando esté disponible, e intente de nuevo.",
+        ["error.choose-files"] = "Elija de 1 a 20 archivos, de hasta 10 MiB cada uno y 20 MiB en total.",
+        ["error.unreadable-files"] = "No se pudieron leer los archivos seleccionados dentro del límite de carga.",
+        ["error.choose-import"] = "Elija archivos válidos y una referencia de banco o cuenta para un solo estado de cuenta. Límites: 20 archivos, 10 MiB cada uno y 20 MiB en total.",
+        ["error.choose-amount"] = "Elija una factura y un monto positivo con un máximo de dos decimales.",
+        ["error.status-400"] = "No se aceptó la solicitud. Revise los datos e intente de nuevo.",
+        ["error.status-401"] = "Su sesión ha terminado. Inicie sesión de nuevo.",
+        ["error.status-403"] = "No tiene permiso para esta acción. Revise su rol en la empresa y la configuración de sesión del navegador.",
+        ["error.status-404"] = "Este elemento no está disponible en la empresa seleccionada.",
+        ["error.status-409"] = "La solicitud entra en conflicto con el estado actual. Actualice e intente de nuevo.",
+        ["error.status-413"] = "La carga es demasiado grande. Reduzca su tamaño e intente de nuevo.",
+        ["error.status-422"] = "No se pudieron procesar los datos. Revíselos e intente de nuevo.",
+        ["error.status-429"] = "Demasiadas solicitudes. Espere un momento e intente de nuevo.",
+        ["error.status-server"] = "El servicio tuvo un problema al completar la solicitud. Intente de nuevo más tarde.",
+        ["error.status-other"] = "No se pudo completar la solicitud. Intente de nuevo.",
     };
 }

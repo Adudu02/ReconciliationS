@@ -21,6 +21,7 @@ public sealed class ReviewComponentTests
     public async Task Review_actions_follow_the_live_company_role_and_archive_state(string role, bool archived, bool actions)
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         Register(context, role, archived);
         var page = context.Render<Review>();
         page.WaitForAssertion(() => Assert.Contains("Synthetic suggestion", page.Markup, StringComparison.Ordinal));
@@ -34,6 +35,7 @@ public sealed class ReviewComponentTests
     public async Task Already_decided_conflict_is_shown_gracefully_and_queue_is_refreshed()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var reads = 0;
         Register(context, "accountant", false, request =>
         {

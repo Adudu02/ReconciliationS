@@ -24,6 +24,7 @@ public sealed class OperationsComponentTests
         using var api = new ApiClient(http, session);
         using var model = new JobProgressViewModel(api, clock);
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var component = context.Render<JobProgress>(p => p.Add(x => x.Model, model));
         var polling = model.WatchAsync(id, TestContext.Current.CancellationToken);
         await clock.WaitForTimerAsync(TimeSpan.FromSeconds(1));
@@ -55,6 +56,7 @@ public sealed class OperationsComponentTests
         using var model = new JobProgressViewModel(api, new ManualTimeProvider());
         await model.WatchAsync(Guid.NewGuid(), TestContext.Current.CancellationToken);
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var component = context.Render<JobProgress>(p => p.Add(x => x.Model, model));
         Assert.Contains("failed", component.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Synthetic raw exception", component.Markup, StringComparison.Ordinal);
@@ -97,6 +99,7 @@ public sealed class OperationsComponentTests
     public async Task Movement_classification_actions_follow_role_and_display_derived_state(string role, int actions)
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var session = State(role);
         context.Services.AddSingleton(session);
         context.Services.AddSingleton(new HttpClient(new WebTestHandler(_ => WebTestHandler.Json(new MovementPage([new(Guid.NewGuid(), new(2026, 10, 10), "Synthetic transfer", 100, 0, null, "pending", null, null, "No active link", 0, 0, 100, 100)], null, null)))) { BaseAddress = new Uri("https://app.example.invalid/") });
