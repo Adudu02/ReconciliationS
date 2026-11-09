@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Reconciliation.Contracts;
 using Reconciliation.Web;
 using Reconciliation.Web.Localization;
@@ -412,6 +413,42 @@ public sealed class LanguageSwitchTests
         Assert.Contains("Demostración: los resultados no tienen validez fiscal ni legal.", app.Find("footer").TextContent, StringComparison.Ordinal);
         Assert.Contains("Página no disponible", app.Find("main").TextContent, StringComparison.Ordinal);
         Assert.Contains("Volver al resumen", app.Find("main").TextContent, StringComparison.Ordinal);
+    }
+
+    private static void UseRealDocumentLanguageThatFails(BunitContext context, Exception failure)
+    {
+        context.Services.AddSingleton<IDocumentLanguage>(provider => new DocumentLanguage(provider.GetRequiredService<IJSRuntime>()));
+        context.JSInterop.SetupVoid("setLanguage", _ => true).SetException(failure);
+    }
+
+    [Fact]
+    public async Task Startup_completes_in_spanish_when_the_document_language_call_fails()
+    {
+        await using var context = new BunitContext();
+        Services(context, "en");
+        UseRealDocumentLanguageThatFails(context, new JSException("setLanguage is not defined"));
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Iniciar sesión", app.Markup, StringComparison.Ordinal));
+        Assert.DoesNotContain("Restaurando la sesión", app.Markup, StringComparison.Ordinal);
+        Assert.Single(context.JSInterop.Invocations["setLanguage"]);
+    }
+
+    [Theory]
+    [InlineData(typeof(JSException))]
+    [InlineData(typeof(JSDisconnectedException))]
+    public async Task Switching_language_still_works_when_the_document_language_call_fails(Type failure)
+    {
+        await using var context = new BunitContext();
+        Services(context, "es");
+        UseRealDocumentLanguageThatFails(context, (Exception)Activator.CreateInstance(failure, "boom")!);
+        var app = context.Render<App>();
+        app.WaitForAssertion(() => Assert.Contains("Iniciar sesión", app.Markup, StringComparison.Ordinal));
+
+        app.Find("button[lang=en]").Click();
+
+        app.WaitForAssertion(() => Assert.Contains("Sign in", app.Markup, StringComparison.Ordinal));
+        Assert.Equal("true", app.Find("button[lang=en]").GetAttribute("aria-pressed"));
+        Assert.Equal(2, context.JSInterop.Invocations["setLanguage"].Count);
     }
 
     [Fact]
