@@ -630,8 +630,11 @@ public sealed class ErrorLocalizationTests
     [InlineData(429, "error.status-429")]
     [InlineData(418, "error.status-other")]
     [InlineData(302, "error.status-other")]
+    [InlineData(499, "error.status-other")]
     [InlineData(500, "error.status-server")]
     [InlineData(503, "error.status-server")]
+    [InlineData(599, "error.status-server")]
+    [InlineData(600, "error.status-other")]
     public void Status_chooses_the_headline_key(int status, string key)
     {
         var error = new ApiProblemException(status, "Synthetic server text").ToUiError();
@@ -674,6 +677,42 @@ public sealed class ErrorLocalizationTests
         var model = new WorkspaceViewModel(Client(Writer(), _ => new(status)));
         await model.LoadCompaniesAsync();
         Assert.Equal(new UiError(key, null, (int)status), model.Error);
+    }
+
+    [Theory]
+    [InlineData("detail", "")]
+    [InlineData("detail", "  ")]
+    [InlineData("title", " \t ")]
+    [InlineData("reason", "")]
+    [InlineData("error", "  ")]
+    public async Task Blank_server_text_falls_back_to_the_status_headline_with_no_raw(string field, string value)
+    {
+        var model = new WorkspaceViewModel(Client(Writer(), _ => Problem(HttpStatusCode.Conflict, new Dictionary<string, string> { [field] = value })));
+        await model.LoadCompaniesAsync();
+        Assert.Equal(new UiError("error.status-409", null, 409), model.Error);
+    }
+
+    [Fact]
+    public async Task A_blank_field_is_skipped_in_favour_of_the_next_non_blank_one()
+    {
+        var model = new WorkspaceViewModel(Client(Writer(), _ => Problem(HttpStatusCode.Conflict, new { detail = "  ", title = "Synthetic title" })));
+        await model.LoadCompaniesAsync();
+        Assert.Equal(new UiError("error.status-409", "Synthetic title", 409), model.Error);
+    }
+
+    [Theory]
+    [InlineData("es", "")]
+    [InlineData("es", "  ")]
+    [InlineData("en", "")]
+    [InlineData("en", "  ")]
+    public async Task Blank_raw_text_never_renders_an_empty_small_or_an_empty_alert(string language, string raw)
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, language);
+        var page = context.Render<ErrorText>(p => p.Add(x => x.Error, new UiError("error.status-409", raw, 409)));
+        Assert.Empty(page.FindAll("small"));
+        var expected = language == "es" ? "La solicitud entra en conflicto con el estado actual. Actualice e intente de nuevo." : "The request conflicts with the current state. Refresh and try again.";
+        Assert.Equal(expected, page.Find("[role=alert]").TextContent.Trim());
     }
 
     [Fact]

@@ -22,7 +22,7 @@ public sealed class ApiProblemException(int status, string message, string? key 
     public static string StatusKey(int status) => status switch
     {
         400 or 401 or 403 or 404 or 409 or 413 or 422 or 429 => $"error.status-{status}",
-        >= 500 => "error.status-server",
+        >= 500 and <= 599 => "error.status-server",
         _ => "error.status-other"
     };
 
@@ -132,13 +132,13 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
             _ => "The request could not be completed. Try again."
         };
         string? key = ApiProblemException.StatusKey(status);
-        if (status < 500)
+        if (status is not (>= 500 and <= 599))
         {
             try
             {
                 var problem = await response.Content.ReadFromJsonAsync(Info<JsonElement>(), token);
                 foreach (var field in ProblemFields)
-                    if (problem.TryGetProperty(field, out var text) && text.ValueKind == JsonValueKind.String) { message = text.GetString()!; key = null; break; }
+                    if (problem.TryGetProperty(field, out var text) && text.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(text.GetString())) { message = text.GetString()!; key = null; break; }
                 if (problem.TryGetProperty("state", out var state)) { message = $"This suggestion was already decided ({state.GetString()}). Refresh the queue."; key = null; }
             }
             catch (JsonException) { }
