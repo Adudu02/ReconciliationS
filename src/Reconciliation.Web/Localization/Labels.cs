@@ -21,7 +21,22 @@ public sealed partial class Labels(Localizer t)
     public string Classification(string? v) => v is null ? "" : Lookup("classification", v);
 
     /// <summary>Label chosen by the stable criterion code; an unknown code keeps the server's own detail text.</summary>
-    public string Criterion(ReviewCriterion c) => Lookup("criterion", c.Code, c.Detail);
+    public string Criterion(ReviewCriterion c)
+    {
+        var known = Lookup("criterion", c.Code, c.Detail);
+        switch (c.Code)
+        {
+            case "amount-equals-total" when c.Detail == "amount equals net payable after credit notes":
+                return t["criterion.amount-equals-total.credit-notes"];
+            case "amount-within-tolerance" when ToleranceDetail().Match(c.Detail) is { Success: true } tolerance
+                && TargetKey(tolerance.Groups["target"].Value) is { } target:
+                return t.Format("criterion.amount-within-tolerance.detail", t[target], tolerance.Groups["cents"].Value);
+            case "date-proximity" when ProximityDetail().Match(c.Detail) is { Success: true } proximity:
+                return t.Format("criterion.date-proximity.bonus", proximity.Groups["bonus"].Value);
+            default:
+                return known;
+        }
+    }
 
     public string Reason(string code) => Lookup("reason", code);
 
@@ -52,12 +67,26 @@ public sealed partial class Labels(Localizer t)
         return suffix is null ? text : text + "; " + suffix;
     }
 
+    private static string? TargetKey(string name) => name switch
+    {
+        "total" => "criterion.target.total",
+        "gross (amount equals total before retentions)" => "criterion.target.gross",
+        "remaining payable" => "criterion.target.remaining",
+        _ => null,
+    };
+
     private string Lookup(string prefix, string value, string? fallback = null)
     {
         var key = prefix + "." + value.Replace(' ', '-');
         var text = t[key];
         return text == key ? fallback ?? value : text;
     }
+
+    [GeneratedRegex(@"^amount within tolerance of (?<target>.+) target; difference (?<cents>[0-9.,]+) cents$", RegexOptions.Singleline)]
+    private static partial Regex ToleranceDetail();
+
+    [GeneratedRegex(@"^invoice date is within tolerance; proximity bonus (?<bonus>-?\d+)$", RegexOptions.Singleline)]
+    private static partial Regex ProximityDetail();
 
     [GeneratedRegex(@"^(?<body>.*); (?<n>\d+) other invoices matched equally$", RegexOptions.Singleline)]
     private static partial Regex EqualMatches();

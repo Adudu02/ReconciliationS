@@ -117,7 +117,7 @@ public sealed class LocalizationTests
             foreach (var v in new[] { "loan", "partner_contribution", "tax_payment", "late_invoicing", "other" })
                 Assert.NotEqual(v, labels.Classification(v));
             foreach (var v in new[] { "payment-complement", "identifier-without-amount", "rfc", "invoice-reference", "operation-number",
-                "amount-equals-total", "gross-payment", "amount-equals-remaining", "amount-within-tolerance", "replacement-of-cancelled-invoice" })
+                "amount-equals-total", "gross-payment", "amount-equals-remaining", "amount-within-tolerance", "date-proximity", "replacement-of-cancelled-invoice" })
                 Assert.NotEqual("detail", labels.Criterion(new ReviewCriterion(v, 1, "detail")));
             foreach (var v in new[] { "fully credited", "global invoice", "overpaid", "cancelled credit note", "credit note in a different currency",
                 "cancelled invoice", "cancelled payment complement", "complement overdue", "efos warning", "inconsistent balance" })
@@ -166,6 +166,8 @@ public sealed class LocalizationTests
         Assert.Equal("el monto es igual al saldo pendiente de pago",
             labels.Criterion(new ReviewCriterion("amount-equals-remaining", 30, "other english")));
         Assert.Equal("some server detail", labels.Criterion(new ReviewCriterion("future-code", 5, "some server detail")));
+        Assert.Equal("el monto está dentro de la tolerancia respecto al monto esperado",
+            labels.Criterion(new ReviewCriterion("amount-within-tolerance", 25, "unrecognised english detail")));
     }
 
     [Fact]
@@ -180,7 +182,8 @@ public sealed class LocalizationTests
             labels.Explanation(equal));
 
         var capped = Entry("invoice serie/folio or UUID fragment found in text; amount equals remaining payable; 50+ others may have matched equally", invoiceReference, remaining);
-        Assert.Contains("; 50+ ", labels.Explanation(capped));
+        Assert.Equal("la serie/folio de la factura o un fragmento del UUID aparece en el texto; el monto es igual al saldo pendiente de pago; 50+ facturas más podrían haber coincidido por igual",
+            labels.Explanation(capped));
 
         var plain = Entry("invoice serie/folio or UUID fragment found in text; amount equals remaining payable", invoiceReference, remaining);
         Assert.Equal("la serie/folio de la factura o un fragmento del UUID aparece en el texto; el monto es igual al saldo pendiente de pago", labels.Explanation(plain));
@@ -203,6 +206,59 @@ public sealed class LocalizationTests
 
         var mismatch = Entry("something else; 2 other invoices matched equally", criterion);
         Assert.Equal(mismatch.Explanation, labels.Explanation(mismatch));
+    }
+
+    [Fact]
+    public void Criterion_keeps_evidence_from_known_server_details_in_both_languages()
+    {
+        var labels = SpanishLabels(out var localizer);
+        var credit = new ReviewCriterion("amount-equals-total", 40, "amount equals net payable after credit notes");
+        var plainTotal = new ReviewCriterion("amount-equals-total", 40, "amount equals CFDI net total");
+        var tolerance = new ReviewCriterion("amount-within-tolerance", 25, "amount within tolerance of remaining payable target; difference 50 cents");
+        var gross = new ReviewCriterion("amount-within-tolerance", 25, "amount within tolerance of gross (amount equals total before retentions) target; difference 0.5 cents");
+        var date = new ReviewCriterion("date-proximity", 25, "invoice date is within tolerance; proximity bonus 5");
+
+        Assert.Equal("el monto es igual al neto a pagar después de notas de crédito", labels.Criterion(credit));
+        Assert.Equal("el monto es igual al total neto del CFDI", labels.Criterion(plainTotal));
+        Assert.Equal("el monto está dentro de la tolerancia del objetivo saldo pendiente de pago; diferencia de 50 centavos", labels.Criterion(tolerance));
+        Assert.Equal("el monto está dentro de la tolerancia del objetivo bruto (monto igual al total antes de retenciones); diferencia de 0.5 centavos", labels.Criterion(gross));
+        Assert.Equal("la fecha de la factura está dentro de la tolerancia; bonificación por cercanía de 5", labels.Criterion(date));
+
+        localizer.Set("en");
+        Assert.Equal("amount equals net payable after credit notes", labels.Criterion(credit));
+        Assert.Equal("amount equals CFDI net total", labels.Criterion(plainTotal));
+        Assert.Equal("amount within tolerance of remaining payable target; difference 50 cents", labels.Criterion(tolerance));
+        Assert.Equal("amount within tolerance of gross (amount equals total before retentions) target; difference 0.5 cents", labels.Criterion(gross));
+        Assert.Equal("invoice date is within tolerance; proximity bonus 5", labels.Criterion(date));
+    }
+
+    [Fact]
+    public void Criterion_with_unrecognised_detail_falls_back_to_the_static_label()
+    {
+        var labels = SpanishLabels(out _);
+        Assert.Equal("el monto está dentro de la tolerancia respecto al monto esperado",
+            labels.Criterion(new ReviewCriterion("amount-within-tolerance", 25, "something new from the server")));
+        Assert.Equal("el monto está dentro de la tolerancia respecto al monto esperado",
+            labels.Criterion(new ReviewCriterion("amount-within-tolerance", 25, "amount within tolerance of mystery target; difference 3 cents")));
+        Assert.Equal("la fecha de la factura está dentro de la tolerancia",
+            labels.Criterion(new ReviewCriterion("date-proximity", 25, "date is close")));
+        Assert.Equal("el monto es igual al total neto del CFDI",
+            labels.Criterion(new ReviewCriterion("amount-equals-total", 40, "unexpected wording")));
+    }
+
+    [Fact]
+    public void Explanation_with_date_proximity_is_fully_spanish()
+    {
+        var labels = SpanishLabels(out _);
+        var criteria = new[]
+        {
+            new ReviewCriterion("amount-within-tolerance", 25, "amount within tolerance of total target; difference 1 cents"),
+            new ReviewCriterion("date-proximity", 28, "invoice date is within tolerance; proximity bonus 8"),
+        };
+        var entry = Entry("amount within tolerance of total target; difference 1 cents; invoice date is within tolerance; proximity bonus 8; 2 other invoices matched equally", criteria);
+
+        Assert.Equal("el monto está dentro de la tolerancia del objetivo total; diferencia de 1 centavos; la fecha de la factura está dentro de la tolerancia; bonificación por cercanía de 8; 2 facturas más coincidieron por igual",
+            labels.Explanation(entry));
     }
 
     private static List<string> Placeholders(string value) =>
