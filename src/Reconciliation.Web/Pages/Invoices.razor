@@ -9,10 +9,10 @@
         <button type="submit" disabled="@Model.Busy">Apply filters</button>
     </form>
     <PageStatus Model="Model" />
-    <div class="panel table-wrap" tabindex="0" role="region" aria-label="Invoice list"><table><caption>Imported income invoices</caption><thead><tr><th scope="col">Invoice</th><th scope="col">Issued</th><th scope="col">Direction</th><th scope="col">State</th><th scope="col">Total</th><th scope="col">Pending</th><th scope="col">Complement due</th></tr></thead><tbody>
+    <div class="panel table-wrap" tabindex="0" role="region" aria-label="Invoice list"><table><caption>Imported income invoices</caption><thead><tr><th scope="col">Invoice</th><th scope="col">Issued</th><th scope="col">Direction</th><th scope="col">State</th><th scope="col" class="money">Total</th><th scope="col" class="money">Pending</th><th scope="col">Complement due</th></tr></thead><tbody>
         @foreach (var invoice in Model.Invoices)
         {
-            <tr><th scope="row"><a href="/ui/invoices/@invoice.Id">@invoice.Uuid</a></th><td>@invoice.IssuedAt.ToString("yyyy-MM-dd")</td><td>@invoice.Direction</td><td><span class="badge @invoice.State">@invoice.State</span></td><td class="money">@Display.Money(invoice.Total)</td><td class="money">@(invoice.PendingAmount is { } pending ? Display.Money(pending) : "—")</td><td>@(invoice.DueDate?.ToString("yyyy-MM-dd") ?? "—") @(invoice.ComplementOverdue == true ? "overdue" : "")</td></tr>
+            <tr><th scope="row"><a href="/ui/invoices/@invoice.Id">@invoice.Uuid</a></th><td>@invoice.IssuedAt.ToString("yyyy-MM-dd")</td><td>@invoice.Direction</td><td><span class="badge @invoice.State">@invoice.State</span></td><td class="money">@Display.Money(invoice.Total)</td><td class="money">@(invoice.PendingAmount is { } pending ? Display.Money(pending) : "—")</td><td>@(invoice.DueDate?.ToString("yyyy-MM-dd") ?? "—") @if (invoice.ComplementOverdue == true) { <span class="badge overdue">overdue</span> }</td></tr>
         }
     </tbody></table></div>
     @if (!Model.Busy && Model.Error is null && Model.Invoices.Length == 0) { <p>No invoices match these filters.</p> }

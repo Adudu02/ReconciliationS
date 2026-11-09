@@ -11,9 +11,9 @@
     @foreach (var entry in Model.Entries)
     {
         <article class="panel review-item" @key="entry.Id">
-            <p class="eyebrow">@(entry.Kind == "link" ? "SUGGESTION" : "INVOICE FLAG") <span class="badge suggested">@entry.Confidence</span></p>
+            <p class="eyebrow">@(entry.Kind == "link" ? "SUGGESTION" : "INVOICE FLAG") <span class="badge @entry.Confidence">@entry.Confidence</span></p>
             <h2>@(entry.Movement?.Description ?? "Invoice requires review")</h2>
-            <p>@entry.Movement?.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">Invoice summary</a></p>
+            <p>@if (entry.Movement is { } dated) { <text>@dated.Date.ToString("yyyy-MM-dd") · </text> }@Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">Invoice summary</a></p>
             <p class="muted">Invoice @entry.Invoice.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Invoice.Amount) · @entry.Invoice.IssuerRfc → @entry.Invoice.ReceiverRfc</p>
             <p>@entry.Explanation</p>
             <ul>@foreach (var criterion in entry.Criteria) { <li>@criterion.Code · @criterion.Points points: @criterion.Detail</li> }</ul>

@@ -16,9 +16,9 @@
                 <section class="panel">
                     <h2>@resource.Item1</h2>
                     <p class="metric">@Display.Money(resource.Item2.Amount)<span>@resource.Item2.Count imported</span></p>
-                    <table><caption>@resource.Item1 by state</caption><thead><tr><th scope="col">State</th><th scope="col">Count</th><th scope="col">Amount</th></tr></thead><tbody>
-                        @foreach (var state in resource.Item2.States) { <tr><th scope="row"><span class="badge @state.State">@state.State</span></th><td>@state.Count</td><td class="money">@Display.Money(state.Amount)</td></tr> }
-                    </tbody><tfoot><tr><th scope="row">Total</th><td>@resource.Item2.Count</td><td class="money">@Display.Money(resource.Item2.Amount)</td></tr></tfoot></table>
+                    <table><caption>@resource.Item1 by state</caption><thead><tr><th scope="col">State</th><th scope="col" class="num">Count</th><th scope="col" class="money">Amount</th></tr></thead><tbody>
+                        @foreach (var state in resource.Item2.States) { <tr><th scope="row"><span class="badge @state.State">@state.State</span></th><td class="num">@state.Count</td><td class="money">@Display.Money(state.Amount)</td></tr> }
+                    </tbody><tfoot><tr><th scope="row">Total</th><td class="num">@resource.Item2.Count</td><td class="money">@Display.Money(resource.Item2.Amount)</td></tr></tfoot></table>
                 </section>
             }
         </div>

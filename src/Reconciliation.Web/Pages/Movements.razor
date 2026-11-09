@@ -6,16 +6,18 @@
     <p class="eyebrow">BANK STATEMENTS</p><h1>Movements</h1>
     <form class="filters" @onsubmit="Model.LoadAsync" @onsubmit:preventDefault><div><label for="movement-state">State</label><select id="movement-state" @bind="Model.State" disabled="@Model.Busy"><option value="">All states (includes classified)</option><option value="pending">Pending (unclassified)</option><option value="suggested">Suggested</option><option value="reconciled">Reconciled</option></select></div><button disabled="@Model.Busy" type="submit">Apply filter</button></form>
     <PageStatus Model="Model" />
-    <div class="panel table-wrap" tabindex="0" role="region" aria-label="Bank movements"><table><caption>Derived states and movement classifications</caption><thead><tr><th scope="col">Movement</th><th scope="col">Credit</th><th scope="col">Debit</th><th scope="col">State</th><th scope="col">Classification</th>@if (Session.CanWrite) { <th scope="col">Action</th> }</tr></thead><tbody>
+    <div class="panel table-wrap" tabindex="0" role="region" aria-label="Bank movements"><table><caption>Derived states and movement classifications</caption><thead><tr><th scope="col">Movement</th><th scope="col" class="money">Credit</th><th scope="col" class="money">Debit</th><th scope="col">State</th><th scope="col">Classification</th>@if (Session.CanWrite) { <th scope="col">Action</th> }</tr></thead><tbody>
         @foreach (var movement in Model.Movements)
         {
             <tr><th scope="row">@movement.Date.ToString("yyyy-MM-dd")<p>@movement.Description</p><small>@movement.Reason</small></th><td class="money">@Display.Money(movement.Credit)</td><td class="money">@Display.Money(movement.Debit)</td><td><span class="badge @movement.State">@movement.State</span></td><td>@(movement.Classification ?? "Unclassified")<p>@movement.Note</p></td>@if (Session.CanWrite) { <td><button class="secondary" data-classify="@movement.Id" disabled="@Model.Busy" @onclick="() => Edit(movement)">Classify</button></td> }</tr>
+            if (Editing == movement.Id && Session.CanWrite)
+            {
+                <tr class="row-edit"><td colspan="6">
+                    <form @onsubmit="() => SaveAsync(movement.Id)" @onsubmit:preventDefault><h2>Classify movement</h2><label for="classification">Classification</label><select id="classification" @bind="Classification"><option value="">Clear classification</option><option value="loan">Loan</option><option value="partner_contribution">Partner contribution</option><option value="tax_payment">Tax payment</option><option value="late_invoicing">Late invoicing</option><option value="other">Other</option></select><label for="classification-note">Note (optional)</label><textarea id="classification-note" maxlength="2000" @bind="Note"></textarea><button disabled="@Model.Busy" type="submit">Save classification</button><button type="button" class="secondary" @onclick="() => Editing = null">Cancel classification</button></form>
+                </td></tr>
+            }
         }
     </tbody></table></div>
-    @if (Editing is { } id && Session.CanWrite)
-    {
-        <form class="panel" @onsubmit="() => SaveAsync(id)" @onsubmit:preventDefault><h2>Classify movement</h2><label for="classification">Classification</label><select id="classification" @bind="Classification"><option value="">Clear classification</option><option value="loan">Loan</option><option value="partner_contribution">Partner contribution</option><option value="tax_payment">Tax payment</option><option value="late_invoicing">Late invoicing</option><option value="other">Other</option></select><label for="classification-note">Note (optional)</label><textarea id="classification-note" maxlength="2000" @bind="Note"></textarea><button disabled="@Model.Busy" type="submit">Save classification</button><button type="button" class="secondary" @onclick="() => Editing = null">Cancel classification</button></form>
-    }
     @if (!Model.Busy && Model.Error is null && Model.Movements.Length == 0) { <p>No movements match this filter.</p> }
     @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">Load more movements</button> }
 </section>
