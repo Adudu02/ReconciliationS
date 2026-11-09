@@ -6,6 +6,7 @@ builder.RootComponents.Add<App>("#app");
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddScoped<SessionState>();
 builder.Services.AddScoped<Reconciliation.Web.Localization.Localizer>();
+builder.Services.AddScoped<Reconciliation.Web.Localization.Labels>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.JobProgressViewModel>();
