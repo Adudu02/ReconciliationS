@@ -48,6 +48,46 @@ public sealed class OperationsComponentTests
     }
 
     [Fact]
+    public async Task Job_progress_label_localizes_state_but_not_polling()
+    {
+        var calls = 0;
+        var clock = new ManualTimeProvider();
+        var session = State("accountant");
+        var id = Guid.NewGuid();
+        using var http = new HttpClient(new WebTestHandler(_ => WebTestHandler.Json(Job(id, session.Company!.Id, ++calls >= 3 ? "succeeded" : "running", Math.Min(calls, 4))))) { BaseAddress = new Uri("https://app.example.invalid/") };
+        using var api = new ApiClient(http, session);
+        using var model = new JobProgressViewModel(api, clock);
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var component = context.Render<JobProgress>(p => p.Add(x => x.Model, model));
+        var polling = model.WatchAsync(id, TestContext.Current.CancellationToken);
+        await clock.WaitForTimerAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, calls);
+        component.WaitForAssertion(() => Assert.Equal("En ejecución", component.Find("strong").TextContent));
+        Assert.Contains("Progreso 1 / 4", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("intento 1 / 5", component.Markup, StringComparison.Ordinal);
+
+        context.Services.GetRequiredService<Reconciliation.Web.Localization.Localizer>().Set("en");
+
+        component.WaitForAssertion(() => Assert.Equal("Running", component.Find("strong").TextContent));
+        Assert.Contains("Progress 1 / 4", component.Markup, StringComparison.Ordinal);
+        Assert.Contains("attempt 1 / 5", component.Markup, StringComparison.Ordinal);
+        Assert.Equal("running", component.Find("strong").GetAttribute("data-state"));
+        Assert.Equal(id, model.Current!.Id);
+        Assert.Equal(1, calls);
+        Assert.False(polling.IsCompleted);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        await clock.WaitForTimerAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(2, calls);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        await polling;
+        Assert.Equal(3, calls);
+        Assert.Equal(id, model.Current!.Id);
+        component.WaitForAssertion(() => Assert.Equal("Completed", component.Find("strong").TextContent));
+        Assert.Equal("succeeded", component.Find("strong").GetAttribute("data-state"));
+    }
+
+    [Fact]
     public async Task Failed_job_stops_immediately_and_does_not_render_raw_errors()
     {
         var session = State("accountant");

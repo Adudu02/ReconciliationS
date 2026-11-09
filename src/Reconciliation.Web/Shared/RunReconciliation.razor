@@ -1,14 +1,18 @@
+@inherits LocalizedComponentBase
 @inject SessionState Session
 @inject JobProgressViewModel Jobs
-@implements IDisposable
 
 @if (Session.CanWrite)
 {
-    <section class="panel run"><h2>Reconciliation run</h2><p>Match the imported invoices and movements using the current company settings.</p><button disabled="@Jobs.Busy" @onclick="RunAsync">Run reconciliation</button><JobProgress Model="Jobs" /></section>
+    <section class="panel run"><h2>@T["run.heading"]</h2><p>@T["run.intro"]</p><button disabled="@Jobs.Busy" @onclick="RunAsync">@T["run.button"]</button><JobProgress Model="Jobs" /></section>
 }
 
 @code {
     [Parameter] public EventCallback Completed { get; set; }
     private async Task RunAsync() { await Jobs.StartRunAsync(); if (Jobs.Current?.State == "succeeded") await Completed.InvokeAsync(); }
-    public void Dispose() => Jobs.Dispose();
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Jobs.Dispose();
+        base.Dispose(disposing);
+    }
 }

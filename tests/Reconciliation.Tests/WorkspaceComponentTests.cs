@@ -77,6 +77,49 @@ public sealed class WorkspaceComponentTests
         Assert.Equal(2, page.FindAll("table").Count);
     }
 
+    [Fact]
+    public async Task Overview_in_spanish_shows_localized_states_and_keeps_css_classes()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var company = new CompanyItem(Guid.NewGuid(), "AAA010101AAA", "Synthetic company", null, "viewer");
+        Register(context, [company]).SelectCompany(company);
+        var page = context.Render<Overview>();
+        page.WaitForAssertion(() => Assert.Contains("11,600.00", page.Markup, StringComparison.Ordinal));
+        var badge = page.FindAll(".badge.suggested")[0];
+        Assert.Equal("Sugerido", badge.TextContent);
+        Assert.Equal("badge suggested", badge.ClassName);
+        Assert.Equal("Conciliado", page.Find(".badge.reconciled").TextContent);
+        Assert.Contains("los resultados no tienen validez fiscal ni legal", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Resumen de la empresa", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Facturas por estado", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Cantidad", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Monto", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Total", page.Find("tfoot th").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Complemento de pago vencido", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Alerta EFOS", page.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Demo: results have no fiscal", page.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Classified movements remain in totals.", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Los movimientos clasificados", page.Find("p.muted").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Overview_alert_hooks_survive()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        var company = new CompanyItem(Guid.NewGuid(), "AAA010101AAA", "Synthetic company", null, "viewer");
+        Register(context, [company]).SelectCompany(company);
+        var page = context.Render<Overview>();
+        page.WaitForAssertion(() => Assert.Equal("2", page.Find("[data-alert=complement]").TextContent));
+        Assert.Equal("1", page.Find("[data-alert=efos]").TextContent);
+        context.Services.GetRequiredService<Reconciliation.Web.Localization.Localizer>().Set("en");
+        page.WaitForAssertion(() => Assert.Contains("Complement overdue", page.Markup, StringComparison.Ordinal));
+        Assert.Equal("2", page.Find("[data-alert=complement]").TextContent);
+        Assert.Equal("1", page.Find("[data-alert=efos]").TextContent);
+        Assert.Equal("Suggested", page.FindAll(".badge.suggested")[0].TextContent);
+    }
+
     private static SessionState Register(BunitContext context, CompanyItem[] companies)
     {
         var state = new SessionState();

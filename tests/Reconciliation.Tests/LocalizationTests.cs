@@ -507,6 +507,56 @@ public sealed class LanguageSwitchTests
 
         Assert.False(HasSubscribers(localizer));
     }
+
+    /// <summary>Components that read <see cref="Localizer"/> or <see cref="Labels"/> must derive from <see cref="LocalizedComponentBase"/>, or they never re-render on a language switch. Each exemption needs a reason; keep this empty.</summary>
+    private static readonly Dictionary<Type, string> LocalizationBaseExemptions = [];
+
+    [Fact]
+    public void Every_component_that_uses_Localizer_or_Labels_derives_from_LocalizedComponentBase()
+    {
+        var components = typeof(App).Assembly.GetTypes().Where(type => typeof(IComponent).IsAssignableFrom(type) && !type.IsAbstract).ToList();
+        var users = components.Where(UsesLocalization).ToList();
+        Assert.Contains(typeof(App), users);
+        Assert.Contains(typeof(LanguageSwitch), users);
+        Assert.Contains(typeof(Overview), users);
+        var offenders = Offenders(components).Where(type => !LocalizationBaseExemptions.ContainsKey(type)).Select(type => type.FullName).Order().ToList();
+        Assert.True(offenders.Count == 0, "Add '@inherits LocalizedComponentBase' to: " + string.Join(", ", offenders));
+        Assert.All(LocalizationBaseExemptions, pair => Assert.False(string.IsNullOrWhiteSpace(pair.Value)));
+    }
+
+    [Fact]
+    public void The_guard_detects_a_component_that_injects_Localizer_without_the_base()
+    {
+        Assert.Equal([typeof(ForgotBase), typeof(ForgotBaseViaLabels), typeof(ForgotBaseViaInheritance)], Offenders([typeof(ForgotBase), typeof(ForgotBaseViaLabels), typeof(ForgotBaseViaInheritance), typeof(Correct), typeof(NoLocalization)]));
+    }
+
+    private static List<Type> Offenders(IEnumerable<Type> components) =>
+        components.Where(type => UsesLocalization(type) && !typeof(LocalizedComponentBase).IsAssignableFrom(type)).ToList();
+
+    private static bool UsesLocalization(Type component)
+    {
+        const BindingFlags all = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        for (var type = component; type is not null && type != typeof(object); type = type.BaseType)
+        {
+            if (type == typeof(LocalizedComponentBase)) return true;
+            var injected = type.GetProperties(all).Where(p => p.IsDefined(typeof(InjectAttribute), true)).Select(p => p.PropertyType)
+                .Concat(type.GetFields(all).Where(f => f.IsDefined(typeof(InjectAttribute), true)).Select(f => f.FieldType));
+            if (injected.Any(t => t == typeof(Localizer) || t == typeof(Labels))) return true;
+        }
+        return false;
+    }
+
+    private sealed class ForgotBase : ComponentBase { [Inject] private Localizer Text { get; set; } = default!; }
+
+    private sealed class ForgotBaseViaLabels : ComponentBase { [Inject] public Labels Names { get; set; } = default!; }
+
+    private abstract class InjectingBase : ComponentBase { [Inject] protected Localizer Text { get; set; } = default!; }
+
+    private sealed class ForgotBaseViaInheritance : InjectingBase;
+
+    private sealed class Correct : LocalizedComponentBase;
+
+    private sealed class NoLocalization : ComponentBase;
 }
 
 public sealed class ErrorLocalizationTests

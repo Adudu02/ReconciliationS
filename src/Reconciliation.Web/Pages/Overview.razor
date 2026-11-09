@@ -1,34 +1,35 @@
 @page "/"
 @page "/ui/overview"
+@inherits LocalizedComponentBase
 @inject WorkspaceViewModel Model
 
 <section>
-    <p class="eyebrow">WORKSPACE</p>
-    <h1>Company overview</h1>
-    <p>Imported invoices and bank movements, grouped by their current state.</p>
+    <p class="eyebrow">@T["picker.eyebrow"]</p>
+    <h1>@T["overview.title"]</h1>
+    <p>@T["overview.intro"]</p>
     <PageStatus Model="Model" />
     @if (Model.Overview is { } value)
     {
-        <p class="notice">@value.Disclaimer</p>
+        <p class="notice">@T["notice.disclaimer"]</p>
         <div class="resource-grid">
-            @foreach (var resource in new[] { ("Invoices", value.Invoices), ("Movements", value.Movements) })
+            @foreach (var resource in new[] { (T["nav.invoices"], value.Invoices), (T["nav.movements"], value.Movements) })
             {
                 <section class="panel">
                     <h2>@resource.Item1</h2>
-                    <p class="metric">@Display.Money(resource.Item2.Amount)<span>@resource.Item2.Count imported</span></p>
-                    <table><caption>@resource.Item1 by state</caption><thead><tr><th scope="col">State</th><th scope="col" class="num">Count</th><th scope="col" class="money">Amount</th></tr></thead><tbody>
-                        @foreach (var state in resource.Item2.States) { <tr><th scope="row"><span class="badge @state.State">@state.State</span></th><td class="num">@state.Count</td><td class="money">@Display.Money(state.Amount)</td></tr> }
-                    </tbody><tfoot><tr><th scope="row">Total</th><td class="num">@resource.Item2.Count</td><td class="money">@Display.Money(resource.Item2.Amount)</td></tr></tfoot></table>
+                    <p class="metric">@Display.Money(resource.Item2.Amount)<span>@T.Format("overview.imported", resource.Item2.Count)</span></p>
+                    <table><caption>@T.Format("overview.by-state", resource.Item1)</caption><thead><tr><th scope="col">@T["col.state"]</th><th scope="col" class="num">@T["col.count"]</th><th scope="col" class="money">@T["col.amount"]</th></tr></thead><tbody>
+                        @foreach (var state in resource.Item2.States) { <tr><th scope="row"><span class="badge @state.State">@L.State(state.State)</span></th><td class="num">@state.Count</td><td class="money">@Display.Money(state.Amount)</td></tr> }
+                    </tbody><tfoot><tr><th scope="row">@T["col.total"]</th><td class="num">@resource.Item2.Count</td><td class="money">@Display.Money(resource.Item2.Amount)</td></tr></tfoot></table>
                 </section>
             }
         </div>
-        <section class="panel alerts"><h2>Invoice alerts</h2><dl>
-            <div><dt>Complement overdue</dt><dd data-alert="complement">@value.Alerts.ComplementOverdue</dd></div>
-            <div><dt>Cancellation in process</dt><dd>@value.Alerts.CancellationInProcess</dd></div>
-            <div><dt>EFOS warning</dt><dd data-alert="efos">@value.Alerts.EfosWarning</dd></div>
-            <div><dt>Global invoice</dt><dd>@value.Alerts.Global</dd></div>
+        <section class="panel alerts"><h2>@T["overview.alerts"]</h2><dl>
+            <div><dt>@T["overview.alert.complement-overdue"]</dt><dd data-alert="complement">@value.Alerts.ComplementOverdue</dd></div>
+            <div><dt>@T["overview.alert.cancellation"]</dt><dd>@value.Alerts.CancellationInProcess</dd></div>
+            <div><dt>@T["overview.alert.efos"]</dt><dd data-alert="efos">@value.Alerts.EfosWarning</dd></div>
+            <div><dt>@T["overview.alert.global"]</dt><dd>@value.Alerts.Global</dd></div>
         </dl></section>
-        <p class="muted">@value.TotalsNote</p>
+        <p class="muted">@T["overview.totals-note"]</p>
         <RunReconciliation Completed="Model.LoadOverviewAsync" />
     }
 </section>
