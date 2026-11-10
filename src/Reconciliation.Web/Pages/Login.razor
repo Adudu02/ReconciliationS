@@ -1,35 +1,36 @@
 @page "/ui/login"
+@inherits LocalizedComponentBase
 @inject ApiClient Api
 @inject NavigationManager Navigation
 
 <section class="login">
-    <p class="eyebrow">CFDI / DEMO</p>
-    <h1>Reconciliation for accounting teams</h1>
-    <p>Review invoices and bank movements in one company workspace.</p>
-    <p class="notice">Demo: results have no fiscal or legal validity.</p>
+    <p class="eyebrow">@T["login.eyebrow"]</p>
+    <h1>@T["login.heading"]</h1>
+    <p>@T["login.intro"]</p>
+    <p class="notice">@T["notice.disclaimer"]</p>
     <form @onsubmit="SignInAsync" @onsubmit:preventDefault>
-        <h2>Sign in</h2>
-        <label for="email">Email</label>
+        <h2>@T["login.title"]</h2>
+        <label for="email">@T["login.email"]</label>
         <input id="email" type="email" autocomplete="username" required @bind="Email" />
-        <label for="password">Password</label>
+        <label for="password">@T["login.password"]</label>
         <input id="password" type="password" autocomplete="current-password" required @bind="Password" />
-        @if (Error is not null) { <p role="alert" class="error">@Error</p> }
-        <button type="submit" disabled="@Busy">@(Busy ? "Signing in…" : "Sign in")</button>
+        <ErrorText Error="Error" />
+        <button type="submit" disabled="@Busy">@(Busy ? T["login.signing-in"] : T["login.sign-in"])</button>
     </form>
 </section>
 
 @code {
     private string Email { get; set; } = "";
     private string Password { get; set; } = "";
-    private string? Error { get; set; }
+    private UiError? Error { get; set; }
     private bool Busy { get; set; }
     private async Task SignInAsync()
     {
         Busy = true;
         Error = null;
         try { await Api.LoginAsync(Email, Password); Password = ""; Navigation.NavigateTo("/ui/overview"); }
-        catch (ApiProblemException problem) { Error = problem.Message; }
-        catch (HttpRequestException) { Error = "The service is unavailable. Try again."; }
+        catch (ApiProblemException problem) { Error = problem.ToUiError(); }
+        catch (HttpRequestException) { Error = new("login.service-unavailable"); }
         finally { Busy = false; }
     }
 }

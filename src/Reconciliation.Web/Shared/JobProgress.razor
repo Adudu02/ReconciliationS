@@ -1,11 +1,11 @@
-@implements IDisposable
+@inherits LocalizedComponentBase
 
 <div aria-live="polite">
     <PageStatus Model="Model" />
     @if (Model.Current is { } job)
     {
-        <p>Job <span class="identifier">@job.Id</span> · <strong>@job.State</strong> · attempt @job.Attempts / @job.MaxAttempts</p>
-        <label for="progress-@job.Id">Progress @job.ProgressDone / @job.ProgressTotal</label>
+        <p>@T["job.label"] <span class="identifier">@job.Id</span> · <strong data-state="@job.State">@L.JobState(job.State)</strong> · @T.Format("job.attempt", job.Attempts, job.MaxAttempts)</p>
+        <label for="progress-@job.Id">@T.Format("job.progress", job.ProgressDone, job.ProgressTotal)</label>
         <progress id="progress-@job.Id" max="@Math.Max(1, job.ProgressTotal)" value="@job.ProgressDone">@job.ProgressDone / @job.ProgressTotal</progress>
     }
 </div>
@@ -14,5 +14,9 @@
     [Parameter, EditorRequired] public JobProgressViewModel Model { get; set; } = default!;
     protected override void OnInitialized() => Model.Changed += Refresh;
     private void Refresh() => _ = InvokeAsync(StateHasChanged);
-    public void Dispose() => Model.Changed -= Refresh;
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Model.Changed -= Refresh;
+        base.Dispose(disposing);
+    }
 }

@@ -13,6 +13,7 @@ public sealed class WebAccessibilityTests
     public async Task Wide_invoice_tables_can_be_focused_and_scrolled_with_a_keyboard()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var session = OperationsComponentTests.State("viewer");
         context.Services.AddSingleton(session);
         context.Services.AddSingleton(new HttpClient(new WebTestHandler(_ => WebTestHandler.Json(new InvoicePage([], null, null)))) { BaseAddress = new Uri("https://app.example.invalid/") });

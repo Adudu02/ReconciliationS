@@ -97,6 +97,7 @@ try {
     await cdp('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await cdp('Page.navigate', { url: new URL('/ui/login', base).href });
     await dom('!!document.querySelector("input[type=email]")');
+    assert.equal(await evaluate('document.documentElement.lang'), 'es');
     await screenshot('pr13-login.png');
     async function layout(width, height) {
         await cdp('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 640 });
@@ -111,22 +112,22 @@ try {
     await click('form button[type=submit]');
     await dom(`!!document.querySelector('button[data-company="${company.id}"]')`);
     await click(`button[data-company="${company.id}"]`);
-    await dom('document.querySelector("h1")?.textContent === "Company overview"');
+    await dom('document.querySelector("h1")?.textContent === "Resumen de la empresa"');
     await click('a[href="/ui/imports"]');
     await dom('!!document.querySelector("#files")');
     await chooseFile(invoice);
     await click('form button[type=submit]');
-    await dom('document.body.textContent.includes("synthetic-invoice.xml") && document.querySelector("tbody")?.textContent.includes("imported")');
+    await dom('document.body.textContent.includes("synthetic-invoice.xml") && document.querySelector("tbody")?.textContent.includes("Importado")');
     await fill('#kind', 'bank-statement');
     await dom('!!document.querySelector("#account")');
     await fill('#account', 'Synthetic-Web-Smoke');
     await chooseFile(bank);
     await click('form button[type=submit]');
-    await dom('document.querySelector("tbody")?.textContent.includes("synthetic.csv") && document.querySelector("tbody")?.textContent.includes("2 imported")');
+    await dom('document.querySelector("tbody")?.textContent.includes("synthetic.csv") && document.querySelector("tbody")?.textContent.includes("2 importados")');
     await click('a[href="/ui/overview"]');
     await dom('!!document.querySelector("section.run button")');
     await click('section.run button');
-    await dom('document.querySelector("section.run strong")?.textContent === "succeeded"');
+    await dom('!!document.querySelector("section.run strong[data-state=succeeded]")');
     await dom('document.querySelectorAll(".badge.suggested").length === 2');
     const totals = await evaluate(`Array.from(document.querySelectorAll('.resource-grid table')).map(table => ({ count: Number(table.querySelector('tfoot td').textContent), amount: Number(table.querySelector('tfoot .money').textContent.replaceAll(',','')), rows: Array.from(table.querySelectorAll('tbody tr')).map(row=>({count:Number(row.querySelector('td').textContent),amount:Number(row.querySelector('.money').textContent.replaceAll(',',''))})) }))`);
     assert.deepEqual(totals.map(item => item.count), [1, 2]);
@@ -170,10 +171,23 @@ try {
     const denied = await fetch(new URL(`/companies/${company.id}/overview`, base));
     assert.equal(denied.status, 401);
     assert.notEqual(denied.headers.get('content-type'), 'text/html');
+
+    await click('button.sign-out');
+    await dom('!!document.querySelector("input[type=email]")');
+    await cdp('Page.navigate', { url: new URL('/ui/login?lang=en', base).href });
+    await dom('document.documentElement.lang === "en" && !!document.querySelector("input[type=email]")');
+    await dom('document.querySelector("h1")?.textContent === "Reconciliation for accounting teams"');
+    await fill('#email', email);
+    await fill('#password', password);
+    await click('form button[type=submit]');
+    await dom(`!!document.querySelector('button[data-company="${company.id}"]')`);
+    await click(`button[data-company="${company.id}"]`);
+    await dom('document.documentElement.lang === "en" && document.querySelector("h1")?.textContent === "Company overview"');
+    assert.ok(await evaluate('localStorage.length === 0 && sessionStorage.length === 0'));
     const immutable = framework.filter(item => /\.[a-z0-9]{10}\.(wasm|js)$/.test(new URL(item.url).pathname));
     assert.ok(immutable.length > 0, 'Expected fingerprinted framework assets');
     assert.ok(immutable.every(item => String(item.headers['Cache-Control'] || item.headers['cache-control']).includes('immutable')));
-    console.log(JSON.stringify({ succeeded: true, viewport: '1440x900', summary: { paidPercentage: 50, pending: 5800, linkedMovements: 2 }, screenshots: ['pr13-login.png', 'pr13-overview.png', 'pr13-review-queue.png'], layoutWidths: [1440, 768, 390], darkModeChecked: true, fingerprintedAssets: immutable.length, unhandledBrowserExceptions: exceptions.length }));
+    console.log(JSON.stringify({ succeeded: true, viewport: '1440x900', summary: { paidPercentage: 50, pending: 5800, linkedMovements: 2 }, languages: ['es', 'en'], screenshots: ['pr13-login.png', 'pr13-overview.png', 'pr13-review-queue.png'], layoutWidths: [1440, 768, 390], darkModeChecked: true, fingerprintedAssets: immutable.length, unhandledBrowserExceptions: exceptions.length }));
 } finally {
     socket?.close();
     if (chrome?.pid) {

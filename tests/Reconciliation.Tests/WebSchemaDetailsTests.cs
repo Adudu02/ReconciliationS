@@ -44,7 +44,6 @@ public sealed class WebTimeoutTests
         using var api = new ApiClient(http, new SessionState());
         var model = new WorkspaceViewModel(api);
         await model.LoadCompaniesAsync();
-        Assert.NotNull(model.Error);
-        Assert.DoesNotContain("Synthetic raw timeout", model.Error, StringComparison.Ordinal);
+        Assert.Equal(new Reconciliation.Web.Localization.UiError("error.cancelled"), model.Error);
     }
 }

@@ -1,41 +1,42 @@
 @page "/ui/review"
+@inherits LocalizedComponentBase
 @inject ReviewQueueViewModel Model
 @inject SessionState Session
 
 <section>
-    <p class="eyebrow">HUMAN REVIEW</p><h1>Review queue</h1>
-    <p>Suggestions are ordered by confidence. Invoice flags follow the suggested links.</p>
-    <button class="secondary" disabled="@Model.Busy" @onclick="Model.LoadAsync">Refresh queue</button>
+    <p class="eyebrow">@T["review.eyebrow"]</p><h1>@T["review.title"]</h1>
+    <p>@T["review.intro"]</p>
+    <button class="secondary" disabled="@Model.Busy" @onclick="Model.LoadAsync">@T["review.refresh"]</button>
     <PageStatus Model="Model" />
-    @if (!Session.CanWrite) { <p class="muted">Read-only workspace. An accountant or administrator can decide on suggestions in an active company.</p> }
+    @if (!Session.CanWrite) { <p class="muted">@T["review.read-only"]</p> }
     @foreach (var entry in Model.Entries)
     {
         <article class="panel review-item" @key="entry.Id">
-            <p class="eyebrow">@(entry.Kind == "link" ? "SUGGESTION" : "INVOICE FLAG") <span class="badge suggested">@entry.Confidence</span></p>
-            <h2>@(entry.Movement?.Description ?? "Invoice requires review")</h2>
-            <p>@entry.Movement?.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">Invoice summary</a></p>
-            <p class="muted">Invoice @entry.Invoice.Date.ToString("yyyy-MM-dd") · @Display.Money(entry.Invoice.Amount) · @entry.Invoice.IssuerRfc → @entry.Invoice.ReceiverRfc</p>
-            <p>@entry.Explanation</p>
-            <ul>@foreach (var criterion in entry.Criteria) { <li>@criterion.Code · @criterion.Points points: @criterion.Detail</li> }</ul>
-            <ul>@foreach (var reason in entry.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@reason.Code</li> }</ul>
+            <p class="eyebrow">@(entry.Kind == "link" ? T["review.kind.link"] : T["review.kind.invoice"]) <span class="badge @entry.Confidence">@L.Confidence(entry.Confidence)</span></p>
+            <h2>@(entry.Movement?.Description ?? T["review.invoice-requires-review"])</h2>
+            <p>@if (entry.Movement is { } dated) { <text>@dated.Date.ToString("yyyy-MM-dd") · </text> }@Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">@T["review.invoice-summary"]</a></p>
+            <p class="muted">@T.Format("review.invoice-line", entry.Invoice.Date.ToString("yyyy-MM-dd"), Display.Money(entry.Invoice.Amount), entry.Invoice.IssuerRfc, entry.Invoice.ReceiverRfc)</p>
+            <p>@L.Explanation(entry)</p>
+            <ul>@foreach (var criterion in entry.Criteria) { <li>@T.Format("review.criterion-line", criterion.Code, criterion.Points, L.Criterion(criterion))</li> }</ul>
+            <ul>@foreach (var reason in entry.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@L.Reason(reason.Code)</li> }</ul>
             @if (Session.CanWrite && entry.LinkId is { } linkId)
             {
-                <div class="actions"><button data-decision="confirm" disabled="@Model.Busy" @onclick="() => Model.DecideAsync(linkId, ConfirmRequest)">Confirm</button><button class="secondary" data-decision="reject" disabled="@Model.Busy" @onclick="() => Model.DecideAsync(linkId, RejectRequest)">Reject</button><button class="secondary" data-decision="change" disabled="@Model.Busy" @onclick="() => BeginChangeAsync(linkId, entry.CfdiId)">Change</button></div>
+                <div class="actions"><button data-decision="confirm" disabled="@Model.Busy" @onclick="() => Model.DecideAsync(linkId, ConfirmRequest)">@T["review.confirm"]</button><button class="secondary" data-decision="reject" disabled="@Model.Busy" @onclick="() => Model.DecideAsync(linkId, RejectRequest)">@T["review.reject"]</button><button class="secondary" data-decision="change" disabled="@Model.Busy" @onclick="() => BeginChangeAsync(linkId, entry.CfdiId)">@T["review.change"]</button></div>
                 @if (Changing == linkId)
                 {
                     <form @onsubmit="() => SaveChangeAsync(linkId)" @onsubmit:preventDefault>
-                        <label for="target">Target invoice</label><select id="target" required @bind="Target"><option value="">Choose an invoice</option>@foreach (var invoice in Model.Invoices) { <option value="@invoice.Id">@invoice.Uuid · @Display.Money(invoice.Total)</option> }</select>
-                        @if (Model.HasMoreInvoices) { <button type="button" class="secondary" @onclick="() => Model.LoadInvoicesAsync(true)">Load more invoices</button> }
-                        <label for="amount">Amount applied</label><input id="amount" type="number" min="0.01" step="0.01" required @bind="Amount" />
-                        <label for="note">Decision note (optional)</label><textarea id="note" maxlength="500" @bind="Note"></textarea>
-                        <button type="submit" disabled="@Model.Busy">Save change</button><button type="button" class="secondary" @onclick="() => Changing = null">Cancel change</button>
+                        <label for="target">@T["review.target-invoice"]</label><select id="target" required @bind="Target"><option value="">@T["review.choose-invoice"]</option>@foreach (var invoice in Model.Invoices) { <option value="@invoice.Id">@invoice.Uuid · @Display.Money(invoice.Total)</option> }</select>
+                        @if (Model.HasMoreInvoices) { <button type="button" class="secondary" @onclick="() => Model.LoadInvoicesAsync(true)">@T["review.load-more-invoices"]</button> }
+                        <label for="amount">@T["review.amount-applied"]</label><input id="amount" type="number" min="0.01" step="0.01" required @bind="Amount" />
+                        <label for="note">@T["review.note"]</label><textarea id="note" maxlength="500" @bind="Note"></textarea>
+                        <button type="submit" disabled="@Model.Busy">@T["review.save-change"]</button><button type="button" class="secondary" @onclick="() => Changing = null">@T["review.cancel-change"]</button>
                     </form>
                 }
             }
         </article>
     }
-    @if (!Model.Busy && Model.Error is null && Model.Entries.Length == 0) { <p>No suggestions or invoice flags need review.</p> }
-    @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">Load more entries</button> }
+    @if (!Model.Busy && Model.Error is null && Model.Entries.Length == 0) { <p>@T["review.empty"]</p> }
+    @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">@T["review.load-more-entries"]</button> }
 </section>
 
 @code {

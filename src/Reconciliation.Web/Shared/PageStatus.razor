@@ -1,5 +1,6 @@
-@if (Model.Error is not null) { <p class="error" role="alert">@Model.Error</p> }
-@if (Model.Busy) { <p role="status">Loading…</p> }
+@inherits LocalizedComponentBase
+<ErrorText Error="Model.Error" />
+@if (Model.Busy) { <p role="status">@T["status.loading"]</p> }
 
 @code {
     [Parameter, EditorRequired] public PageViewModel Model { get; set; } = default!;

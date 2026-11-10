@@ -19,7 +19,7 @@ public sealed class MovementsViewModel(ApiClient api, SessionState session) : Pa
     }
     public Task ClassifyAsync(Guid movementId, string? classification, string? note) => RunAsync(async () =>
     {
-        if (!session.CanWrite) { Error = "This workspace is read-only for your membership."; return; }
+        if (!session.CanWrite) { Error = new("error.read-only"); return; }
         await api.ClassifyAsync(movementId, new(classification, note));
         await LoadCoreAsync(false);
     });

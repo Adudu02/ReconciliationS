@@ -1,6 +1,6 @@
 # ADR-010 Browser UI and HTTP API contract
 
-Status: accepted. Implements task 8.5, design D11, ADR-004 browser-transport amendment and ADR-009.
+Status: accepted. Implements task 8.5, design D11, ADR-004 browser-transport amendment and ADR-009. The language decision is superseded by [ADR-011](ADR-011-ui-localization.md); English remains the alternate UI language.
 
 ## Static shell and browser application
 
@@ -17,8 +17,8 @@ transactions remain authoritative. The API process also serves the files; there 
 
 Login, company selection/switching, overview, review decisions, invoice list/summary, imports/progress and
 movements/classification are included. Accountant and administrator actions are hidden for viewers and archived
-companies. The API still checks each write. A company switch replaces the routed view. English is the only UI
-language. Native labelled forms, semantic tables, keyboard focus/scroll regions and prefers-color-scheme support
+companies. The API still checks each write. A company switch replaces the routed view. Native labelled forms,
+semantic tables, keyboard focus/scroll regions and prefers-color-scheme support
 responsive light/dark use. Login, overview and footer state: results have no fiscal or legal validity.
 
 ## Sessions and shell headers
@@ -104,4 +104,4 @@ volumes are removed afterward. No browser dependency or CI browser job is introd
 No password-change page, administration/audit/SAT-management UI, standalone manual N:M creation or reopen UI
 is added. Their existing API availability and ADR-009 gaps are unchanged. Browser uploads cap at 20 files,
 10 MiB each and 20 MiB total; API configuration may impose smaller limits. No list snapshot is promised between
-keyset pages. There is no offline mode, localization, cross-tab refresh coordinator or production deployment.
+keyset pages. There is no offline mode, cross-tab refresh coordinator or production deployment.

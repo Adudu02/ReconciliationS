@@ -40,4 +40,23 @@ public sealed class WebDocumentationTests
         Assert.Contains("M0013", database, StringComparison.Ordinal);
         Assert.Contains("cfdi_directory_owner", database, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Localization_decision_and_documentation_are_recorded()
+    {
+        var adr = File.ReadAllText(RepoPaths.Doc("adr/ADR-011-ui-localization.md"));
+        foreach (var token in new[] { "es-MX", "Localizer", "lang", "localStorage", "Accept-Language", "D1", "D6", "F1", "F2", "F3" })
+            Assert.Contains(token, adr, StringComparison.Ordinal);
+        Assert.Contains("ADR-011", File.ReadAllText(RepoPaths.Doc("adr/ADR-010-browser-ui-and-api-contract.md")), StringComparison.Ordinal);
+
+        var readme = File.ReadAllText(Path.Combine(RepoPaths.Root, "README.md"));
+        var ui = readme[readme.IndexOf("## Web UI", StringComparison.Ordinal)..];
+        Assert.Contains("Spanish", ui, StringComparison.Ordinal);
+        Assert.DoesNotContain("The UI is English only", ui, StringComparison.Ordinal);
+
+        var docs = File.ReadAllText(RepoPaths.Doc("README.md"));
+        Assert.Contains("ADR-011", docs, StringComparison.Ordinal);
+        Assert.Contains("ADR-011", File.ReadAllText(RepoPaths.Doc("build-log/BUILD-LOG.md")), StringComparison.Ordinal);
+        Assert.Contains("ADR-011", File.ReadAllText(RepoPaths.Doc("build-log/BUILD-LOG-ES.md")), StringComparison.Ordinal);
+    }
 }

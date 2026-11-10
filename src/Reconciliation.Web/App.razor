@@ -1,49 +1,67 @@
+@inherits LocalizedComponentBase
 @inject SessionState Session
 @inject ApiClient Api
-@implements IDisposable
+@inject NavigationManager Navigation
+@inject IDocumentLanguage Document
 
-<a class="skip" href="#main">Skip to content</a>
-<header class="topbar"><a class="brand" href="/ui/overview">CFDI <span>reconciliation</span></a><span class="demo">DEMO</span>
+<a class="skip" href="#main">@T["topbar.skip"]</a>
+<header class="topbar"><a class="brand" href="/ui/overview">CFDI <span>reconciliation</span></a><span class="demo">@T["topbar.demo"]</span><LanguageSwitch />
     @if (Session.IsAuthenticated)
     {
-        @if (Session.Company is { } company) { <div class="identity"><strong>@company.Name</strong><span>@company.Role @(company.ArchivedAt is null ? "" : "· Archived · read-only")</span></div><button class="secondary" @onclick="Session.SwitchCompany">Switch company</button> }
-        <button class="secondary" @onclick="LogoutAsync">Sign out</button>
+        @if (Session.Company is { } company) { <div class="identity"><strong>@company.Name</strong><span>@L.Role(company.Role) @(company.ArchivedAt is null ? "" : "· " + T["company.archived-read-only"])</span></div><button class="secondary switch-company" @onclick="Session.SwitchCompany">@T["topbar.switch-company"]</button> }
+        <button class="secondary sign-out" @onclick="LogoutAsync">@T["topbar.sign-out"]</button>
     }
 </header>
-@if (ShellError is not null) { <p role="alert" class="error">@ShellError</p> }
+<ErrorText Error="ShellError" />
 <div class="workspace">
     @if (Session.IsAuthenticated && Session.Company is not null)
     {
-        <nav aria-label="Workspace" class="sidebar"><p class="eyebrow">RECONCILIATION</p><NavLink href="/ui/overview">Overview</NavLink><NavLink href="/ui/review">Review queue</NavLink><NavLink href="/ui/invoices">Invoices</NavLink><NavLink href="/ui/movements">Movements</NavLink>@if (Session.CanWrite) { <NavLink href="/ui/imports">Import files</NavLink> }</nav>
+        <nav aria-label="@T["nav.label"]" class="sidebar"><p class="eyebrow">@T["nav.eyebrow"]</p><NavLink href="/ui/overview">@T["nav.overview"]</NavLink><NavLink href="/ui/review">@T["nav.review"]</NavLink><NavLink href="/ui/invoices">@T["nav.invoices"]</NavLink><NavLink href="/ui/movements">@T["nav.movements"]</NavLink>@if (Session.CanWrite) { <NavLink href="/ui/imports">@T["nav.imports"]</NavLink> }</nav>
     }
     <main id="main" @key="Session.Company?.Id">
-        @if (Loading) { <p role="status">Restoring session…</p> }
+        @if (Loading) { <p role="status">@T["shell.restoring"]</p> }
         else if (!Session.IsAuthenticated) { <Login /> }
         else if (Session.Company is null) { <CompanyPicker /> }
         else
         {
-            <Router AppAssembly="typeof(App).Assembly"><Found Context="route"><RouteView RouteData="route" /><FocusOnNavigate RouteData="route" Selector="h1" /></Found><NotFound><h1>Page unavailable</h1><p><a href="/ui/overview">Return to the overview</a></p></NotFound></Router>
+            <Router AppAssembly="typeof(App).Assembly"><Found Context="route"><RouteView RouteData="route" /><FocusOnNavigate RouteData="route" Selector="h1" /></Found><NotFound><h1>@T["shell.not-found.title"]</h1><p><a href="/ui/overview">@T["shell.not-found.back"]</a></p></NotFound></Router>
         }
     </main>
 </div>
-<footer>Demo: results have no fiscal or legal validity.</footer>
+<footer>@T["notice.disclaimer"]</footer>
 
 @code {
     private bool Loading { get; set; } = true;
-    private string? ShellError { get; set; }
+    private UiError? ShellError { get; set; }
     protected override async Task OnInitializedAsync()
     {
+        T.Set(InitialLanguage(Navigation.Uri));
+        await Document.SetAsync(T.Language);
         Session.Changed += Refresh;
         try { await Api.RestoreAsync(); }
-        catch (HttpRequestException) { ShellError = "The service is unavailable. Try signing in again."; }
+        catch (HttpRequestException) { ShellError = new("shell.service-unavailable"); }
         finally { Loading = false; }
     }
     private void Refresh() => _ = InvokeAsync(StateHasChanged);
     private async Task LogoutAsync()
     {
         try { await Api.LogoutAsync(); }
-        catch (ApiProblemException problem) { ShellError = problem.Message; }
-        catch (HttpRequestException) { ShellError = "Sign out could not reach the service. Try again."; }
+        catch (ApiProblemException problem) { ShellError = problem.ToUiError(); }
+        catch (HttpRequestException) { ShellError = new("shell.sign-out-unreachable"); }
     }
-    public void Dispose() => Session.Changed -= Refresh;
+    // The language is chosen once from ?lang= (never stored: ADR-010 keeps browser storage empty); anything unrecognised is Spanish.
+    private static string InitialLanguage(string uri)
+    {
+        foreach (var pair in new Uri(uri).Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (Uri.UnescapeDataString(parts[0]) == "lang" && parts.Length == 2 && Uri.UnescapeDataString(parts[1]) is "en") return "en";
+        }
+        return "es";
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Session.Changed -= Refresh;
+        base.Dispose(disposing);
+    }
 }

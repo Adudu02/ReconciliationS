@@ -444,7 +444,7 @@ Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la 
 
 **Tamaño y documentación.** _framework publicado ocupa 7,319,437 bytes sin compresión y 12,544,744 con copias .br/.gz (2,347,811 Brotli; 2,877,496 gzip). Son tamaños de archivo, no mediciones de transferencia. Arquitectura pasó 9/9 verificaciones showcase sin advertencias y se entregó junto con seis secuencias actualizadas. Los controles fijos del visor Archify siguen en inglés en los diagramas de contenido español. Arquitectura muestra navegador y static shell servido por la API; las etiquetas de revisión/contador/viewer distinguen UI y API. Se regeneraron diagramas de base/progreso y Word/PDF bilingües. Herramientas solo de exportación: docx@9.5.1 con npm --ignore-scripts y pdf2image==1.17.0 en /tmp; se borraron sus directorios después de renderizar e inspeccionar. No se agregaron a ejecución ni CI.
 
-**Límites.** UI solo en inglés; sin páginas para contraseña, operador/administración, auditoría o gestión SAT. Recargar pide elegir empresa; las pestañas no coordinan tokens de acceso. Límite de navegador: 20 archivos, 10 MiB por archivo, 20 MiB total; API puede ser más estricta. Sin modo offline ni despliegue productivo. SSE queda como mejora posible, sin endpoint en este PR. Reopen y N:M manual independiente conservan las brechas ADR-009. No se creó CODEX-SESSION-8B.md. Solo commits locales.
+**Límites en PR-13.** La UI solo estaba en inglés en ese momento; ADR-011 registra el cambio posterior a español predeterminado. No hay páginas para contraseña, operador/administración, auditoría o gestión SAT. Recargar pide elegir empresa; las pestañas no coordinan tokens de acceso. Límite de navegador: 20 archivos, 10 MiB por archivo, 20 MiB total; API puede ser más estricta. Sin modo offline ni despliegue productivo. SSE queda como mejora posible, sin endpoint en este PR. Reopen y N:M manual independiente conservan las brechas ADR-009. No se creó CODEX-SESSION-8B.md. Solo commits locales.
 
 #### Inicio de sesión sintético
 
@@ -457,6 +457,20 @@ Primero el más reciente. Cada entrada responde seis preguntas: **Qué es** (la 
 #### Cola antes de confirmar
 
 ![Cola de revisión sintética de la UI](images/pr13-review-queue.png)
+
+### Interfaz con español como idioma predeterminado
+
+**Qué es.** Se agrega español de México como idioma inicial de la interfaz y una opción para usar inglés. ADR-011 registra la decisión y sustituye la afirmación de ADR-010 que limitaba el idioma de la interfaz al inglés.
+
+**Cómo funciona.** Un catálogo `Localizer` emparejado traduce las etiquetas; los valores de máquina, el dinero, las fechas ISO y los detalles en inglés escritos por el servidor conservan su comportamiento. El idioma inicial viene de `?lang=es|en` y vive solo en memoria. El smoke revisa español a 390 px y recorre inicio de sesión y resumen general en inglés.
+
+**Nombres y decisiones.** `es` representa español de México en la aplicación; `en` representa inglés. `lang` sigue el idioma activo. No se agrega almacenamiento del navegador ni negociación de idioma en API; F1-F3 permanecen como seguimientos en ADR-011.
+
+**Por qué así.** El español corresponde al público principal de CFDI/SAT. Un catálogo pequeño evita cambios de resx/ICU y mantiene intactos los contratos de API.
+
+**Qué aprendes.** Traducir texto visible no cambia estados de API, valores de opciones, formato monetario ni hooks legibles por máquina.
+
+**Verificado.** `Reconciliation.Tests`: 761 en total, 757 aprobadas y cuatro benchmarks optativos omitidos; Web y Tests pasan `dotnet format --verify-no-changes`. `node --check tools/ui_smoke.mjs` pasa. El smoke de Compose desechable reporta `succeeded:true` en español e inglés, revisa 1440/768/390 px, modo oscuro, renovación de cookie y cero excepciones del navegador. Se eliminaron contenedores, red y volúmenes aislados con `down -v`; las capturas muestran la UI en español.
 
 ### PR-12: Review, summaries and API
 

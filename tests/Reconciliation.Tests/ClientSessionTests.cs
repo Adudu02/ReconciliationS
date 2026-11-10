@@ -113,6 +113,7 @@ public sealed class ClientSessionTests
         await using var context = new BunitContext();
         var session = new SessionState();
         using var http = new HttpClient(new WebTestHandler(_ => WebTestHandler.Json(new SessionTokens("synthetic-access", 900)))) { BaseAddress = new Uri("https://app.example.invalid/") };
+        TestLanguage.Register(context, "en");
         context.Services.AddSingleton(session);
         context.Services.AddSingleton(new ApiClient(http, session));
         var page = context.Render<Login>();

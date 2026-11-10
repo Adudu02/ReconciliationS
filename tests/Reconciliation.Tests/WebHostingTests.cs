@@ -29,6 +29,27 @@ public sealed class WebHostingTests(ApiFixture fixture)
         Assert.DoesNotContain("accessToken", html, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Shell_declares_spanish_and_loads_the_language_script_from_the_same_origin()
+    {
+        using var client = fixture.App.CreateClient();
+        using var page = new HttpRequestMessage(HttpMethod.Get, "/");
+        page.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+        using var shell = await client.SendAsync(page, TestContext.Current.CancellationToken);
+        var html = await shell.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("<html lang=\"es\">", html, StringComparison.Ordinal);
+        Assert.Contains("<script src=\"lang.js\"></script>", html, StringComparison.Ordinal);
+        Assert.Contains("Cargando conciliación…", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script>", html, StringComparison.OrdinalIgnoreCase);
+
+        using var response = await client.GetAsync("/lang.js", TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/javascript", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("script-src 'self' 'wasm-unsafe-eval'", Assert.Single(response.Headers.GetValues("Content-Security-Policy")), StringComparison.Ordinal);
+        var script = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("document.documentElement.lang", script, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("/companies/unknown", "text/html", HttpStatusCode.Unauthorized)]
     [InlineData("/auth/unknown", "text/html", HttpStatusCode.Unauthorized)]

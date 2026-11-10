@@ -1,19 +1,20 @@
+@inherits LocalizedComponentBase
 @inject WorkspaceViewModel Model
 @inject SessionState Session
 @inject NavigationManager Navigation
 
 <section>
-    <p class="eyebrow">WORKSPACE</p>
-    <h1>Choose a company</h1>
-    <p>Your membership controls the actions available in each company.</p>
+    <p class="eyebrow">@T["picker.eyebrow"]</p>
+    <h1>@T["picker.title"]</h1>
+    <p>@T["picker.intro"]</p>
     <PageStatus Model="Model" />
     <ul class="companies">
         @foreach (var company in Model.Companies)
         {
-            <li><button data-company="@company.Id" @onclick="() => Select(company)"><strong>@company.Name</strong><span>@company.Rfc · @company.Role</span>@if (company.ArchivedAt is not null) { <span>Archived · read-only</span> }</button></li>
+            <li><button data-company="@company.Id" @onclick="() => Select(company)"><strong>@company.Name</strong><span>@company.Rfc · @L.Role(company.Role)</span>@if (company.ArchivedAt is not null) { <span>@T["company.archived-read-only"]</span> }</button></li>
         }
     </ul>
-    @if (!Model.Busy && Model.Error is null && Model.Companies.Length == 0) { <p>No company memberships are available. Ask a company administrator for access.</p> }
+    @if (!Model.Busy && Model.Error is null && Model.Companies.Length == 0) { <p>@T["picker.empty"]</p> }
 </section>
 
 @code {

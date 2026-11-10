@@ -5,6 +5,7 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Reconciliation.Contracts;
 using Reconciliation.Web;
+using Reconciliation.Web.Localization;
 using Reconciliation.Web.Pages;
 using Reconciliation.Web.ViewModels;
 using TestContext = Xunit.TestContext;
@@ -21,6 +22,7 @@ public sealed class ReviewComponentTests
     public async Task Review_actions_follow_the_live_company_role_and_archive_state(string role, bool archived, bool actions)
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         Register(context, role, archived);
         var page = context.Render<Review>();
         page.WaitForAssertion(() => Assert.Contains("Synthetic suggestion", page.Markup, StringComparison.Ordinal));
@@ -34,6 +36,7 @@ public sealed class ReviewComponentTests
     public async Task Already_decided_conflict_is_shown_gracefully_and_queue_is_refreshed()
     {
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         var reads = 0;
         Register(context, "accountant", false, request =>
         {
@@ -75,6 +78,70 @@ public sealed class ReviewComponentTests
             Assert.Equal(1, postCount);
             Assert.Null(model.Error);
         }
+    }
+
+    [Fact]
+    public async Task Review_entry_shows_localized_criteria_and_confidence()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        Register(context, "accountant", false, _ => WebTestHandler.Json(LocalizedQueue()));
+        var page = context.Render<Review>();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("article")));
+        var articles = page.FindAll("article");
+        Assert.Equal(["Alta", "Media", "Baja"], articles.Select(a => a.QuerySelector(".badge")!.TextContent).ToArray());
+        Assert.Equal(["badge high", "badge medium", "badge low"], articles.Select(a => a.QuerySelector(".badge")!.ClassName).ToArray());
+        var first = articles[0];
+        var items = first.QuerySelectorAll("ul")[0].QuerySelectorAll("li").Select(li => li.TextContent).ToArray();
+        Assert.Equal(
+            [$"rfc · 20 puntos: {Catalog.Es["criterion.rfc"]}", $"amount-equals-total · 50 puntos: {Catalog.Es["criterion.amount-equals-total"]}"],
+            items);
+        Assert.Contains(Catalog.Es["criterion.rfc"] + "; " + Catalog.Es["criterion.amount-equals-total"] + "; 2 facturas más coincidieron por igual", first.TextContent, StringComparison.Ordinal);
+        Assert.Contains(Catalog.Es["reason.overpaid"], first.QuerySelectorAll("ul")[1].TextContent, StringComparison.Ordinal);
+        Assert.Equal(["Confirmar", "Rechazar", "Cambiar"], first.QuerySelectorAll("button[data-decision]").Select(b => b.TextContent).ToArray());
+        Assert.Equal(["confirm", "reject", "change"], first.QuerySelectorAll("button[data-decision]").Select(b => b.GetAttribute("data-decision")).ToArray());
+        Assert.Equal("SUGERENCIA", first.QuerySelector(".eyebrow")!.TextContent.Split(' ')[0]);
+        Assert.Contains("Resumen de la factura", first.QuerySelector("a[href^='/ui/invoices/']")!.TextContent, StringComparison.Ordinal);
+        Assert.Contains("Bandeja de revisión", page.Find("h1").TextContent, StringComparison.Ordinal);
+        Assert.Equal("Actualizar bandeja", page.Find("button.secondary").TextContent);
+        Assert.Contains("La factura requiere revisión", articles[2].QuerySelector("h2")!.TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Switching_language_mid_change_form_keeps_form_state()
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, "es");
+        Register(context, "accountant", false, request => request.RequestUri!.AbsolutePath.EndsWith("/cfdi", StringComparison.Ordinal)
+            ? WebTestHandler.Json(new InvoicePage([], null, null))
+            : WebTestHandler.Json(LocalizedQueue()));
+        var page = context.Render<Review>();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("button[data-decision=change]")));
+        await page.InvokeAsync(() => page.FindAll("button[data-decision=change]")[0].Click());
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("textarea#note")));
+        Assert.Equal("Nota de la decisión (opcional)", page.Find("label[for=note]").TextContent);
+        await page.InvokeAsync(() => page.Find("textarea#note").Change("nota de prueba"));
+        await page.InvokeAsync(() => page.Find("input#amount").Change("123.45"));
+
+        context.Services.GetRequiredService<Localizer>().Set("en");
+
+        page.WaitForAssertion(() => Assert.Equal("Decision note (optional)", page.Find("label[for=note]").TextContent));
+        Assert.NotNull(page.Find("form"));
+        Assert.Equal("nota de prueba", page.Find("textarea#note").GetAttribute("value") ?? page.Find("textarea#note").TextContent);
+        Assert.Equal("123.45", page.Find("input#amount").GetAttribute("value"));
+        Assert.Equal("Target invoice", page.Find("label[for=target]").TextContent);
+        Assert.Equal("Save change", page.Find("form button[type=submit]").TextContent);
+        Assert.Equal("Cancel change", page.Find("form button.secondary").TextContent);
+    }
+
+    private static ReviewPage LocalizedQueue()
+    {
+        var invoice = new InvoiceBrief(new(2026, 10, 2), 11600, "AAA010101AAA", "XEXX010101000");
+        ReviewCriterion[] criteria = [new("rfc", 20, "issuer or receiver RFC found in the description"), new("amount-equals-total", 50, "amount equals CFDI net total")];
+        var explanation = "issuer or receiver RFC found in the description; amount equals CFDI net total; 2 other invoices matched equally";
+        ReviewEntry Link(string confidence) => new("link", Guid.NewGuid(), Guid.NewGuid(), invoice, criteria, confidence, explanation, [new("overpaid", true)], Guid.NewGuid(), Guid.NewGuid(), new(new(2026, 10, 10), 5800, "Synthetic payment"));
+        var flag = new ReviewEntry("invoice", Guid.NewGuid(), Guid.NewGuid(), invoice, [], null, "Synthetic flag", [new("global-invoice", true)]);
+        return new([Link("high"), Link("medium"), flag with { Confidence = "low" }], null, null, null);
     }
 
     private static void Register(BunitContext context, string role, bool archived, Func<HttpRequestMessage, HttpResponseMessage>? respond = null)

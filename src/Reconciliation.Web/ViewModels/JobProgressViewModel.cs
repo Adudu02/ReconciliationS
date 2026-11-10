@@ -31,7 +31,7 @@ public sealed class JobProgressViewModel(ApiClient api, TimeProvider clock) : Pa
         while (true)
         {
             Current = await api.GetAsync<JobResponse>(path, linked.Token);
-            if (Current.State == "failed") Error = "The job failed. Check the per-file report where available and try again.";
+            if (Current.State == "failed") Error = new("error.job-failed");
             Changed?.Invoke();
             if (Current.State is "succeeded" or "failed") return;
             await Task.Delay(delay, clock, linked.Token);

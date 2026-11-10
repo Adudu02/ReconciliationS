@@ -108,6 +108,7 @@ public sealed class WebWorkedExampleTests(ApiFixture fixture) : IClassFixture<Ap
         await viewerInvoice.LoadSummaryAsync(invoiceId);
         Assert.Equal(50, viewerInvoice.Summary!.PaidPercentage);
         await using var context = new BunitContext();
+        TestLanguage.Register(context);
         context.Services.AddSingleton(viewerState);
         context.Services.AddSingleton(viewerApi);
         context.Services.AddTransient<ReviewQueueViewModel>();

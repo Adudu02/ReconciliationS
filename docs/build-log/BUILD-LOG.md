@@ -432,7 +432,7 @@ learn** (C#, SQL or tooling idea) and **Verified** (how it was checked). Entries
 
 **Payload and documentation.** The published _framework files total 7,319,437 bytes uncompressed and 12,544,744 including .br/.gz copies (2,347,811 Brotli; 2,877,496 gzip). File sizes are not a network-transfer benchmark. Architecture passed 9/9 showcase checks without warnings and was delivered with six updated sequences. Spanish-authored diagrams retain Archify's fixed English viewer controls. Architecture now shows the browser UI and anonymous static shell served by the API; review/accountant/viewer flow labels distinguish UI and API access. Database/progress diagrams and bilingual Word/PDF exports were regenerated. Export-only tools were pinned to docx@9.5.1 (npm --ignore-scripts) and pdf2image==1.17.0 in /tmp; their temporary directories were deleted after rendering/inspection. No runtime/CI dependency was added for them.
 
-**Limits.** English-only UI; no password-change, operator/company-administration, audit or SAT-management pages. Reload asks for company selection; tabs do not coordinate access tokens. Browser uploads cap at 20 files, 10 MiB each, 20 MiB total, with potentially stricter API settings. No offline mode or production deployment. SSE is a possible future improvement, not an endpoint in this PR. Reopen and standalone manual N:M remain ADR-009 gaps. No CODEX-SESSION-8B.md was created. Commits are local only.
+**Limits at PR-13.** The UI was English-only at that point; ADR-011 records the later Spanish-default UI. There are no password-change, operator/company-administration, audit or SAT-management pages. Reload asks for company selection; tabs do not coordinate access tokens. Browser uploads cap at 20 files, 10 MiB each, 20 MiB total, with potentially stricter API settings. No offline mode or production deployment. SSE is a possible future improvement, not an endpoint in this PR. Reopen and standalone manual N:M remain ADR-009 gaps. No CODEX-SESSION-8B.md was created. Commits are local only.
 
 #### Synthetic login
 
@@ -445,6 +445,20 @@ learn** (C#, SQL or tooling idea) and **Verified** (how it was checked). Entries
 #### Review queue before confirmation
 
 ![Synthetic Web UI review queue](images/pr13-review-queue.png)
+
+### Spanish-default browser UI
+
+**What it is.** Add Spanish (Mexico) as the default UI language and provide an English switch. ADR-011 records the decision and supersedes ADR-010's English-only language statement.
+
+**How it works.** A paired `Localizer` catalog translates UI labels while machine values, money, ISO dates and server-authored English details keep their defined behavior. The language comes from `?lang=es|en` at startup and remains in memory. The smoke flow checks Spanish at 390 px and exercises login and overview in English.
+
+**Names and decisions.** `es` is the application's Spanish (Mexico) tag; `en` is English. `lang` follows the active UI language. No browser storage or API language negotiation is added; F1-F3 remain follow-ups in ADR-011.
+
+**Why this way.** Spanish matches the primary CFDI/SAT user base. A small catalog avoids resx/ICU payload changes and keeps API contracts unchanged.
+
+**What you learn.** Localizing display text does not change API state, option values, monetary formatting or machine-readable hooks.
+
+**Verified.** `Reconciliation.Tests`: 761 total, 757 passed and four opt-in benchmarks skipped; both Web and Tests pass `dotnet format --verify-no-changes`. `node --check tools/ui_smoke.mjs` passes. The disposable Compose smoke reports `succeeded:true` in Spanish and English, checks 1440/768/390 px, dark mode, refresh-cookie reload and zero browser exceptions. Its isolated containers, network and volumes were removed with `down -v`; screenshots show the Spanish UI.
 
 ### PR-12: Review, summaries and API
 

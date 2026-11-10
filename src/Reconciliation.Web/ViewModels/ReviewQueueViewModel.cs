@@ -27,9 +27,9 @@ public sealed class ReviewQueueViewModel(ApiClient api, SessionState session) : 
     });
     public Task DecideAsync(Guid linkId, DecisionRequest request) => RunAsync(async () =>
     {
-        if (!session.CanWrite) { Error = "This workspace is read-only for your membership."; return; }
+        if (!session.CanWrite) { Error = new("error.read-only"); return; }
         if (request.Type == "change" && (request.NewCfdiId is null || request.AmountApplied is not > 0 || decimal.Round(request.AmountApplied.Value, 2) != request.AmountApplied))
-        { Error = "Choose an invoice and a positive amount with at most two decimal places."; return; }
+        { Error = new("error.choose-amount"); return; }
         try { await api.DecideAsync(linkId, request); }
         catch (ApiProblemException problem) when (problem.Status == 409) { await LoadCoreAsync(false); throw; }
         await LoadCoreAsync(false);

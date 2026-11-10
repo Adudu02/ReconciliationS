@@ -1,20 +1,21 @@
 @page "/ui/invoices/{InvoiceId:guid}"
+@inherits LocalizedComponentBase
 @inject InvoiceViewModel Model
 
 <section>
-    <a href="/ui/invoices">← Invoices</a><h1>Invoice summary</h1>
+    <a href="/ui/invoices">← @T["nav.invoices"]</a><h1>@T["detail.title"]</h1>
     <PageStatus Model="Model" />
     @if (Model.Summary is { } value)
     {
-        <p class="identifier">@value.Uuid</p><p><span class="badge @value.State">@value.State</span> · @value.Direction · @(value.PaymentMethod ?? "Payment method unavailable")</p>
+        <p class="identifier">@value.Uuid</p><p><span class="badge @value.State">@L.State(value.State)</span> · @L.Direction(value.Direction) · @(value.PaymentMethod ?? T["detail.payment-method-unavailable"])</p>
         <div class="resource-grid">
-            <section class="panel"><h2>Amounts</h2><dl class="summary-values"><div><dt>Invoice total</dt><dd>@Display.Money(value.Total)</dd></div><div><dt>Credit notes applied</dt><dd>@Display.Money(value.CreditNotes)</dd></div><div><dt>Net payable</dt><dd>@Display.Money(value.NetPayable)</dd></div><div><dt>Confirmed paid</dt><dd>@Display.Money(value.Paid)</dd></div><div><dt>Paid percentage</dt><dd>@value.PaidPercentage.ToString("0.##")%</dd></div><div><dt>Pending</dt><dd data-summary="pending">@Display.Money(value.Pending)</dd></div><div><dt>Uncovered by links</dt><dd>@Display.Money(value.Uncovered)</dd></div></dl></section>
-            <section class="panel"><h2>Status and reasons</h2><p>SAT: @value.SatStatus</p><p>Cancellation: @(value.CancellationStatus ?? "No cancellation information")</p><p>EFOS warning: @(value.EfosWarning ? "Flagged" : "No warning")</p><ul>@foreach (var reason in value.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@reason.Code @(reason.RequiresReview ? "· requires review" : "· information")</li> }</ul></section>
+            <section class="panel"><h2>@T["detail.amounts"]</h2><dl class="summary-values"><div><dt>@T["detail.total"]</dt><dd>@Display.Money(value.Total)</dd></div><div><dt>@T["detail.credit-notes"]</dt><dd>@Display.Money(value.CreditNotes)</dd></div><div><dt>@T["detail.net-payable"]</dt><dd>@Display.Money(value.NetPayable)</dd></div><div><dt>@T["detail.paid"]</dt><dd>@Display.Money(value.Paid)</dd></div><div><dt>@T["detail.paid-percentage"]</dt><dd>@value.PaidPercentage.ToString("0.##")%</dd></div><div><dt>@T["col.pending"]</dt><dd data-summary="pending">@Display.Money(value.Pending)</dd></div><div><dt>@T["detail.uncovered"]</dt><dd>@Display.Money(value.Uncovered)</dd></div></dl></section>
+            <section class="panel"><h2>@T["detail.status-reasons"]</h2><p>@T.Format("detail.sat", value.SatStatus)</p><p>@T.Format("detail.cancellation", value.CancellationStatus ?? T["detail.no-cancellation"])</p><p>@T.Format("detail.efos", value.EfosWarning ? T["detail.flagged"] : T["detail.no-warning"])</p><ul>@foreach (var reason in value.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@L.Reason(reason.Code) · @(reason.RequiresReview ? T["detail.requires-review"] : T["detail.information"])</li> }</ul></section>
         </div>
-        <section class="panel table-wrap" tabindex="0" role="region" aria-label="Linked movements"><h2>Linked movements</h2><table><caption>Suggested links do not count toward confirmed paid amounts.</caption><thead><tr><th scope="col">Movement</th><th scope="col">State / confidence</th><th scope="col">Applied</th><th scope="col">Payment complement</th></tr></thead><tbody>
+        <section class="panel table-wrap" tabindex="0" role="region" aria-label="@T["detail.linked-movements"]"><h2>@T["detail.linked-movements"]</h2><table><caption>@T["detail.caption"]</caption><thead><tr><th scope="col">@T["col.movement"]</th><th scope="col">@T["col.state-confidence"]</th><th scope="col">@T["col.applied"]</th><th scope="col">@T["col.payment-complement"]</th></tr></thead><tbody>
             @foreach (var link in value.Links)
             {
-                <tr><th scope="row">@link.Date.ToString("yyyy-MM-dd")<p>@link.Description</p><small>Movement @link.MovementId · @Display.Money(link.Amount)</small></th><td><span class="badge @link.State">@link.State</span><p>@link.Confidence</p></td><td class="money">@Display.Money(link.AmountApplied)</td><td><span class="badge @link.ComplementStatus">@link.ComplementStatus</span>@if (link.DueDate is { } due) { <p>Due @due.ToString("yyyy-MM-dd")</p> }@if (link.PaymentCfdiId is { } payment) { <p class="identifier">Payment CFDI @payment</p> }@if (link.PaymentForm is not null) { <p>Payment form @link.PaymentForm · @link.PaymentDate?.ToString("yyyy-MM-dd")</p> }@if (link.CashPaymentWarning is not null) { <p role="note" class="notice">@link.CashPaymentWarning</p> }</td></tr>
+                <tr><th scope="row">@link.Date.ToString("yyyy-MM-dd")<p>@link.Description</p><small>@T.Format("detail.movement-line", link.MovementId, Display.Money(link.Amount))</small></th><td><span class="badge @link.State">@L.State(link.State)</span><p>@L.Confidence(link.Confidence)</p></td><td class="money">@Display.Money(link.AmountApplied)</td><td><span class="badge @link.ComplementStatus">@L.ComplementStatus(link.ComplementStatus)</span>@if (link.DueDate is { } due) { <p>@T.Format("detail.due", due.ToString("yyyy-MM-dd"))</p> }@if (link.PaymentCfdiId is { } payment) { <p class="identifier">@T.Format("detail.payment-cfdi", payment)</p> }@if (link.PaymentForm is not null) { <p>@T.Format("detail.payment-form", link.PaymentForm, link.PaymentDate?.ToString("yyyy-MM-dd") ?? "")</p> }@if (link.CashPaymentWarning is not null) { <p role="note" class="notice" lang="@ServerLang">@link.CashPaymentWarning</p> }</td></tr>
             }
         </tbody></table></section>
     }
@@ -22,5 +23,7 @@
 
 @code {
     [Parameter] public Guid InvoiceId { get; set; }
+    // Server-authored sentences are English; in Spanish they are marked so assistive technology pronounces them correctly.
+    private string? ServerLang => T.Language == "en" ? null : "en";
     protected override Task OnParametersSetAsync() => Model.LoadSummaryAsync(InvoiceId);
 }

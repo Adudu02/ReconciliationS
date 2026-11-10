@@ -24,7 +24,7 @@ public sealed class ImportViewModel(ApiClient api, JobProgressViewModel jobs, Se
     {
         Files = [];
         if (selected.Count is 0 or > MaxFiles || selected.Sum(file => file.Size) > MaxTotalBytes || selected.Any(file => file.Size > MaxFileBytes))
-        { Error = "Choose 1–20 files, up to 10 MiB each and 20 MiB in total."; return; }
+        { Error = new("error.choose-files"); return; }
         var files = new List<BrowserFileUpload>();
         try
         {
@@ -37,15 +37,15 @@ public sealed class ImportViewModel(ApiClient api, JobProgressViewModel jobs, Se
             }
             Files = files.ToArray();
         }
-        catch (IOException) { Error = "The selected files could not be read within the upload limit."; }
+        catch (IOException) { Error = new("error.unreadable-files"); }
     });
     public Task UploadAsync(IReadOnlyList<BrowserFileUpload> files, CancellationToken token = default) => RunAsync(async () =>
     {
         Report = null;
-        if (!session.CanWrite) { Error = "This workspace is read-only for your membership."; return; }
+        if (!session.CanWrite) { Error = new("error.read-only"); return; }
         if (Kind is not ("cfdi" or "bank-statement") || files.Count is 0 or > MaxFiles || files.Any(file => file.Content.Length > MaxFileBytes) || files.Sum(file => (long)file.Content.Length) > MaxTotalBytes ||
             (Kind == "bank-statement" && (files.Count != 1 || Bank.Length == 0 || string.IsNullOrWhiteSpace(AccountReference))))
-        { Error = "Choose valid files and a bank/account reference for one statement. Limits: 20 files, 10 MiB each, 20 MiB total."; return; }
+        { Error = new("error.choose-import"); return; }
         var receipt = await api.ImportAsync(Kind, files, Bank, AccountReference, token);
         await jobs.WatchAsync(receipt.JobId, token);
         if (jobs.Current?.State is "succeeded" or "failed")
