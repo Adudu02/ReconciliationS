@@ -1,32 +1,44 @@
 @page "/ui/movements"
+@inherits LocalizedComponentBase
 @inject MovementsViewModel Model
 @inject SessionState Session
 
 <section>
-    <p class="eyebrow">BANK STATEMENTS</p><h1>Movements</h1>
-    <form class="filters" @onsubmit="Model.LoadAsync" @onsubmit:preventDefault><div><label for="movement-state">State</label><select id="movement-state" @bind="Model.State" disabled="@Model.Busy"><option value="">All states (includes classified)</option><option value="pending">Pending (unclassified)</option><option value="suggested">Suggested</option><option value="reconciled">Reconciled</option></select></div><button disabled="@Model.Busy" type="submit">Apply filter</button></form>
+    <p class="eyebrow">@T["movements.eyebrow"]</p><h1>@T["nav.movements"]</h1>
+    <form class="filters" @onsubmit="Model.LoadAsync" @onsubmit:preventDefault><div><label for="movement-state">@T["col.state"]</label><select id="movement-state" @bind="Model.State" disabled="@Model.Busy"><option value="">@T["movements.all-states"]</option><option value="pending">@T["movements.pending-unclassified"]</option><option value="suggested">@T["state.suggested"]</option><option value="reconciled">@T["state.reconciled"]</option></select></div><button disabled="@Model.Busy" type="submit">@T["movements.apply"]</button></form>
     <PageStatus Model="Model" />
-    <div class="panel table-wrap" tabindex="0" role="region" aria-label="Bank movements"><table><caption>Derived states and movement classifications</caption><thead><tr><th scope="col">Movement</th><th scope="col" class="money">Credit</th><th scope="col" class="money">Debit</th><th scope="col">State</th><th scope="col">Classification</th>@if (Session.CanWrite) { <th scope="col">Action</th> }</tr></thead><tbody>
+    <div class="panel table-wrap" tabindex="0" role="region" aria-label="@T["movements.region"]"><table><caption>@T["movements.caption"]</caption><thead><tr><th scope="col">@T["col.movement"]</th><th scope="col" class="money">@T["col.credit"]</th><th scope="col" class="money">@T["col.debit"]</th><th scope="col">@T["col.state"]</th><th scope="col">@T["col.classification"]</th>@if (Session.CanWrite) { <th scope="col">@T["col.action"]</th> }</tr></thead><tbody>
         @foreach (var movement in Model.Movements)
         {
-            <tr><th scope="row">@movement.Date.ToString("yyyy-MM-dd")<p>@movement.Description</p><small>@movement.Reason</small></th><td class="money">@Display.Money(movement.Credit)</td><td class="money">@Display.Money(movement.Debit)</td><td><span class="badge @movement.State">@movement.State</span></td><td>@(movement.Classification ?? "Unclassified")<p>@movement.Note</p></td>@if (Session.CanWrite) { <td><button class="secondary" data-classify="@movement.Id" disabled="@Model.Busy" @onclick="() => Edit(movement)">Classify</button></td> }</tr>
+            <tr><th scope="row">@movement.Date.ToString("yyyy-MM-dd")<p>@movement.Description</p><small lang="@ReasonLang(movement)">@ReasonText(movement)</small></th><td class="money">@Display.Money(movement.Credit)</td><td class="money">@Display.Money(movement.Debit)</td><td><span class="badge @movement.State">@L.State(movement.State)</span></td><td>@(movement.Classification is null ? T["movements.unclassified"] : L.Classification(movement.Classification))<p>@movement.Note</p></td>@if (Session.CanWrite) { <td><button class="secondary" data-classify="@movement.Id" disabled="@Model.Busy" @onclick="() => Edit(movement)">@T["movements.classify"]</button></td> }</tr>
             if (Editing == movement.Id && Session.CanWrite)
             {
                 <tr class="row-edit"><td colspan="6">
-                    <form @onsubmit="() => SaveAsync(movement.Id)" @onsubmit:preventDefault><h2>Classify movement</h2><label for="classification">Classification</label><select id="classification" @bind="Classification"><option value="">Clear classification</option><option value="loan">Loan</option><option value="partner_contribution">Partner contribution</option><option value="tax_payment">Tax payment</option><option value="late_invoicing">Late invoicing</option><option value="other">Other</option></select><label for="classification-note">Note (optional)</label><textarea id="classification-note" maxlength="2000" @bind="Note"></textarea><button disabled="@Model.Busy" type="submit">Save classification</button><button type="button" class="secondary" @onclick="() => Editing = null">Cancel classification</button></form>
+                    <form @onsubmit="() => SaveAsync(movement.Id)" @onsubmit:preventDefault><h2>@T["movements.classify-title"]</h2><label for="classification">@T["col.classification"]</label><select id="classification" @bind="Classification"><option value="">@T["movements.clear-classification"]</option><option value="loan">@L.Classification("loan")</option><option value="partner_contribution">@L.Classification("partner_contribution")</option><option value="tax_payment">@L.Classification("tax_payment")</option><option value="late_invoicing">@L.Classification("late_invoicing")</option><option value="other">@L.Classification("other")</option></select><label for="classification-note">@T["movements.note"]</label><textarea id="classification-note" maxlength="2000" @bind="Note"></textarea><button disabled="@Model.Busy" type="submit">@T["movements.save"]</button><button type="button" class="secondary" @onclick="() => Editing = null">@T["movements.cancel"]</button></form>
                 </td></tr>
             }
         }
     </tbody></table></div>
-    @if (!Model.Busy && Model.Error is null && Model.Movements.Length == 0) { <p>No movements match this filter.</p> }
-    @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">Load more movements</button> }
+    @if (!Model.Busy && Model.Error is null && Model.Movements.Length == 0) { <p>@T["movements.empty"]</p> }
+    @if (Model.HasMore) { <button class="secondary" disabled="@Model.Busy" @onclick="Model.NextAsync">@T["movements.load-more"]</button> }
 </section>
 
 @code {
+    private const string NoActiveLink = "No active link";
     private Guid? Editing { get; set; }
     private string Classification { get; set; } = "other";
     private string? Note { get; set; }
     protected override Task OnInitializedAsync() => Model.LoadAsync();
     private void Edit(MovementItem movement) { Editing = movement.Id; Classification = movement.Classification ?? "other"; Note = movement.Note; }
     private async Task SaveAsync(Guid id) { await Model.ClassifyAsync(id, Classification.Length == 0 ? null : Classification, Note); if (Model.Error is null) Editing = null; }
+
+    // The API builds Reason as coalesce(user note, classification code, server explanation, 'No active link').
+    // A note is user data and a code is a UI value; only the server explanation is an English sentence to mark as such.
+    private bool IsServerSentence(MovementItem movement) => movement.Reason != movement.Note && movement.Reason != movement.Classification && movement.Reason != NoActiveLink;
+    private string? ReasonLang(MovementItem movement) => T.Language != "en" && IsServerSentence(movement) ? "en" : null;
+    private string ReasonText(MovementItem movement) =>
+        movement.Reason == movement.Note ? movement.Reason
+        : movement.Reason == movement.Classification ? L.Classification(movement.Reason)
+        : movement.Reason == NoActiveLink ? T["movements.no-active-link"]
+        : movement.Reason;
 }
