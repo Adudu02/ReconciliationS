@@ -43,7 +43,8 @@ public sealed class OperationsComponentTests
         Assert.Equal(5, calls);
         clock.Advance(TimeSpan.FromSeconds(5));
         await polling;
-        component.WaitForAssertion(() => Assert.Contains("succeeded", component.Markup, StringComparison.Ordinal));
+        component.WaitForAssertion(() => Assert.Equal("Completed", component.Find("strong").TextContent));
+        Assert.Equal("succeeded", component.Find("strong").GetAttribute("data-state"));
         clock.Advance(TimeSpan.FromMinutes(1));
         Assert.Equal(6, calls);
     }
@@ -99,7 +100,8 @@ public sealed class OperationsComponentTests
         await using var context = new BunitContext();
         TestLanguage.Register(context);
         var component = context.Render<JobProgress>(p => p.Add(x => x.Model, model));
-        Assert.Contains("failed", component.Markup, StringComparison.Ordinal);
+        Assert.Equal("failed", component.Find("strong").GetAttribute("data-state"));
+        Assert.Equal("Failed", component.Find("strong").TextContent);
         Assert.DoesNotContain("Synthetic raw exception", component.Markup, StringComparison.Ordinal);
     }
 

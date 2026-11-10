@@ -496,7 +496,7 @@ must use HTTPS. The browser adds Origin automatically; scripts using cookie tran
 
 The API container serves the standalone Blazor WebAssembly app at **http://localhost:8080** (or the
 free port selected in your Compose override). The shell is anonymous; every company data call uses the
-same documented API with a bearer token. It contains no tenant data or secrets. The UI is English only.
+same documented API with a bearer token. It contains no tenant data or secrets. The UI is Spanish (Mexico) by default, with an English switch.
 Results have no fiscal or legal validity; the notice appears on login, overview and the footer.
 
 Enable the browser transport in your environment before starting the stack:

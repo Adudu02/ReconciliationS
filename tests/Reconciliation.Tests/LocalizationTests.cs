@@ -352,6 +352,7 @@ public sealed class LanguageSwitchTests
         Assert.Equal("Idioma", page.Find(".lang-switch").GetAttribute("aria-label"));
         var buttons = page.FindAll(".lang-switch button");
         Assert.Equal(["ES", "EN"], buttons.Select(button => button.TextContent.Trim()));
+        Assert.All(buttons, button => Assert.Contains(button.TextContent.Trim(), button.GetAttribute("aria-label"), StringComparison.Ordinal));
         Assert.Equal(["es", "en"], buttons.Select(button => button.GetAttribute("lang")));
     }
 

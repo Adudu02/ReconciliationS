@@ -3,7 +3,7 @@
 | Folder | What is inside | Who reads it |
 |---|---|---|
 | [`build-log/`](build-log/) | `BUILD-LOG.md` (English) and `BUILD-LOG-ES.md` (Español): architecture, dictionary of names and variables, and one entry per pull request; `CODEX-SESSION-8A.md` is the detailed log of one Codex session (questions, decisions, code). `exports/` holds the generated Word/PDF copies | Everyone; start here |
-| [`adr/`](adr/) | Architecture decision records. One file per decision; retain dated amendments for compatible extensions; replace changed decisions with a new ADR | Developers, reviewers |
+| [`adr/`](adr/) | Architecture decision records. ADR-011 records Spanish (Mexico) as the default UI language and the English switch; one file per decision, with dated amendments for compatible extensions | Developers, reviewers |
 | [`requirements/`](requirements/) | BRS and SRS in English and Spanish (`.docx` and `.pdf`) | Product, reviewers |
 | [`reference/`](reference/) | `bank-csv-reference-format.md` (read by tests) | Developers |
 | [`diagrams/`](diagrams/) | `database/` (the as-built `*-implemented` ERD, states and security matrix), `roles/` (the design-time sequence per role; `roles/as-built/` has the interactive, as-built versions with the real paths, English and `*-es` Spanish), `architecture/` (as-built container diagram, interactive HTML), `flows/` (request, import-to-reconciliation, matching pipeline, SAT check and review-decision flows, interactive HTML; `*-es` files are the Spanish versions) and `progress/` (generated status map) | Everyone |
