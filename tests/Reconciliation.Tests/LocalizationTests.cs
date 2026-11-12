@@ -366,7 +366,7 @@ public sealed class LocalizationTests
         };
         var entry = Entry("amount within tolerance of total target; difference 1 cents; invoice date is within tolerance; proximity bonus 8; 2 other invoices matched equally", criteria);
 
-        Assert.Equal("el monto está dentro de la tolerancia del objetivo total; diferencia de 1 centavos; la fecha de la factura está dentro de la tolerancia; bonificación por cercanía de 8; 2 facturas más coincidieron por igual",
+        Assert.Equal("el monto está dentro de la tolerancia del objetivo total; diferencia de 1 centavo; la fecha de la factura está dentro de la tolerancia; bonificación por cercanía de 8; 2 facturas más coincidieron por igual",
             labels.Explanation(entry));
     }
 

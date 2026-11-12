@@ -292,7 +292,7 @@ public sealed class OperationsComponentTests
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("#files")));
         Assert.Equal("INGESTA DE DATOS", page.Find(".eyebrow").TextContent);
         Assert.Equal("Importar archivos", page.Find("h1").TextContent);
-        Assert.Contains("Cargue archivos XML de CFDI 4.0 o un estado de cuenta bancario en el formato CSV de referencia compatible.", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Cargue archivos XML de CFDI 4.0 o un solo estado de cuenta bancario en el formato CSV de referencia compatible.", page.Markup, StringComparison.Ordinal);
         Assert.Contains("Hasta 20 archivos, 10 MiB cada uno y 20 MiB en total. La API puede aplicar límites configurados más bajos.", page.Markup, StringComparison.Ordinal);
         Assert.Equal("Tipo de importación", page.Find("label[for=kind]").TextContent);
         Assert.Equal("Archivos", page.Find("label[for=files]").TextContent);
