@@ -24,6 +24,20 @@ public sealed class InvoiceComponentTests
         Assert.Equal(expectedLang, page.Find("[role=note]").GetAttribute("lang"));
     }
 
+    [Theory]
+    [InlineData("es")]
+    [InlineData("en")]
+    public async Task Overdue_filter_uses_the_complement_label(string language)
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, language);
+        Register(context, _ => WebTestHandler.Json(new InvoicePage([], null, null)));
+        var page = context.Render<Invoices>();
+        var option = page.Find("#complement option[value=overdue]");
+        Assert.Equal("overdue", option.GetAttribute("value"));
+        Assert.Equal(context.Services.GetRequiredService<Reconciliation.Web.Localization.Labels>().ComplementStatus("overdue"), option.TextContent);
+    }
+
     [Fact]
     public async Task Summary_shows_worked_amounts_both_movements_payment_CFDI_and_cash_warning()
     {

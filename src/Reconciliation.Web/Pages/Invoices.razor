@@ -6,7 +6,7 @@
     <p class="eyebrow">@T["invoices.eyebrow"]</p><h1>@T["nav.invoices"]</h1>
     <form class="filters" @onsubmit="Model.LoadAsync" @onsubmit:preventDefault>
         <div><label for="state">@T["col.state"]</label><select id="state" @bind="Model.State" disabled="@Model.Busy"><option value="">@T["invoices.all-states"]</option><option value="pending">@T["state.pending"]</option><option value="suggested">@T["state.suggested"]</option><option value="reconciled">@T["state.reconciled"]</option></select></div>
-        <div><label for="complement">@T["invoices.complement-status"]</label><select id="complement" @bind="Model.ComplementStatus" disabled="@Model.Busy"><option value="">@T["invoices.all-complements"]</option><option value="missing">@T["invoices.complement-missing"]</option><option value="overdue">@T["state.overdue"]</option></select></div>
+        <div><label for="complement">@T["invoices.complement-status"]</label><select id="complement" @bind="Model.ComplementStatus" disabled="@Model.Busy"><option value="">@T["invoices.all-complements"]</option><option value="missing">@T["invoices.complement-missing"]</option><option value="overdue">@L.ComplementStatus("overdue")</option></select></div>
         <button type="submit" disabled="@Model.Busy">@T["invoices.apply"]</button>
     </form>
     <PageStatus Model="Model" />
