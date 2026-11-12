@@ -56,7 +56,7 @@ services:
     volumes:
       - sat-recordings:/app/.local/sat-recordings
     ports:
-      - '127.0.0.1:8080:3000'
+      - '${API_BIND:-127.0.0.1}:8080:3000'
     depends_on:
       migrate:
         condition: service_completed_successfully
