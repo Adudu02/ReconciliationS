@@ -14,6 +14,9 @@ internal static class WebApiContract
     {
         ["POST auth/tokens"] = new(typeof(SessionTokens), typeof(LoginRequest)),
         ["POST auth/refresh"] = new(typeof(SessionTokens), typeof(RefreshBody)),
+        ["POST auth/password"] = new(null, typeof(PasswordChangeBody), "204"),
+        ["GET companies/{companyId}/members"] = new(typeof(MemberItem[])),
+        ["POST companies/{companyId}/members"] = new(null, typeof(MemberChangeRequest), "204"),
         ["POST auth/logout"] = new(null, Status: "204"),
         ["GET companies"] = new(typeof(CompanyItem[])),
         ["GET companies/{companyId}/banks"] = new(typeof(string[])),
@@ -55,6 +58,12 @@ internal static class WebApiContract
             if (contract.Status == "202" && context.Description.RelativePath!.EndsWith("reconciliation-runs", StringComparison.Ordinal))
                 operation.Responses["200"] = operation.Responses[contract.Status];
         }
+        if (contract.Status == "204")
+        {
+            operation.Responses ??= new OpenApiResponses();
+            operation.Responses.Remove("200");
+            operation.Responses["204"] = new OpenApiResponse { Description = "Successful response with no body." };
+        }
         foreach (var statusCode in ErrorStatuses)
         {
             operation.Responses ??= new OpenApiResponses();
@@ -66,7 +75,11 @@ internal static class WebApiContract
                 Required = context.Description.RelativePath != "auth/refresh",
                 Content = new Dictionary<string, OpenApiMediaType> { [contract.ContentType] = new() { Schema = await ReferenceAsync(contract.Request) } }
             };
-        if (context.Description.RelativePath!.StartsWith("auth/", StringComparison.Ordinal))
+        if (context.Description.HttpMethod == "POST" && path == "companies/{companyId}/members")
+            operation.Description += " Supply exactly one of userId or email. A new email requires initialPassword of at least 12 characters. Existing accounts keep their password; initialPassword is ignored. Repeating the same membership is a no-op; a different role updates it, retaining at least one administrator.";
+        if (path == "auth/password")
+            operation.Description += " Requires currentPassword and newPassword (at least 12 characters). Success revokes refresh sessions; sign in again. Wrong current password returns 401; a session not owned by this user returns 403.";
+        if (context.Description.RelativePath!.StartsWith("auth/", StringComparison.Ordinal) && path != "auth/password")
             operation.Description += " Browser clients opt in using X-Refresh-Transport: cookie and an allowed Origin when Session.BrowserRefreshCookie is enabled; refreshToken is then omitted. Legacy Session.RefreshCookie takes precedence. JSON clients without the header retain body-delivered refresh credentials.";
     }
 }

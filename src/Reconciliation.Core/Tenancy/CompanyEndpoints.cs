@@ -9,7 +9,7 @@ using static Reconciliation.Core.Common.DapperExtensions;
 namespace Reconciliation.Core.Tenancy;
 
 public sealed record CompanyResponse(Guid Id, string Rfc, string Name, DateTime? ArchivedAt);
-public sealed record MemberResponse(Guid UserId, string Role);
+public sealed record MemberResponse(Guid UserId, string Email, string Role);
 public sealed record MemberRequest(Guid? UserId, string Role, string? Email = null, string? InitialPassword = null);
 
 public static class CompanyEndpoints
@@ -26,10 +26,14 @@ public static class CompanyEndpoints
                 return CompanyScope.OkOrNotFound(workspace);
             }, cancellationToken)).RequireAuthorization(Policies.CompanyMember);
 
-        routes.MapGet("/companies/{companyId:guid}/members", (Guid companyId, CompanyScope companyScope, CancellationToken cancellationToken) =>
+        routes.MapGet("/companies/{companyId:guid}/members", (Guid companyId, HttpContext httpContext, CompanyScope companyScope, CancellationToken cancellationToken) =>
             companyScope.ExecuteResultAsync(companyId, async (connection, transaction, transactionCancellationToken) =>
-                Results.Ok(await connection.QueryAsync<MemberResponse>(Command(
-                    "SELECT user_id AS UserId, role::text AS Role FROM membership", transaction: transaction, cancellationToken: transactionCancellationToken))), cancellationToken))
+            {
+                var userId = httpContext.User.UserId()!.Value;
+                await connection.ExecuteAsync(Command("SELECT set_config('app.user_id',@user,true)", new { user = userId.ToString() }, transaction, cancellationToken: transactionCancellationToken));
+                return Results.Ok(await connection.QueryAsync<MemberResponse>(Command(
+                    "SELECT user_id AS UserId,email,role FROM company_members(@companyId,@userId)", new { companyId, userId }, transaction, cancellationToken: transactionCancellationToken)));
+            }, cancellationToken))
             .RequireAuthorization(Policies.CompanyMember);
 
         routes.MapPost("/companies/{companyId:guid}/members", (Guid companyId, MemberRequest membershipChange, HttpContext httpContext, CompanyScope companyScope, IPasswordHasher<string> passwordHasher, CancellationToken cancellationToken) =>
