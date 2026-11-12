@@ -31,7 +31,53 @@ docker compose down                      # add -v to drop the database volume
 
 Compose starts PostgreSQL, runs the migrations once, then starts the API (http://127.0.0.1:8080/health), the
 worker (health endpoint on 3001 inside the Compose network only) and the SAT SOAP stub (8081, internal only).
-Only API 8080 and PostgreSQL 5432 are published, both bound to 127.0.0.1.
+Only API 8080 and PostgreSQL 5432 are published. Both bind to 127.0.0.1 by default;
+`API_BIND` can override the API bind address, while PostgreSQL stays bound to 127.0.0.1.
+
+## Demo on two laptops
+
+Laptop A runs the Docker Compose stack; laptop B is a browser client on the same LAN.
+The API serves the Blazor WebAssembly UI, which calls the API on the same origin.
+No client executable or UI configuration is needed on laptop B.
+
+On laptop A, install Docker Compose (with `up --wait` support), Bash, `ip` (iproute2),
+and OpenSSL, then run from the repository root:
+
+```bash
+./scripts/demo-lan.sh
+```
+
+Open the printed `http://<LAN_IP>:8080` URL in a browser on laptop B to use the UI
+as an admin or user with the appropriate account. The script also prints the health
+URL (`http://<LAN_IP>:8080/health`). It detects the primary IPv4 address using the
+host route; if a VPN or multiple interfaces select the wrong address, run
+`LAN_IP=192.168.1.20 ./scripts/demo-lan.sh` with laptop A's LAN address.
+
+The launcher exports `API_BIND=0.0.0.0` and sets `Session__AllowedOrigins__0` to the
+printed browser origin. PostgreSQL stays private on `127.0.0.1:5432`; the worker and
+SAT stub remain internal to Compose. Only the API is exposed to the LAN.
+
+Plain HTTP is acceptable for this demo on a trusted LAN with synthetic data, but
+traffic and credentials are unencrypted. Keep `Session__BrowserRefreshCookie=false`
+(the default): the browser refresh-cookie flow requires HTTPS, and its allowed
+origin setting must match the browser origin exactly. Use HTTPS for deployment.
+
+If firewalld blocks access, laptop A may need `sudo firewall-cmd --add-port=8080/tcp`.
+The script prints this as a note and never runs sudo. Both laptops must be able to
+reach each other; guest Wi-Fi client isolation can prevent access.
+
+When `JWT_SIGNING_KEY` is unset, the script generates a key once and reuses it from
+ignored `.env.demo` (permissions `600`). It never prints secrets. An exported
+`JWT_SIGNING_KEY` takes precedence. Keep `.env.demo` private and retain it between
+runs; the existing Compose default for `APP_DB_PASSWORD` is unchanged.
+
+Stop the demo on laptop A with:
+
+```bash
+./scripts/demo-lan.sh down
+```
+
+Stopping preserves the database volumes and `.env.demo` for the next demo.
 
 ## Develop locally
 
