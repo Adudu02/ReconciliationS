@@ -15,6 +15,7 @@ public abstract class LocalizedComponentBase : ComponentBase, IDisposable
 
     [Inject] protected Labels L { get; set; } = default!;
 
+    // Server-authored sentences are English. In Spanish they are marked lang="en" so assistive technology pronounces them correctly; in English no marker is needed.
     protected string? ServerLang => T.Language == "en" ? null : "en";
 
     public override Task SetParametersAsync(ParameterView parameters)

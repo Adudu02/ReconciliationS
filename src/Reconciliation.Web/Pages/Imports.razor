@@ -30,7 +30,6 @@
 
 @code {
     private readonly CancellationTokenSource lifetime = new();
-    // Rejection reasons are English sentences written by the server; they stay verbatim and are marked as English in Spanish.
     protected override Task OnInitializedAsync() => Session.CanWrite ? Model.LoadBanksAsync() : Task.CompletedTask;
     private Task SelectAsync(InputFileChangeEventArgs args) => Model.SelectFilesAsync(args.GetMultipleFiles(args.FileCount));
     private Task UploadAsync() => Model.UploadAsync(Model.Files, lifetime.Token);

@@ -23,6 +23,5 @@
 
 @code {
     [Parameter] public Guid InvoiceId { get; set; }
-    // Server-authored sentences are English; in Spanish they are marked so assistive technology pronounces them correctly.
     protected override Task OnParametersSetAsync() => Model.LoadSummaryAsync(InvoiceId);
 }
