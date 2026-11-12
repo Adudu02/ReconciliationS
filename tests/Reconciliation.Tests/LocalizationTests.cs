@@ -31,6 +31,40 @@ public sealed class LocalizationTests
         Assert.Equal("novel_status", labels.ImportStatus("novel_status"));
     }
 
+    [Theory]
+    [InlineData("es", "1", "el monto está dentro de la tolerancia del objetivo total; diferencia de 1 centavo")]
+    [InlineData("es", "2", "el monto está dentro de la tolerancia del objetivo total; diferencia de 2 centavos")]
+    [InlineData("en", "1", "amount within tolerance of total target; difference 1 cent")]
+    [InlineData("en", "2", "amount within tolerance of total target; difference 2 cents")]
+    public void Tolerance_detail_uses_singular_only_for_one(string language, string cents, string expected)
+    {
+        var localizer = new Localizer();
+        localizer.Set(language);
+        var labels = new Labels(localizer);
+        Assert.Equal(expected, labels.Criterion(new ReviewCriterion("amount-within-tolerance", 25, $"amount within tolerance of total target; difference {cents} cents")));
+    }
+
+    [Theory]
+    [InlineData("es", 1, "future · 1 punto: detail")]
+    [InlineData("es", 2, "future · 2 puntos: detail")]
+    [InlineData("en", 1, "future · 1 point: detail")]
+    [InlineData("en", 2, "future · 2 points: detail")]
+    public async Task Review_criterion_line_uses_singular_only_for_one(string language, int points, string expected)
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, language);
+        var session = OperationsComponentTests.State("viewer");
+        context.Services.AddSingleton(session);
+        var entry = Entry("detail", new ReviewCriterion("future", points, "detail"));
+        context.Services.AddSingleton(new HttpClient(new WebTestHandler(_ => WebTestHandler.Json(new ReviewPage([entry], null, null, null))))
+        { BaseAddress = new Uri("https://app.example.invalid/") });
+        context.Services.AddSingleton<ApiClient>();
+        context.Services.AddTransient<ReviewQueueViewModel>();
+        var page = context.Render<Review>();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("article li")));
+        Assert.Equal(expected, page.Find("article li").TextContent);
+    }
+
     [Fact]
     public void Import_intro_limits_bank_statements_to_one_in_both_languages()
     {

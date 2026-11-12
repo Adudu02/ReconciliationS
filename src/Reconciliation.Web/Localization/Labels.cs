@@ -32,7 +32,7 @@ public sealed partial class Labels(Localizer t)
                 return t["criterion.amount-equals-total.credit-notes"];
             case "amount-within-tolerance" when ToleranceDetail().Match(c.Detail) is { Success: true } tolerance
                 && TargetKey(tolerance.Groups["target"].Value) is { } target:
-                return t.Format("criterion.amount-within-tolerance.detail", t[target], tolerance.Groups["cents"].Value);
+                return t.Format(tolerance.Groups["cents"].Value.Trim() == "1" ? "criterion.amount-within-tolerance.detail-one" : "criterion.amount-within-tolerance.detail", t[target], tolerance.Groups["cents"].Value);
             case "date-proximity" when ProximityDetail().Match(c.Detail) is { Success: true } proximity:
                 return t.Format("criterion.date-proximity.bonus", proximity.Groups["bonus"].Value);
             default:

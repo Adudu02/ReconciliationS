@@ -17,7 +17,7 @@
             <p>@if (entry.Movement is { } dated) { <text>@dated.Date.ToString("yyyy-MM-dd") · </text> }@Display.Money(entry.Movement?.Amount ?? entry.Invoice.Amount) · <a href="/ui/invoices/@entry.CfdiId">@T["review.invoice-summary"]</a></p>
             <p class="muted">@T.Format("review.invoice-line", entry.Invoice.Date.ToString("yyyy-MM-dd"), Display.Money(entry.Invoice.Amount), entry.Invoice.IssuerRfc, entry.Invoice.ReceiverRfc)</p>
             <p>@L.Explanation(entry)</p>
-            <ul>@foreach (var criterion in entry.Criteria) { <li>@T.Format("review.criterion-line", criterion.Code, criterion.Points, L.Criterion(criterion))</li> }</ul>
+            <ul>@foreach (var criterion in entry.Criteria) { <li>@T.Format(criterion.Points == 1 ? "review.criterion-line-one" : "review.criterion-line", criterion.Code, criterion.Points, L.Criterion(criterion))</li> }</ul>
             <ul>@foreach (var reason in entry.Reasons) { <li class="@(reason.RequiresReview ? "reason" : "muted")">@L.Reason(reason.Code)</li> }</ul>
             @if (Session.CanWrite && entry.LinkId is { } linkId)
             {
