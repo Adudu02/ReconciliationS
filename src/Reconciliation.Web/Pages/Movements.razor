@@ -32,7 +32,7 @@
     private void Edit(MovementItem movement) { Editing = movement.Id; Classification = movement.Classification ?? "other"; Note = movement.Note; }
     private async Task SaveAsync(Guid id) { await Model.ClassifyAsync(id, Classification.Length == 0 ? null : Classification, Note); if (Model.Error is null) Editing = null; }
 
-    // The API builds Reason as coalesce(user note, classification code, server explanation, 'No active link').
+    // MovementEndpoints SQL: coalesce(classification_note, classification, string_agg(explanation), 'No active link').
     // A note is user data and a code is a UI value; only the server explanation is an English sentence to mark as such.
     private bool IsServerSentence(MovementItem movement) => movement.Reason != movement.Note && movement.Reason != movement.Classification && movement.Reason != NoActiveLink;
     private string? ReasonLang(MovementItem movement) => IsServerSentence(movement) ? ServerLang : null;

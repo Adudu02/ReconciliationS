@@ -372,6 +372,22 @@ public sealed class OperationsComponentTests
         Assert.Null(page.FindAll("tbody tr")[1].QuerySelector("[lang]"));
     }
 
+    [Theory]
+    [InlineData("es", "No active link", "No active link", null)]
+    [InlineData("es", "loan", "loan", null)]
+    [InlineData("es", null, "amount equals remaining payable", "en")]
+    [InlineData("en", null, "amount equals remaining payable", null)]
+    public async Task Movement_reason_preserves_notes_and_marks_only_server_sentences(string language, string? note, string reason, string? expectedLang)
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, language);
+        var item = new MovementItem(Guid.NewGuid(), new(2026, 10, 10), "Synthetic transfer", 100, 0, null, "pending", "loan", note, reason, 0, 0, 100, 100);
+        var page = RenderMovements(context, "viewer", [item], _ => { });
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("tbody small")));
+        Assert.Equal(reason, page.Find("tbody small").TextContent);
+        Assert.Equal(expectedLang, page.Find("tbody small").GetAttribute("lang"));
+    }
+
     private static readonly string[] Banks = ["reference"];
 
     private static IRenderedComponent<Movements> RenderMovements(BunitContext context, string role, MovementItem[] items, Action<HttpRequestMessage> onRequest)
