@@ -66,6 +66,47 @@ public sealed class LocalizationTests
     }
 
     [Fact]
+    public void Labels_tolerate_null_JSON_values()
+    {
+        var labels = SpanishLabels(out _);
+        Assert.Equal("", labels.State(null!));
+        Assert.Equal("", labels.Role(null!));
+        Assert.Equal("", labels.Direction(null!));
+        Assert.Equal("", labels.JobState(null!));
+        Assert.Equal("", labels.ImportStatus(null!));
+        Assert.Equal("", labels.ComplementStatus(null!));
+        Assert.Equal("", labels.Reason(null!));
+        Assert.Equal("", labels.Criterion(null!));
+        Assert.Equal("", labels.Criterion(new ReviewCriterion(null!, 0, null!)));
+        Assert.Equal("raw detail", labels.Criterion(new ReviewCriterion(null!, 0, "raw detail")));
+        Assert.Equal("el monto está dentro de la tolerancia respecto al monto esperado", labels.Criterion(new ReviewCriterion("amount-within-tolerance", 0, null!)));
+        Assert.Equal("", labels.Explanation(null!));
+        Assert.Equal("", labels.Explanation(Entry(null!)));
+        Assert.Equal("raw", labels.Explanation(Entry("raw") with { Criteria = null! }));
+        Assert.Equal("", labels.Explanation(Entry(null!) with { Criteria = null! }));
+    }
+
+    [Theory]
+    [InlineData("amount-within-tolerance", "amount within tolerance of total target; difference 2 cents")]
+    [InlineData("date-proximity", "invoice date is within tolerance; proximity bonus 5")]
+    public void Criterion_does_not_rewrite_details_with_a_trailing_newline(string code, string detail)
+    {
+        var labels = SpanishLabels(out _);
+        Assert.Equal(labels.Criterion(new ReviewCriterion(code, 1, "unknown shape")), labels.Criterion(new ReviewCriterion(code, 1, detail + "\n")));
+    }
+
+    [Theory]
+    [InlineData("; 3 other invoices matched equally")]
+    [InlineData("; 50+ others may have matched equally")]
+    public void Explanation_does_not_rewrite_suffixes_with_a_trailing_newline(string suffix)
+    {
+        var labels = SpanishLabels(out _);
+        var criterion = new ReviewCriterion("invoice-reference", 30, "invoice serie/folio or UUID fragment found in text");
+        var entry = Entry(criterion.Detail + suffix + "\n", criterion);
+        Assert.Equal(entry.Explanation, labels.Explanation(entry));
+    }
+
+    [Fact]
     public void Import_intro_limits_bank_statements_to_one_in_both_languages()
     {
         var localizer = new Localizer();
