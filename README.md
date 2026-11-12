@@ -63,8 +63,10 @@ SAT stub remain internal to Compose. Only the API is exposed to the LAN.
 
 Plain HTTP is acceptable for this demo on a trusted LAN with synthetic data, but
 traffic and credentials are unencrypted. Keep `Session__BrowserRefreshCookie=false`
-(the default): the browser refresh-cookie flow requires HTTPS, and its allowed
-origin setting must match the browser origin exactly. Use HTTPS for deployment.
+(the default) for the demo, so a reload asks the user to sign in again. If you enable it, the
+refresh cookie is not marked `Secure` on plain HTTP (it is only `Secure` on HTTPS), so it works
+but travels unencrypted, and its allowed origin setting must match the browser origin
+exactly. Use HTTPS for deployment.
 
 If firewalld blocks access, laptop A may need `sudo firewall-cmd --add-port=8080/tcp`.
 The script prints this as a note and never runs sudo. Both laptops must be able to
@@ -181,7 +183,7 @@ For browser transport set `Session__RefreshCookie=true` and an Origin allow-list
 `Session__AllowedOrigins__0=https://app.example.invalid`. Login and renewal then omit `refreshToken` from JSON and
 send a **HttpOnly**, **Secure**, **SameSite=Strict** browser-session cookie with **Path=/auth**. Cookie renewal requires
 an exact allowed `Origin`; missing or unlisted Origins receive 403 without rotation. A body credential cannot bypass
-cookie mode, and logout clears the cookie. Use HTTPS for browser cookies; the local HTTP Compose CLI demo uses the
+cookie mode, and logout clears the cookie. Use HTTPS for browser cookies (over plain HTTP the cookie is not `Secure`); the local HTTP Compose CLI demo uses the
 default JSON transport. Every data endpoint continues to use Bearer authorization. See
 [ADR-004](docs/adr/ADR-004-session-renewal.md) for the trade-offs and the production OIDC recommendation.
 
