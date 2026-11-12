@@ -237,7 +237,7 @@ public static partial class Catalog
 
         ["imports.eyebrow"] = "INGESTA DE DATOS",
         ["imports.read-only"] = "Este espacio de trabajo es de solo lectura. Los contadores y administradores pueden importar a una empresa activa.",
-        ["imports.intro"] = "Cargue archivos XML de CFDI 4.0 o un estado de cuenta bancario en el formato CSV de referencia compatible.",
+        ["imports.intro"] = "Cargue archivos XML de CFDI 4.0 o un solo estado de cuenta bancario en el formato CSV de referencia compatible.",
         ["imports.limits"] = "Hasta 20 archivos, 10 MiB cada uno y 20 MiB en total. La API puede aplicar límites configurados más bajos.",
         ["imports.kind"] = "Tipo de importación",
         ["imports.kind.cfdi"] = "Archivos XML de CFDI",

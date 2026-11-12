@@ -32,6 +32,15 @@ public sealed class LocalizationTests
     }
 
     [Fact]
+    public void Import_intro_limits_bank_statements_to_one_in_both_languages()
+    {
+        var localizer = new Localizer();
+        Assert.Equal("Cargue archivos XML de CFDI 4.0 o un solo estado de cuenta bancario en el formato CSV de referencia compatible.", localizer["imports.intro"]);
+        localizer.Set("en");
+        Assert.Equal("Upload CFDI 4.0 XML or one bank statement in the supported reference CSV format.", localizer["imports.intro"]);
+    }
+
+    [Fact]
     public void Defaults_to_spanish()
     {
         Assert.Equal("es", new Localizer().Language);
