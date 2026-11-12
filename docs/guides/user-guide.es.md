@@ -30,11 +30,12 @@ Si también tiene una membresía, se aplican los permisos de ese rol.
 | Clasificar movimientos | No | Sí | Sí | No |
 | Solicitar consulta SAT (API) | No | Sí | Sí, sin `anonymizedUuid` | No |
 | Listar trabajos fallidos / reintentarlos (API) | No | Sí | No | No |
-| Consultar configuración y miembros (API) | No | Sí | Sí | Sí |
-| Cambiar configuración o miembros (API) | No | Sí | No | No |
+| Consultar configuración (API) y miembros (Equipo/API) | No | Sí | Sí | Sí |
+| Cambiar configuración (API) o agregar miembros (Equipo/API) | No | Sí | No | No |
 | Archivar empresa (API) | No | Sí | No | No |
 | Crear empresa (API) | Sí | Solo si también es operador | Solo si también es operador | Solo si también es operador |
 | Consultar auditoría y verificar su cadena (API) | No | Sí | Sí | Sí |
+| Cambiar contraseña propia (Mi cuenta) | Sí | Sí | Sí | Sí |
 
 “Administrador”, “Contador” y “Lector” son los nombres que muestra la interfaz.
 Las empresas archivadas muestran “Archivada · solo lectura”: se pueden consultar,
@@ -177,6 +178,39 @@ muestra identificador, intento y “Progreso”; espere el estado final antes de
 La interfaz consulta el progreso periódicamente. Un trabajo completado puede dejar
 sugerencias para revisión humana; no significa que todas las facturas estén conciliadas.
 
+### 4.8 Equipo
+
+“Equipo” muestra el correo electrónico y el rol de los miembros de la empresa
+seleccionada. Los contadores y lectores pueden consultar la lista; en una empresa
+archivada todos ven el equipo de solo lectura.
+
+Un administrador de una empresa activa puede usar “Agregar miembro”: capture
+“Correo electrónico”, elija “Rol” y, para una cuenta nueva, proporcione
+“Contraseña inicial (solo para cuentas nuevas)” de al menos 12 caracteres.
+“Mostrar contraseña” / “Ocultar contraseña” controla su visibilidad. Comparta la
+contraseña inicial de forma segura; no la envíe por una URL ni por un canal público.
+Si la cuenta ya existe, conserva su contraseña y el campo puede dejarse vacío.
+Después de enviar, el campo se vacía incluso si la operación falla.
+
+La pantalla no permite eliminar miembros ni editar roles. Si el correo ya aparece
+en la lista, se informa que el usuario ya pertenece a la empresa y no se cambia
+su rol. Un usuario agregado podrá iniciar sesión y elegir la empresa.
+No se envían invitaciones ni se exige cambiar la contraseña en el primer acceso.
+
+### 4.9 Mi cuenta
+
+“Mi cuenta” está en el encabezado y está disponible incluso sin una empresa
+seleccionada. En “Cambiar contraseña”, capture “Contraseña actual”,
+“Contraseña nueva” y “Confirmar contraseña nueva”. La contraseña nueva debe tener
+al menos 12 caracteres y coincidir con la confirmación.
+
+Al enviar se vacían los campos. Si se cambia correctamente, aparece
+“La contraseña se cambió. Inicie sesión de nuevo.” y se vuelve al inicio de sesión.
+Inicie sesión con la nueva contraseña. Se revocan las sesiones de renovación;
+los tokens de acceso ya emitidos conservan su vigencia hasta expirar.
+Si no se puede verificar la contraseña actual, revísela o inicie sesión de nuevo.
+No se ofrece recuperación ni restablecimiento de contraseña en esta pantalla.
+
 ## 5. Estados y confianza
 
 | Etiqueta | Interpretación |
@@ -207,10 +241,10 @@ El complemento faltante/vencido se evalúa por separado de la cobertura del cobr
 
 ## 7. Administración mediante API
 
-> **Sin página de administración actualmente:** crear empresas, agregar o cambiar
-> miembros, modificar configuración y archivar son operaciones de API. Tampoco hay
-> páginas de administración de trabajos, auditoría, SAT ni cambio de contraseña.
-> El cliente ve únicamente las empresas de sus membresías y las acciones de su rol.
+> **Operaciones que siguen sin página:** crear empresas, modificar configuración
+> y archivar requieren API. “Equipo” permite consultar y agregar miembros; “Mi cuenta”
+> permite cambiar la contraseña propia. No hay páginas de administración de trabajos,
+> auditoría ni SAT. El cliente ve las empresas de sus membresías y las acciones de su rol.
 
 Los siguientes ejemplos usan curl. Sustituya los marcadores; el token debe pertenecer
 al rol indicado. Use la URL proporcionada por el responsable del servidor.
@@ -230,11 +264,26 @@ contraseña de al menos 12 caracteres; si el correo ya existe, conserva su contr
 
 ### 7.1 Miembros
 
-Con un token de administrador de la empresa y el UUID de un usuario **ya existente**:
+Use “Equipo” para agregar por correo. La operación equivalente de API requiere
+un token de administrador de una empresa activa:
 
 ```bash
 ADMIN_TOKEN='<accessToken del administrador>'
 COMPANY_ID='<UUID de la empresa>'
+curl -fsS -X POST "$BASE/companies/$COMPANY_ID/members" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "X-Company-Id: $COMPANY_ID" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"accountant@example.invalid","role":"accountant","initialPassword":"<initial-password>"}'
+```
+
+La cuenta nueva requiere al menos 12 caracteres de contraseña inicial; una cuenta
+existente conserva su contraseña, aunque se envíe `initialPassword`. Los valores
+de `role` son `administrator`, `accountant` y `viewer`. No se envían invitaciones.
+Debe suministrarse exactamente uno de `email` o `userId`.
+
+La forma anterior `{userId,role}` sigue disponible para usuarios existentes:
+
+```bash
 USER_ID='<UUID de un usuario existente>'
 curl -fsS -X POST "$BASE/companies/$COMPANY_ID/members" \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "X-Company-Id: $COMPANY_ID" \
@@ -242,11 +291,13 @@ curl -fsS -X POST "$BASE/companies/$COMPANY_ID/members" \
   -d "{\"userId\":\"$USER_ID\",\"role\":\"accountant\"}"
 ```
 
-Los valores de `role` son `administrator`, `accountant` y `viewer`. La misma llamada
-agrega o cambia la membresía; no crea usuarios ni envía invitaciones. No se puede
-quitar el rol al último administrador. Solicite al responsable el UUID y la provisión
-del usuario; no hay registro de usuarios en la interfaz. El cliente puede actualizar
-su sesión y volver a elegir empresa para reflejar el acceso; la API verifica el rol vigente.
+En ambas formas, la API conserva la semántica anterior: repetir la misma membresía
+es una operación sin cambios ni una nueva entrada de auditoría; enviar otro rol
+actualiza la membresía y registra el cambio, sin permitir quitar el último
+administrador. La pantalla “Equipo” solo ofrece agregar, no editar roles.
+`GET /companies/{companyId}/members` devuelve `{userId,email,role}` únicamente
+para miembros de esa empresa. Las cuentas nuevas registran `account.created`;
+las membresías registran `member.added` o `member.changed`, sin contraseñas ni hashes.
 
 ### 7.2 Configuración
 

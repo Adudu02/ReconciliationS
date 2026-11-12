@@ -4,6 +4,28 @@ public static partial class Catalog
 {
     public static IReadOnlyDictionary<string, string> En { get; } = new Dictionary<string, string>
     {
+        ["nav.team"] = "Team",
+        ["nav.account"] = "My account",
+        ["team.members"] = "Company members",
+        ["team.role"] = "Role",
+        ["team.add"] = "Add member",
+        ["team.initial-password"] = "Initial password (new accounts only)",
+        ["team.password-note"] = "For a new account, enter at least 12 characters and share the password securely. An existing account keeps its password; you can leave this field blank.",
+        ["team.read-only"] = "Read-only team. Only an administrator can add members to an active company.",
+        ["team.already-member"] = "This user already belongs to the company. Their role was not changed.",
+        ["password.show"] = "Show password",
+        ["password.hide"] = "Hide password",
+        ["account.change-password"] = "Change password",
+        ["account.current-password"] = "Current password",
+        ["account.new-password"] = "New password",
+        ["account.confirm-password"] = "Confirm new password",
+        ["account.session-note"] = "Changing your password revokes refresh sessions. You will need to sign in again.",
+        ["account.changed"] = "Password changed. Sign in again.",
+        ["account.password-length"] = "The new password must have at least 12 characters.",
+        ["account.password-mismatch"] = "The new passwords do not match.",
+        ["account.current-unverified"] = "The current password could not be verified. Check it or sign in again.",
+        ["account.session-refused"] = "This session cannot change the password. Sign in again.",
+
         ["nav.overview"] = "Overview",
         ["nav.review"] = "Review queue",
         ["nav.invoices"] = "Invoices",

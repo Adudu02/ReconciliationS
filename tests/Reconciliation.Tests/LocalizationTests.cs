@@ -547,7 +547,7 @@ public sealed class LanguageSwitchTests
         app.WaitForAssertion(() => Assert.Contains("Cambiar de empresa", app.Markup, StringComparison.Ordinal));
         Assert.Equal("Saltar al contenido", app.Find("a.skip").TextContent);
         Assert.Equal("Espacio de trabajo", app.Find("nav.sidebar").GetAttribute("aria-label"));
-        Assert.Equal(["Resumen", "Bandeja de revisión", "Facturas", "Movimientos", "Importar archivos"],
+        Assert.Equal(["Resumen", "Bandeja de revisión", "Facturas", "Movimientos", "Equipo", "Importar archivos"],
             app.FindAll("nav.sidebar a").Select(link => link.TextContent.Trim()));
         Assert.Contains("Demostración: los resultados no tienen validez fiscal ni legal.", app.Find("footer").TextContent, StringComparison.Ordinal);
         Assert.Contains("Página no disponible", app.Find("main").TextContent, StringComparison.Ordinal);

@@ -146,6 +146,31 @@ public sealed class ApiClient(HttpClient http, SessionState session) : IDisposab
         throw new ApiProblemException(status, message, key);
     }
 
+    public async Task AddMemberAsync(MemberChangeRequest member, CancellationToken token = default)
+    {
+        using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, CompanyPath("members"))
+        { Content = JsonContent.Create(member, Info<MemberChangeRequest>()) }, token);
+    }
+
+    public async Task ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken token = default)
+    {
+        // A wrong current password also returns 401; never refresh/replay a password change.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "auth/password")
+        { Content = JsonContent.Create(new PasswordChangeBody(currentPassword, newPassword), Info<PasswordChangeBody>()) };
+        Authorize(request);
+        using var response = await http.SendAsync(request, token);
+        var key = (int)response.StatusCode switch
+        {
+            400 => "account.password-length",
+            401 => "account.current-unverified",
+            403 => "account.session-refused",
+            _ => null
+        };
+        if (key is not null) throw new ApiProblemException((int)response.StatusCode, "Password change refused.", key);
+        await CheckAsync(response, token);
+        session.Clear(passwordChanged: true);
+    }
+
     public async Task<DecisionResponse> DecideAsync(Guid linkId, DecisionRequest decision, CancellationToken token = default)
     {
         using var response = await SendAsync(() => new HttpRequestMessage(HttpMethod.Post, CompanyPath($"links/{linkId}/decisions")) { Content = JsonContent.Create(decision, Info<DecisionRequest>()) }, token);

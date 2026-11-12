@@ -5,6 +5,7 @@ using System.Text.Json;
 using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using Reconciliation.Web;
 
 namespace Reconciliation.Tests;
 
@@ -136,6 +137,34 @@ public sealed class MemberAccountTests(ApiFixture fixture)
         var companies = await login.GetFromJsonAsync<JsonElement>("/companies", TestContext.Current.CancellationToken);
         Assert.Equal(2, companies.GetArrayLength());
         Assert.Equal(1, await fixture.Database.ScalarAsync<int>("SELECT count(*) FROM audit_entry WHERE company_id IN (@companyA,@companyB) AND action='account.created'", new { companyA, companyB }));
+    }
+
+    [Fact]
+    public async Task Account_client_changes_real_credentials_revokes_refresh_sessions_and_never_logs_passwords()
+    {
+        var user = await fixture.SeedUserAsync();
+        using var logs = new CredentialLogCapture();
+        using var host = new SessionTestHost(fixture, builder => builder.ConfigureLogging(logging => logging.AddProvider(logs)));
+        var earlierSession = await host.LoginAsync(user.Email);
+        var state = new SessionState();
+        using var api = new ApiClient(host.Client, state);
+        await api.LoginAsync(user.Email, ApiFixture.Password, TestContext.Current.CancellationToken);
+        const string password = "synthetic-changed-account-password";
+        await api.ChangePasswordAsync(ApiFixture.Password, password, TestContext.Current.CancellationToken);
+        Assert.False(state.IsAuthenticated);
+        Assert.True(state.PasswordChangeCompleted);
+        using var revoked = await host.RefreshAsync(earlierSession.RefreshToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        using var oldLogin = await host.Client.PostAsJsonAsync("/auth/tokens", new { email = user.Email, password = ApiFixture.Password }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Unauthorized, oldLogin.StatusCode);
+        await host.LoginAsync(user.Email, password);
+        var hash = await fixture.Database.ScalarAsync<string>("SELECT password_hash FROM app_user WHERE id=@Id", new { user.Id });
+        Assert.All(logs.Messages, message =>
+        {
+            Assert.DoesNotContain(password, message, StringComparison.Ordinal);
+            Assert.DoesNotContain(ApiFixture.Password, message, StringComparison.Ordinal);
+            Assert.DoesNotContain(hash!, message, StringComparison.Ordinal);
+        });
     }
 
     private sealed class CredentialLogCapture : ILoggerProvider, ILogger

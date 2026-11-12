@@ -150,6 +150,9 @@ owner credentials `cfdi` / `cfdi` in Compose. Those also need replacement outsid
 6. Sign out of the operator account. Sign in as `admin@example.invalid` with the
    administrator password. The new company should appear in the picker. Select it;
    the header shows its name and “Administrador” (or “Administrator” in English).
+   Use “Equipo” / “Team” to add accountants or viewers by email, with an initial
+   password for a new account. Users can change their own password in “Mi cuenta” /
+   “My account”; company creation, settings, and archival remain API operations.
    Continue with the [Spanish](user-guide.es.md) or [English](user-guide.en.md) user guide.
 
 ## Network setup for laptop B

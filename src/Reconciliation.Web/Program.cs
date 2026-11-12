@@ -16,4 +16,6 @@ builder.Services.AddTransient<Reconciliation.Web.ViewModels.MovementsViewModel>(
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.WorkspaceViewModel>();
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.ReviewQueueViewModel>();
 builder.Services.AddTransient<Reconciliation.Web.ViewModels.InvoiceViewModel>();
+builder.Services.AddTransient<Reconciliation.Web.ViewModels.TeamViewModel>();
+builder.Services.AddTransient<Reconciliation.Web.ViewModels.AccountViewModel>();
 await builder.Build().RunAsync();

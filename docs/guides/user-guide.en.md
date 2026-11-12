@@ -30,11 +30,12 @@ If the operator also has a membership, that role's permissions apply.
 | Classify movements | No | Yes | Yes | No |
 | Request SAT check (API) | No | Yes | Yes, without `anonymizedUuid` | No |
 | List failed jobs / retry them (API) | No | Yes | No | No |
-| Read settings and members (API) | No | Yes | Yes | Yes |
-| Change settings or members (API) | No | Yes | No | No |
+| Read settings (API) and members (Team/API) | No | Yes | Yes | Yes |
+| Change settings (API) or add members (Team/API) | No | Yes | No | No |
 | Archive company (API) | No | Yes | No | No |
 | Create company (API) | Yes | Only if also an operator | Only if also an operator | Only if also an operator |
 | Read audit entries and verify the chain (API) | No | Yes | Yes | Yes |
+| Change own password (My account) | Yes | Yes | Yes | Yes |
 
 “Administrator”, “Accountant”, and “Viewer” are the roles displayed in the English UI.
 Archived companies show “Archived · read-only”: reads remain available, but new
@@ -174,6 +175,36 @@ company's imports and current settings. “Job” shows the identifier, attempt,
 The UI polls progress periodically. A completed job can leave suggestions for
 human review; it does not mean every invoice has been reconciled.
 
+### 4.8 Team
+
+“Team” shows the email and role of members in the selected company. Accountants
+and viewers can read the list; in archived companies everyone sees a read-only team.
+
+An administrator of an active company can use “Add member”: enter “Email”, choose
+“Role”, and provide an “Initial password (new accounts only)” of at least 12
+characters for a new account. “Show password” / “Hide password” controls visibility.
+Share the initial password securely; never send it in a URL or public channel.
+An existing account keeps its password, and the field can be left blank.
+The password field is cleared after submission even if the operation fails.
+
+The screen does not remove members or edit roles. If the email already appears in
+the list, it reports that the user already belongs to the company and leaves the
+role unchanged. An added user can sign in and select the company.
+No invitation is sent and no forced password change occurs at first sign-in.
+
+### 4.9 My account
+
+“My account” is in the header and is available even without a selected company.
+Under “Change password”, enter “Current password”, “New password”, and
+“Confirm new password”. The new password must have at least 12 characters and
+match the confirmation.
+
+Submission clears the fields. On success, “Password changed. Sign in again.” is
+displayed and the UI returns to sign-in. Sign in using the new password.
+Refresh sessions are revoked; already issued access tokens remain valid until
+expiry. If the current password cannot be verified, check it or sign in again.
+This screen does not provide password recovery or reset.
+
 ## 5. States and confidence
 
 | Label | Interpretation |
@@ -204,10 +235,10 @@ Missing/overdue complements are evaluated separately from payment coverage.
 
 ## 7. Administration through the API
 
-> **No administration page currently:** creating companies, adding/changing members,
-> changing settings, and archiving are API operations. There are also no job
-> administration, audit, SAT-management, or password-change pages. Customers see
-> only their membership companies and their role's available actions.
+> **Operations still without a page:** creating companies, changing settings, and
+> archiving require the API. “Team” supports reading and adding members; “My account”
+> supports changing your own password. There are no job administration, audit, or
+> SAT-management pages. Customers see their membership companies and their role's actions.
 
 These recipes use curl. Replace the placeholders; the token must belong to the
 specified role. Use the URL provided by the server owner. Creating a company
@@ -227,11 +258,26 @@ password of at least 12 characters; an existing email retains its password.
 
 ### 7.1 Members
 
-With a company administrator token and the UUID of an **existing user**:
+Use “Team” to add by email. The equivalent API operation requires an administrator
+token for an active company:
 
 ```bash
 ADMIN_TOKEN='<administrator accessToken>'
 COMPANY_ID='<company UUID>'
+curl -fsS -X POST "$BASE/companies/$COMPANY_ID/members" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "X-Company-Id: $COMPANY_ID" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"accountant@example.invalid","role":"accountant","initialPassword":"<initial-password>"}'
+```
+
+A new account requires an initial password of at least 12 characters; an existing
+account retains its password even if `initialPassword` is supplied. Allowed `role`
+values are `administrator`, `accountant`, and `viewer`. No invitation is sent.
+Supply exactly one of `email` or `userId`.
+
+The previous `{userId,role}` form remains available for existing users:
+
+```bash
 USER_ID='<existing user UUID>'
 curl -fsS -X POST "$BASE/companies/$COMPANY_ID/members" \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "X-Company-Id: $COMPANY_ID" \
@@ -239,11 +285,13 @@ curl -fsS -X POST "$BASE/companies/$COMPANY_ID/members" \
   -d "{\"userId\":\"$USER_ID\",\"role\":\"accountant\"}"
 ```
 
-Allowed `role` values are `administrator`, `accountant`, and `viewer`. This call
-adds or changes membership; it does not create users or send invitations. The
-last administrator cannot be demoted. Ask the owner for user provisioning and the
-UUID; the UI has no user registration. Customers can refresh their session and
-select the company again to see access changes; the API checks the live role.
+Both forms preserve the API's previous semantics: repeating the same membership
+makes no change and adds no audit entry; sending another role updates the membership
+and audits the change, while preserving at least one administrator. “Team” only
+provides adding, not role editing. `GET /companies/{companyId}/members` returns
+`{userId,email,role}` only to members of that company. New accounts record
+`account.created`; memberships record `member.added` or `member.changed`, without
+passwords or hashes.
 
 ### 7.2 Settings
 

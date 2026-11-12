@@ -121,7 +121,9 @@ and a current membership. Health and `/openapi.json` remain anonymous.
 A bootstrapped platform operator can `POST /companies` with `{rfc, name, adminEmail, adminPassword}`. The password
 must have 12 characters for a new account; an existing account keeps its password. Any member can read
 `GET /companies/{companyId}`, `/companies/{companyId}/members`, and `/companies/{companyId}/settings`. Administrators can post a
-`{userId, role}` to the members route, patch settings, and `POST /companies/{companyId}/archive`. There are no DELETE routes.
+`{userId, role}` or `{email, role, initialPassword?}` to the members route, patch settings, and `POST /companies/{companyId}/archive`. A new account requires an initial password of at least 12 characters; an existing account keeps its password.
+Supply exactly one of `userId` or `email`; member reads return `{userId,email,role}` for the selected company.
+Repeating an unchanged membership is a no-op; the legacy API still supports audited role updates and protects the last administrator. There are no DELETE routes.
 
 The hash-chained audit log records company creation, settings, membership changes and archival atomically.
 See the audit API below. Real viewer/accountant decision scenarios now pass, completing 2.4. Invoice isolation
@@ -569,7 +571,11 @@ then open Overview and run reconciliation. Polling shows progress until success/
 shows its per-file report. Open Review queue to confirm/reject/change a suggestion. Invoice list filters
 include state and missing/overdue complements; summaries show confirmed paid percentage, pending, payment
 CFDI, due dates, warnings and reasons. Movements supports classification for accountants/administrators.
-Viewers and archived companies are read-only. There is no administration, audit or SAT-management page.
+Viewers and archived companies are read-only. Team lists company member emails and roles for all members;
+active-company administrators can add members by email, creating accounts with an initial password when needed.
+My account changes the current user's password and returns to sign-in after revoking refresh sessions.
+There are no member removal or role-editing controls, invitation/reset flows, or forced first-login password changes.
+Company creation, settings, archival, audit and SAT management remain API-only.
 
 Access tokens stay **in memory**; never localStorage, sessionStorage or URLs. Reload silently renews through
 an HttpOnly, SameSite=Strict, Path=/auth cookie, then asks for company selection. Browser auth calls send

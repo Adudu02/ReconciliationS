@@ -92,7 +92,7 @@
 - [x] 8.3d (stretch if time is short) Show the cash payment warning above 2,000.00 and verify the state is unchanged
 - [x] 8.4 Generate the versioned OpenAPI document with the disclaimer and verify it covers every endpoint
 - [x] 8.5 Build the minimal UI (review queue, invoice summary, overview) using only the API, and verify the worked example can be completed through it
-- [ ] 8.6 Add the team (members) and account screens: an administrator creates a new account with an initial password or attaches an existing one, sees the members with their emails, and every user can change their own password; verify tenant isolation, audit entries and Spanish/English copy
+- [x] 8.6 Add the team (members) and account screens: an administrator creates a new account with an initial password or attaches an existing one, sees the members with their emails, and every user can change their own password; verify tenant isolation, audit entries and Spanish/English copy
 
 ## 9. Test data tooling (days 3–7, in parallel)
 

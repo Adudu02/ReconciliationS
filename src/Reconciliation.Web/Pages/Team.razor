@@ -1,0 +1,56 @@
+@page "/ui/team"
+@inherits LocalizedComponentBase
+@inject TeamViewModel Model
+
+<section>
+    <h1>@T["nav.team"]</h1>
+    <PageStatus Model="Model" />
+    <div class="panel table-wrap" tabindex="0" role="region" aria-label="@T["nav.team"]">
+        <table>
+            <caption>@T["team.members"]</caption>
+            <thead><tr><th scope="col">@T["login.email"]</th><th scope="col">@T["team.role"]</th></tr></thead>
+            <tbody>@foreach (var member in Model.Members) { <tr><th scope="row">@member.Email</th><td>@L.Role(member.Role)</td></tr> }</tbody>
+        </table>
+    </div>
+    @if (Model.CanManage)
+    {
+        <form class="panel" @onsubmit="AddAsync" @onsubmit:preventDefault>
+            <h2>@T["team.add"]</h2>
+            <label for="member-email">@T["login.email"]</label>
+            <input id="member-email" type="email" autocomplete="off" required @bind="Email" disabled="@Model.Busy" />
+            <label for="member-role">@T["team.role"]</label>
+            <select id="member-role" @bind="Role" disabled="@Model.Busy">
+                <option value="accountant">@L.Role("accountant")</option>
+                <option value="viewer">@L.Role("viewer")</option>
+                <option value="administrator">@L.Role("administrator")</option>
+            </select>
+            <label for="initial-password">@T["team.initial-password"]</label>
+            <input id="initial-password" type="@(ShowPassword ? "text" : "password")" autocomplete="new-password" minlength="12" @bind="InitialPassword" disabled="@Model.Busy" aria-describedby="initial-password-note" />
+            <button type="button" class="secondary" data-show-password aria-controls="initial-password" aria-pressed="@(ShowPassword ? "true" : "false")" @onclick="() => ShowPassword = !ShowPassword">@T[ShowPassword ? "password.hide" : "password.show"]</button>
+            <p id="initial-password-note">@T["team.password-note"]</p>
+            <button type="submit" disabled="@Model.Busy">@T["team.add"]</button>
+        </form>
+    }
+    else { <p class="muted">@T["team.read-only"]</p> }
+</section>
+
+@code {
+    private string Email { get; set; } = "";
+    private string Role { get; set; } = "accountant";
+    private string InitialPassword { get; set; } = "";
+    private bool ShowPassword { get; set; }
+    protected override Task OnInitializedAsync() => Model.LoadAsync();
+    private async Task AddAsync()
+    {
+        var password = InitialPassword;
+        InitialPassword = "";
+        ShowPassword = false;
+        await Model.AddAsync(Email, Role, password);
+        if (Model.Error is null) Email = "";
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) InitialPassword = "";
+        base.Dispose(disposing);
+    }
+}

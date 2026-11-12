@@ -101,7 +101,42 @@ volumes are removed afterward. No browser dependency or CI browser job is introd
 - Generated client: deferred; handwritten typed methods plus machine-readable schemas and real-response tests
   cover the current surface without a generator dependency.
 
-No password-change page, administration/audit/SAT-management UI, standalone manual N:M creation or reopen UI
-is added. Their existing API availability and ADR-009 gaps are unchanged. Browser uploads cap at 20 files,
+The original 8.5 scope excluded password-change and administration pages; task 8.6 adds Team and My account as described below.
+Company creation/settings/archival, audit and SAT management remain API-only. Standalone manual N:M creation and reopen UI remain outside scope. Browser uploads cap at 20 files,
 10 MiB each and 20 MiB total; API configuration may impose smaller limits. No list snapshot is promised between
 keyset pages. There is no offline mode, cross-tab refresh coordinator or production deployment.
+
+
+## Amendment: team and account screens (task 8.6)
+
+`/ui/team` lists `{userId,email,role}` to company members. Only administrators of an
+active company can add members. POST members accepts exactly one of `userId` or
+`email`, plus `role` and optional `initialPassword`. A new account needs at least
+12 characters; existing credentials are never reset. The legacy API's idempotent
+reattachment and audited role-upsert semantics remain; Team offers no role editor.
+Account creation and membership changes are audited in the same transaction;
+passwords and hashes never enter audit payloads.
+
+M0014 adds `company_members(uuid,uuid)`, a STABLE SECURITY DEFINER function with a
+pinned search path and PUBLIC execution revoked. Its separate NOLOGIN BYPASSRLS
+owner can read only `app_user(id,email)` and `membership(company_id,user_id,role)`.
+The function requires matching transaction-local `app.company_id` and `app.user_id`
+and a membership before selecting emails for exactly that company. The application
+role's existing app_user grants are unchanged. As with M0013, server DB credentials
+are trusted to establish the authenticated context. Down removes the function/owner
+without altering account or membership data.
+
+`/ui/account` works with or without a selected company. It calls the existing
+`POST /auth/password` with current/new passwords and validates length and confirmation
+before sending. This call deliberately does not use automatic 401 refresh/retry:
+401 also means a wrong current password. 400 (new password), 401 (unverified current
+password/session), and 403 (session ownership refusal) have localized messages.
+On 204 the client clears access/company memory, shows a localized sign-in notice,
+and returns to login. Refresh sessions are revoked; existing access tokens retain
+ADR-004's bounded expiry latency. The notice is in memory only.
+
+Both screens inherit LocalizedComponentBase and use the es-MX/en catalogs and
+existing role labels. Password fields clear on every submitted operation, including
+validation and transport failures, and on disposal. No password is placed in a URL,
+log, browser storage, or client-created cookie. There are no invitation emails,
+password resets, forced first-login changes, SSO, member removal, or role-editing UI.

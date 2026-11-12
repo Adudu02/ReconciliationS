@@ -1,5 +1,6 @@
 @page "/ui/login"
 @inherits LocalizedComponentBase
+@inject SessionState Session
 @inject ApiClient Api
 @inject NavigationManager Navigation
 
@@ -8,6 +9,7 @@
     <h1>@T["login.heading"]</h1>
     <p>@T["login.intro"]</p>
     <p class="notice">@T["notice.disclaimer"]</p>
+    @if (Session.PasswordChangeCompleted) { <p class="notice" role="status">@T["account.changed"]</p> }
     <form @onsubmit="SignInAsync" @onsubmit:preventDefault>
         <h2>@T["login.title"]</h2>
         <label for="email">@T["login.email"]</label>

@@ -1,0 +1,44 @@
+@page "/ui/account"
+@inherits LocalizedComponentBase
+@inject AccountViewModel Model
+@inject SessionState Session
+@inject NavigationManager Navigation
+
+<section>
+    <h1>@T["nav.account"]</h1>
+    <PageStatus Model="Model" />
+    @if (Session.IsAuthenticated)
+    {
+        <form class="panel" @onsubmit="ChangeAsync" @onsubmit:preventDefault>
+            <h2>@T["account.change-password"]</h2>
+            <p>@T["account.session-note"]</p>
+            <label for="current-password">@T["account.current-password"]</label>
+            <input id="current-password" type="password" autocomplete="current-password" required @bind="CurrentPassword" disabled="@Model.Busy" />
+            <label for="new-password">@T["account.new-password"]</label>
+            <input id="new-password" type="password" autocomplete="new-password" minlength="12" required @bind="NewPassword" disabled="@Model.Busy" />
+            <label for="confirm-password">@T["account.confirm-password"]</label>
+            <input id="confirm-password" type="password" autocomplete="new-password" minlength="12" required @bind="Confirmation" disabled="@Model.Busy" />
+            <button type="submit" disabled="@Model.Busy">@T["account.change-password"]</button>
+        </form>
+    }
+</section>
+
+@code {
+    private string CurrentPassword { get; set; } = "";
+    private string NewPassword { get; set; } = "";
+    private string Confirmation { get; set; } = "";
+    private async Task ChangeAsync()
+    {
+        var current = CurrentPassword;
+        var password = NewPassword;
+        var confirmation = Confirmation;
+        CurrentPassword = NewPassword = Confirmation = "";
+        await Model.ChangeAsync(current, password, confirmation);
+        if (Model.Error is null) Navigation.NavigateTo("/ui/login");
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) CurrentPassword = NewPassword = Confirmation = "";
+        base.Dispose(disposing);
+    }
+}

@@ -9,6 +9,7 @@
     @if (Session.IsAuthenticated)
     {
         @if (Session.Company is { } company) { <div class="identity"><strong>@company.Name</strong><span>@L.Role(company.Role) @(company.ArchivedAt is null ? "" : "· " + T["company.archived-read-only"])</span></div><button class="secondary switch-company" @onclick="Session.SwitchCompany">@T["topbar.switch-company"]</button> }
+        <NavLink href="/ui/account">@T["nav.account"]</NavLink>
         <button class="secondary sign-out" @onclick="LogoutAsync">@T["topbar.sign-out"]</button>
     }
 </header>
@@ -16,15 +17,14 @@
 <div class="workspace">
     @if (Session.IsAuthenticated && Session.Company is not null)
     {
-        <nav aria-label="@T["nav.label"]" class="sidebar"><p class="eyebrow">@T["nav.eyebrow"]</p><NavLink href="/ui/overview">@T["nav.overview"]</NavLink><NavLink href="/ui/review">@T["nav.review"]</NavLink><NavLink href="/ui/invoices">@T["nav.invoices"]</NavLink><NavLink href="/ui/movements">@T["nav.movements"]</NavLink>@if (Session.CanWrite) { <NavLink href="/ui/imports">@T["nav.imports"]</NavLink> }</nav>
+        <nav aria-label="@T["nav.label"]" class="sidebar"><p class="eyebrow">@T["nav.eyebrow"]</p><NavLink href="/ui/overview">@T["nav.overview"]</NavLink><NavLink href="/ui/review">@T["nav.review"]</NavLink><NavLink href="/ui/invoices">@T["nav.invoices"]</NavLink><NavLink href="/ui/movements">@T["nav.movements"]</NavLink><NavLink href="/ui/team">@T["nav.team"]</NavLink>@if (Session.CanWrite) { <NavLink href="/ui/imports">@T["nav.imports"]</NavLink> }</nav>
     }
     <main id="main" @key="Session.Company?.Id">
         @if (Loading) { <p role="status">@T["shell.restoring"]</p> }
         else if (!Session.IsAuthenticated) { <Login /> }
-        else if (Session.Company is null) { <CompanyPicker /> }
         else
         {
-            <Router AppAssembly="typeof(App).Assembly"><Found Context="route"><RouteView RouteData="route" /><FocusOnNavigate RouteData="route" Selector="h1" /></Found><NotFound><h1>@T["shell.not-found.title"]</h1><p><a href="/ui/overview">@T["shell.not-found.back"]</a></p></NotFound></Router>
+            <Router AppAssembly="typeof(App).Assembly"><Found Context="route">@if (Session.Company is null && route.PageType != typeof(Account)) { <CompanyPicker /> } else { <RouteView RouteData="route" /><FocusOnNavigate RouteData="route" Selector="h1" /> }</Found><NotFound><h1>@T["shell.not-found.title"]</h1><p><a href="/ui/overview">@T["shell.not-found.back"]</a></p></NotFound></Router>
         }
     </main>
 </div>

@@ -4,6 +4,28 @@ public static partial class Catalog
 {
     public static IReadOnlyDictionary<string, string> Es { get; } = new Dictionary<string, string>
     {
+        ["nav.team"] = "Equipo",
+        ["nav.account"] = "Mi cuenta",
+        ["team.members"] = "Miembros de la empresa",
+        ["team.role"] = "Rol",
+        ["team.add"] = "Agregar miembro",
+        ["team.initial-password"] = "Contraseña inicial (solo para cuentas nuevas)",
+        ["team.password-note"] = "Para una cuenta nueva, capture al menos 12 caracteres y comparta la contraseña de forma segura. Una cuenta existente conserva su contraseña; puede dejar este campo vacío.",
+        ["team.read-only"] = "Equipo de solo lectura. Solo un administrador puede agregar miembros a una empresa activa.",
+        ["team.already-member"] = "Este usuario ya pertenece a la empresa. No se cambió su rol.",
+        ["password.show"] = "Mostrar contraseña",
+        ["password.hide"] = "Ocultar contraseña",
+        ["account.change-password"] = "Cambiar contraseña",
+        ["account.current-password"] = "Contraseña actual",
+        ["account.new-password"] = "Contraseña nueva",
+        ["account.confirm-password"] = "Confirmar contraseña nueva",
+        ["account.session-note"] = "Al cambiar la contraseña se revocan las sesiones de renovación. Deberá iniciar sesión de nuevo.",
+        ["account.changed"] = "La contraseña se cambió. Inicie sesión de nuevo.",
+        ["account.password-length"] = "La contraseña nueva debe tener al menos 12 caracteres.",
+        ["account.password-mismatch"] = "Las contraseñas nuevas no coinciden.",
+        ["account.current-unverified"] = "No se pudo verificar la contraseña actual. Revísela o inicie sesión de nuevo.",
+        ["account.session-refused"] = "Esta sesión no puede cambiar la contraseña. Inicie sesión de nuevo.",
+
         ["nav.overview"] = "Resumen",
         ["nav.review"] = "Bandeja de revisión",
         ["nav.invoices"] = "Facturas",
