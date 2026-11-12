@@ -95,6 +95,7 @@
 
 ## 9. Test data tooling (days 3–7, in parallel)
 
+- [ ] 9.0 Add the LAN demo profile: API bind address and allowed origin configurable (Postgres stays on 127.0.0.1), a one-command script that prints the URL for a second machine, and a README section; verify the UI and /health answer on the host's LAN address and Postgres is not reachable from it
 - [ ] 9.1 Implement the generator for CFDI and matching statements with a seed, and verify identical seeds give identical output
 - [ ] 9.2 Implement the edge-case catalogue including the fiscal cases (discount, foreign currency, overdue complement, global invoice, cancellation in process) and hostile files, and verify each case is produced
 - [ ] 9.3 Implement the demo seed and verify an empty installation shows reconciled, suggested, pending and cancelled items
