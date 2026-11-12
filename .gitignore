@@ -13,3 +13,6 @@ raw/
 # Generated artefacts
 graphify-out/
 .codebase-memory/
+
+# Local LAN demo signing key
+.env.demo
