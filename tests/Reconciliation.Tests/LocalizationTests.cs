@@ -18,6 +18,19 @@ namespace Reconciliation.Tests;
 
 public sealed class LocalizationTests
 {
+    [Theory]
+    [InlineData("es", "Importado", "Rechazado")]
+    [InlineData("en", "Imported", "Rejected")]
+    public void Import_status_translates_known_values_and_preserves_unknown(string language, string imported, string rejected)
+    {
+        var localizer = new Localizer();
+        localizer.Set(language);
+        var labels = new Labels(localizer);
+        Assert.Equal(imported, labels.ImportStatus("imported"));
+        Assert.Equal(rejected, labels.ImportStatus("rejected"));
+        Assert.Equal("novel_status", labels.ImportStatus("novel_status"));
+    }
+
     [Fact]
     public void Defaults_to_spanish()
     {

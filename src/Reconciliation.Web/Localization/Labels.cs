@@ -6,6 +6,8 @@ namespace Reconciliation.Web.Localization;
 /// <summary>Display text for machine values the API emits. Unknown values pass through raw so a new server value never hides data.</summary>
 public sealed partial class Labels(Localizer t)
 {
+    public string ImportStatus(string v) => Lookup("imports.status", v);
+
     public string State(string v) => Lookup("state", v);
 
     public string Confidence(string? v) => v is null ? "" : Lookup("confidence", v);

@@ -23,7 +23,7 @@
         <PageStatus Model="Model" /><JobProgress Model="Model.Jobs" />
         @if (Model.Report is { } report)
         {
-            <section class="panel table-wrap"><h2>@T["imports.report"]</h2><table><caption>@T.Format("imports.upload-caption", report.UploadId)</caption><thead><tr><th scope="col">@T["col.file"]</th><th scope="col">@T["col.status"]</th><th scope="col">@T["col.details"]</th><th scope="col">@T["col.movements"]</th></tr></thead><tbody>@foreach (var file in report.Files) { <tr><th scope="row">@file.Name</th><td>@StatusText(file.Status)</td><td>@if (file.Reason is not null) { <span lang="@ServerLang">@file.Reason</span> }</td><td>@T.Format("imports.counts", file.ImportedMovements, file.DuplicateMovements)</td></tr> }</tbody></table><p><a href="/ui/overview">@T["imports.open-overview"]</a></p></section>
+            <section class="panel table-wrap"><h2>@T["imports.report"]</h2><table><caption>@T.Format("imports.upload-caption", report.UploadId)</caption><thead><tr><th scope="col">@T["col.file"]</th><th scope="col">@T["col.status"]</th><th scope="col">@T["col.details"]</th><th scope="col">@T["col.movements"]</th></tr></thead><tbody>@foreach (var file in report.Files) { <tr><th scope="row">@file.Name</th><td>@L.ImportStatus(file.Status)</td><td>@if (file.Reason is not null) { <span lang="@ServerLang">@file.Reason</span> }</td><td>@T.Format("imports.counts", file.ImportedMovements, file.DuplicateMovements)</td></tr> }</tbody></table><p><a href="/ui/overview">@T["imports.open-overview"]</a></p></section>
         }
     }
 </section>
@@ -31,8 +31,6 @@
 @code {
     private readonly CancellationTokenSource lifetime = new();
     // Rejection reasons are English sentences written by the server; they stay verbatim and are marked as English in Spanish.
-    // An unknown status is shown raw so a new server value never hides data.
-    private string StatusText(string status) => T["imports.status." + status] is var text && text != "imports.status." + status ? text : status;
     protected override Task OnInitializedAsync() => Session.CanWrite ? Model.LoadBanksAsync() : Task.CompletedTask;
     private Task SelectAsync(InputFileChangeEventArgs args) => Model.SelectFilesAsync(args.GetMultipleFiles(args.FileCount));
     private Task UploadAsync() => Model.UploadAsync(Model.Files, lifetime.Token);
