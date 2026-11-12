@@ -9,6 +9,21 @@ namespace Reconciliation.Tests;
 
 public sealed class InvoiceComponentTests
 {
+    [Theory]
+    [InlineData("es", "en")]
+    [InlineData("en", null)]
+    public async Task Server_warning_language_tracks_the_UI(string language, string? expectedLang)
+    {
+        await using var context = new BunitContext();
+        TestLanguage.Register(context, language);
+        var summary = Summary();
+        Register(context, _ => WebTestHandler.Json(summary));
+        var page = context.Render<InvoiceDetail>(p => p.Add(x => x.InvoiceId, summary.Id));
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[role=note]")));
+        Assert.Equal(summary.Links[0].CashPaymentWarning, page.Find("[role=note]").TextContent);
+        Assert.Equal(expectedLang, page.Find("[role=note]").GetAttribute("lang"));
+    }
+
     [Fact]
     public async Task Summary_shows_worked_amounts_both_movements_payment_CFDI_and_cash_warning()
     {

@@ -31,7 +31,6 @@
 @code {
     private readonly CancellationTokenSource lifetime = new();
     // Rejection reasons are English sentences written by the server; they stay verbatim and are marked as English in Spanish.
-    private string? ServerLang => T.Language == "en" ? null : "en";
     // An unknown status is shown raw so a new server value never hides data.
     private string StatusText(string status) => T["imports.status." + status] is var text && text != "imports.status." + status ? text : status;
     protected override Task OnInitializedAsync() => Session.CanWrite ? Model.LoadBanksAsync() : Task.CompletedTask;

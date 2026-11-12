@@ -15,6 +15,8 @@ public abstract class LocalizedComponentBase : ComponentBase, IDisposable
 
     [Inject] protected Labels L { get; set; } = default!;
 
+    protected string? ServerLang => T.Language == "en" ? null : "en";
+
     public override Task SetParametersAsync(ParameterView parameters)
     {
         if (!subscribed)

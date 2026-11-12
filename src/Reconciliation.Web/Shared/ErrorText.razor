@@ -3,7 +3,7 @@
    Spanish shows a localized status headline followed by the raw text marked lang="en". *@
 @if (Error is { } error)
 {
-    <p class="error" role="alert">@if (string.IsNullOrWhiteSpace(error.Raw)) { @T[error.Key] } else if (T.Language == "en") { @error.Raw } else { @T[error.Key]<text> </text><small lang="en">@error.Raw</small> }</p>
+    <p class="error" role="alert">@if (string.IsNullOrWhiteSpace(error.Raw)) { @T[error.Key] } else if (ServerLang is null) { @error.Raw } else { @T[error.Key]<text> </text><small lang="@ServerLang">@error.Raw</small> }</p>
 }
 
 @code {

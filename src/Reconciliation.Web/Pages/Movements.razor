@@ -35,7 +35,7 @@
     // The API builds Reason as coalesce(user note, classification code, server explanation, 'No active link').
     // A note is user data and a code is a UI value; only the server explanation is an English sentence to mark as such.
     private bool IsServerSentence(MovementItem movement) => movement.Reason != movement.Note && movement.Reason != movement.Classification && movement.Reason != NoActiveLink;
-    private string? ReasonLang(MovementItem movement) => T.Language != "en" && IsServerSentence(movement) ? "en" : null;
+    private string? ReasonLang(MovementItem movement) => IsServerSentence(movement) ? ServerLang : null;
     private string ReasonText(MovementItem movement) =>
         movement.Reason == movement.Note ? movement.Reason
         : movement.Reason == movement.Classification ? L.Classification(movement.Reason)
