@@ -1,5 +1,9 @@
 # CFDI and bank statement reconciliation platform
 
+Documentation: [Server installation and first start](docs/guides/server-installation.md).
+Documentation: [Guía de uso (es-MX)](docs/guides/user-guide.es.md).
+Documentation: [User guide (English)](docs/guides/user-guide.en.md).
+
 Portfolio demo (MVP core). A multi-company backend that ingests CFDI 4.0 XML and bank statement CSV files,
 proposes which bank movement pays which invoice, sends doubtful matches to human review and keeps a
 tamper-evident audit log. Results have **no fiscal or legal validity**; use anonymised or synthetic data only.
