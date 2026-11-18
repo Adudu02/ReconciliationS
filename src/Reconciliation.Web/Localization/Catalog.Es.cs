@@ -13,6 +13,7 @@ public static partial class Catalog
         ["team.password-length"] = "La contraseña inicial debe tener al menos 12 caracteres.",
         ["team.password-note"] = "Para una cuenta nueva, capture al menos 12 caracteres y comparta la contraseña de forma segura. Una cuenta existente conserva su contraseña; puede dejar este campo vacío.",
         ["team.read-only"] = "Equipo de solo lectura. Solo un administrador puede agregar miembros a una empresa activa.",
+        ["team.last-administrator"] = "La empresa debe conservar al menos un administrador.",
         ["team.already-member"] = "Este usuario ya pertenece a la empresa. No se cambió su rol.",
         ["password.show"] = "Mostrar contraseña",
         ["password.hide"] = "Ocultar contraseña",

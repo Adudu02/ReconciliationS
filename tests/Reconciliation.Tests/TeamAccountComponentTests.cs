@@ -224,6 +224,69 @@ public sealed class TeamAccountComponentTests
         Assert.Equal("", page.Find("#initial-password").GetAttribute("value"));
     }
 
+    [Theory]
+    [InlineData("es", HttpStatusCode.BadRequest, "error", "La contraseña inicial debe tener al menos 12 caracteres.")]
+    [InlineData("en", HttpStatusCode.BadRequest, "error", "The initial password must have at least 12 characters.")]
+    [InlineData("es", HttpStatusCode.BadRequest, "detail", "La contraseña inicial debe tener al menos 12 caracteres.")]
+    [InlineData("en", HttpStatusCode.BadRequest, "detail", "The initial password must have at least 12 characters.")]
+    [InlineData("es", HttpStatusCode.Conflict, "error", "La empresa debe conservar al menos un administrador.")]
+    [InlineData("en", HttpStatusCode.Conflict, "error", "The company must retain at least one administrator.")]
+    [InlineData("es", HttpStatusCode.Conflict, "detail", "La empresa debe conservar al menos un administrador.")]
+    [InlineData("en", HttpStatusCode.Conflict, "detail", "The company must retain at least one administrator.")]
+    public async Task Team_localizes_known_server_refusals_and_sends_empty_passwords_for_server_validation(string language, HttpStatusCode status, string field, string expected)
+    {
+        await using var context = new BunitContext();
+        await RegisterAsync(context, language, "administrator");
+        var posts = 0;
+        var raw = status == HttpStatusCode.BadRequest ? "Initial password requires at least 12 characters." : "The company must retain at least one administrator.";
+        context.Services.AddSingleton(new HttpClient(new WebTestHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get) return WebTestHandler.Json(Array.Empty<MemberItem>());
+            posts++;
+            var body = request.Content!.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+            if (status == HttpStatusCode.BadRequest) Assert.Equal(JsonValueKind.Null, body.GetProperty("initialPassword").ValueKind);
+            return new(status) { Content = JsonContent.Create(new Dictionary<string, string> { [field] = raw }) };
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") });
+        var page = context.Render<Team>();
+        page.Find("#member-email").Change("new@example.invalid");
+        if (status == HttpStatusCode.Conflict) page.Find("#initial-password").Change("synthetic-initial-password");
+        page.Find("form").Submit();
+        page.WaitForAssertion(() => Assert.Equal(expected, page.Find("[role=alert]").TextContent));
+        Assert.Equal(1, posts);
+        Assert.Empty(page.FindAll("[role=alert] small"));
+        Assert.Equal("", page.Find("#initial-password").GetAttribute("value"));
+    }
+
+    [Theory]
+    [InlineData("es")]
+    [InlineData("en")]
+    public async Task Team_can_attach_an_existing_account_without_an_initial_password(string language)
+    {
+        await using var context = new BunitContext();
+        await RegisterAsync(context, language, "administrator");
+        var added = false;
+        context.Services.AddSingleton(new HttpClient(new WebTestHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                var body = request.Content!.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken).GetAwaiter().GetResult();
+                Assert.Equal("existing@example.invalid", body.GetProperty("email").GetString());
+                Assert.Equal(JsonValueKind.Null, body.GetProperty("initialPassword").ValueKind);
+                added = true;
+                return new(HttpStatusCode.NoContent);
+            }
+            return WebTestHandler.Json(added ? new MemberItem[] { new(Guid.NewGuid(), "existing@example.invalid", "accountant") } : []);
+        }))
+        { BaseAddress = new Uri("https://app.example.invalid/") });
+        var page = context.Render<Team>();
+        page.Find("#member-email").Change("existing@example.invalid");
+        page.Find("form").Submit();
+        page.WaitForAssertion(() => Assert.Contains("existing@example.invalid", page.Find("tbody").TextContent, StringComparison.Ordinal));
+        Assert.True(added);
+        Assert.Empty(page.FindAll("[role=alert]"));
+    }
+
     private static void FillAccount(IRenderedComponent<Account> page, string password, string confirmation)
     {
         page.Find("#current-password").Change("synthetic-current-password");

@@ -13,6 +13,7 @@ public static partial class Catalog
         ["team.password-length"] = "The initial password must have at least 12 characters.",
         ["team.password-note"] = "For a new account, enter at least 12 characters and share the password securely. An existing account keeps its password; you can leave this field blank.",
         ["team.read-only"] = "Read-only team. Only an administrator can add members to an active company.",
+        ["team.last-administrator"] = "The company must retain at least one administrator.",
         ["team.already-member"] = "This user already belongs to the company. Their role was not changed.",
         ["password.show"] = "Show password",
         ["password.hide"] = "Hide password",
