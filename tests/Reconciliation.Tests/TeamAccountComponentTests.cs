@@ -202,9 +202,9 @@ public sealed class TeamAccountComponentTests
     }
 
     [Theory]
-    [InlineData("es")]
-    [InlineData("en")]
-    public async Task Team_rejects_a_short_initial_password_without_a_request(string language)
+    [InlineData("es", "La contraseña inicial debe tener al menos 12 caracteres.")]
+    [InlineData("en", "The initial password must have at least 12 characters.")]
+    public async Task Team_rejects_a_short_initial_password_without_a_request(string language, string expected)
     {
         await using var context = new BunitContext();
         await RegisterAsync(context, language, "administrator");
@@ -219,7 +219,7 @@ public sealed class TeamAccountComponentTests
         page.Find("#member-email").Change("new@example.invalid");
         page.Find("#initial-password").Change("short");
         page.Find("form").Submit();
-        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll("[role=alert]")));
+        page.WaitForAssertion(() => Assert.Equal(expected, page.Find("[role=alert]").TextContent));
         Assert.Equal(0, posts);
         Assert.Equal("", page.Find("#initial-password").GetAttribute("value"));
     }

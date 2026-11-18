@@ -12,7 +12,7 @@ public sealed class TeamViewModel(ApiClient api, SessionState session) : PageVie
         if (!CanManage) { Error = new("error.read-only"); return; }
         if (Members.Any(member => string.Equals(member.Email, email, StringComparison.OrdinalIgnoreCase)))
         { Error = new("team.already-member"); return; }
-        if (initialPassword.Length is > 0 and < 12) { Error = new("account.password-length"); return; }
+        if (initialPassword.Length is > 0 and < 12) { Error = new("team.password-length"); return; }
         await api.AddMemberAsync(new(role, Email: email, InitialPassword: initialPassword.Length == 0 ? null : initialPassword));
         await ReadAsync();
     });
