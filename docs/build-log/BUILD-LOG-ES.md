@@ -198,7 +198,7 @@ Convenciones de empresa: `id uuid` generado por la base (job_attempt usa clave c
 RLS habilitado **y** forzado; claves foráneas compuestas; dinero en `numeric(18,2)`, nunca `double` ni `float`; índices
 por empresa que empiezan con `company_id` (`M0005`); el worker global además necesita índices de vencimiento/lease.
 
-El esquema construido (migraciones M0001 a M0013), dibujado a partir de las propias migraciones:
+El esquema construido (migraciones M0001 a M0014), dibujado a partir de las propias migraciones:
 
 ![Modelo de datos construido](../diagrams/database/database-erd-implemented-es.png)
 
@@ -414,7 +414,7 @@ La API sirve el static shell anónimo; cada llamada de datos sigue necesitando b
 | **Host del worker** | Host | Sondea concurrentemente, renueva leases, registra intentos/progreso y reporta salud | `src/Reconciliation.Worker` |
 | **Migrador** | Herramienta | Aplica o revierte cambios de la base de datos (`up`, `down`) y crea el operador inicial | `src/Reconciliation.Migrator` |
 | **Stub del SAT** | Host | SOAP Consulta con resultados controlados dentro de la red; no requiere SAT en vivo | `src/Reconciliation.SatStub` |
-| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0013` |
+| **PostgreSQL 17** | Base de datos | Guarda todos los datos con RLS forzado por empresa | `docker-compose.yml`, migraciones `M0001` a `M0014` |
 | Docker Compose | Pipeline | Arranca base de datos, migrador, API, worker y stub con un solo comando y espera a que todos estén sanos | `docker-compose.yml`, `Dockerfile` |
 | Pipeline de CI | Pipeline | En cada push: formato, compilación, pruebas, migraciones subir/bajar/subir y arranque completo del sistema | `.github/workflows/ci.yml` |
 | ADR | Docs | Decisiones grandes y alternativas descartadas | `docs/adr/` |
