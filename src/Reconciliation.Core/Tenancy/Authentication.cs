@@ -124,7 +124,7 @@ public static class Authentication
         {
             if (httpContext.User.UserId() is not Guid userId || httpContext.User.SessionId() is not Guid sessionId) return Results.Unauthorized();
             return Results.StatusCode(await sessions.ChangePasswordAsync(userId, sessionId, request, httpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting(LoginProtection.SessionIpPolicy);
         return routes;
     }
 

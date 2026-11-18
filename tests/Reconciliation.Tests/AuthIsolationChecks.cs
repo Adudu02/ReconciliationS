@@ -47,10 +47,10 @@ internal static class AuthIsolationChecks
                     Assert.NotNull(policy);
                     Assert.Contains(policy.Requirements, requirement => requirement is DenyAnonymousAuthorizationRequirement);
                 }
-                var expectedLimiter = authCase is AuthCase.Refresh or AuthCase.Logout ? LoginProtection.SessionIpPolicy : null;
+                var expectedLimiter = authCase is AuthCase.Refresh or AuthCase.Logout or AuthCase.Password ? LoginProtection.SessionIpPolicy : null;
                 Assert.Equal(expectedLimiter, endpoint.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName);
                 await VerifyUserBoundaryAsync(fixture, route, authCase);
-                if (authCase != AuthCase.Password) await VerifyRateLimitAsync(fixture, route, authCase);
+                await VerifyRateLimitAsync(fixture, route, authCase);
             }
         }
     }

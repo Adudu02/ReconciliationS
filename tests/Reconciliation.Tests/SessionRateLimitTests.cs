@@ -10,12 +10,13 @@ public sealed class SessionRateLimitTests(ApiFixture fixture)
     [Theory]
     [InlineData("/auth/refresh")]
     [InlineData("/auth/logout")]
+    [InlineData("/auth/password")]
     public async Task Session_routes_limit_the_remote_ip_and_return_retry_after(string path)
     {
         var user = await fixture.SeedUserAsync();
         using var host = new SessionTestHost(fixture, builder => builder.UseSetting("RefreshRateLimit:IpPermitLimit", "2"));
         var pair = await host.LoginAsync(user.Email);
-        if (path == "/auth/logout") host.Authorize(pair);
+        if (path != "/auth/refresh") host.Authorize(pair);
         for (var attempt = 0; attempt < 2; attempt++)
         {
             using var allowed = await PostAsync(host, path);
@@ -47,7 +48,10 @@ public sealed class SessionRateLimitTests(ApiFixture fixture)
         Assert.Contains("RefreshRateLimit", error.Message, StringComparison.Ordinal);
     }
 
-    private static Task<HttpResponseMessage> PostAsync(SessionTestHost host, string path) => path == "/auth/refresh"
-        ? host.Client.PostAsJsonAsync(path, new { refreshToken = "synthetic-unknown-refresh-credential" }, TestContext.Current.CancellationToken)
-        : host.Client.PostAsync(path, null, TestContext.Current.CancellationToken);
+    private static Task<HttpResponseMessage> PostAsync(SessionTestHost host, string path) => path switch
+    {
+        "/auth/refresh" => host.Client.PostAsJsonAsync(path, new { refreshToken = "synthetic-unknown-refresh-credential" }, TestContext.Current.CancellationToken),
+        "/auth/password" => host.Client.PostAsJsonAsync(path, new { currentPassword = "synthetic-wrong-password", newPassword = "synthetic-new-password" }, TestContext.Current.CancellationToken),
+        _ => host.Client.PostAsync(path, null, TestContext.Current.CancellationToken)
+    };
 }
