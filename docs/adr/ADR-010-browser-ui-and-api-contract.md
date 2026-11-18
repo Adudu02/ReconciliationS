@@ -117,6 +117,9 @@ reattachment and audited role-upsert semantics remain; Team offers no role edito
 Account creation and membership changes are audited in the same transaction;
 passwords and hashes never enter audit payloads.
 
+Adding members by email reveals to administrators whether an account exists: a new account requires an initial password, while an existing account does not.
+As with `POST /companies`, an administrator can attach an existing account to the company without its owner's consent; no invitation or acceptance is required.
+
 M0014 adds `company_members(uuid,uuid)`, a STABLE SECURITY DEFINER function with a
 pinned search path and PUBLIC execution revoked. Its separate NOLOGIN BYPASSRLS
 owner can read only `app_user(id,email)` and `membership(company_id,user_id,role)`.

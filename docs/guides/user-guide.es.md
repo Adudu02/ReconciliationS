@@ -281,6 +281,9 @@ existente conserva su contraseña, aunque se envíe `initialPassword`. Los valor
 de `role` son `administrator`, `accountant` y `viewer`. No se envían invitaciones.
 Debe suministrarse exactamente uno de `email` o `userId`.
 
+Agregar miembros por correo revela a los administradores si la cuenta existe: una cuenta nueva requiere contraseña inicial y una existente no.
+Al igual que en `POST /companies`, se puede vincular una cuenta existente a la empresa sin el consentimiento de su titular; no se requiere invitación ni aceptación.
+
 La forma anterior `{userId,role}` sigue disponible para usuarios existentes:
 
 ```bash

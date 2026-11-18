@@ -275,6 +275,9 @@ account retains its password even if `initialPassword` is supplied. Allowed `rol
 values are `administrator`, `accountant`, and `viewer`. No invitation is sent.
 Supply exactly one of `email` or `userId`.
 
+Adding members by email reveals to administrators whether an account exists: a new account requires an initial password, while an existing account does not.
+As with `POST /companies`, an administrator can attach an existing account to the company without its owner's consent; no invitation or acceptance is required.
+
 The previous `{userId,role}` form remains available for existing users:
 
 ```bash
